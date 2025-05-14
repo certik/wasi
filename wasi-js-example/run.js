@@ -1,23 +1,22 @@
-const { WASI } = require('@wasmtime/wasi');
+const { WASI } = require('node:wasi');
 const fs = require('fs').promises;
 
 async function runWasm() {
     // Initialize WASI
     const wasi = new WASI({
+        version: 'preview1',
         args: [],
         env: {},
     });
 
     // Load the WASM module
-    const wasmBuffer = await fs.readFile('add.wasm');
+    const wasmBuffer = await fs.readFile('../example.wasm');
     const wasmModule = await WebAssembly.compile(wasmBuffer);
 
-    // Instantiate the module with WASI imports
-    const instance = await WebAssembly.instantiate(wasmModule, {
-        wasi_snapshot_preview1: wasi.wasiImport,
-    });
+    // Instantiate with WASI imports
+    const instance = await WebAssembly.instantiate(wasmModule, wasi.getImportObject());
 
-    // Start the WASI instance (runs main, optional)
+    // Optionally run main (for testing)
     wasi.start(instance);
 
     // Call the add function
