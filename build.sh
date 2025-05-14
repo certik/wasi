@@ -9,3 +9,5 @@ $CLANG \
     -O2 -s \
     -o example.wasm \
     example.c
+
+wasmtime example.wasm
