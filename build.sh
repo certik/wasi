@@ -6,7 +6,6 @@ WASI_SDK=$HOME/ext/wasi-sdk-25.0-x86_64-macos
 CLANG=$WASI_SDK/bin/clang
 
 $CLANG \
-    --target=wasm32-unknown-wasi \
     -O2 -s \
     -o example.wasm \
     example.c
