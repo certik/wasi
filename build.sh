@@ -7,6 +7,7 @@ CLANG=$WASI_SDK/bin/clang
 
 $CLANG \
     -O2 -s \
+    -Wl,--export=add \
     -o example.wasm \
     example.c
 
