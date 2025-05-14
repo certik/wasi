@@ -12,3 +12,4 @@ $CLANG \
     example.c
 
 wasmtime example.wasm
+node example.js
