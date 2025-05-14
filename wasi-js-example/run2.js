@@ -1,4 +1,4 @@
-const { WASI } = require('wasi-js');
+const WASI = require('wasi-js').default; // Use default export
 const fs = require('fs').promises;
 const nodeBindings = require('wasi-js/dist/bindings/node');
 
@@ -11,7 +11,7 @@ async function runWasm() {
     });
 
     // Load the WASM module
-    const wasmBuffer = await fs.readFile('../example.wasm');
+    const wasmBuffer = await fs.readFile('add.wasm'); // Corrected path
     const wasmModule = await WebAssembly.compile(wasmBuffer);
 
     // Instantiate the module
