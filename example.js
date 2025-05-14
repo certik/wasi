@@ -127,6 +127,10 @@ async function main() {
             const y = 27;
             const result2 = wasmExports.add(x, y);
             console.log(`JavaScript calling Wasm: add(${x}, ${y}) = ${result2}`); // Expected: 42
+
+            const z = 1.5;
+            const result3 = wasmExports.mysin(z);
+            console.log(`JavaScript calling Wasm: mysin(${z}) = ${result3}`);
         } else {
             console.error("The 'add' function was not found in Wasm exports.");
             console.log("Available exports:", wasmExports);
