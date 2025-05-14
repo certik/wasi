@@ -8,6 +8,8 @@ CLANG=$WASI_SDK/bin/clang
 $CLANG \
     -O2 -s \
     -Wl,--export=add \
+    -nostdlib \
+    -Wl,--no-entry \
     -o example.wasm \
     example.c
 
