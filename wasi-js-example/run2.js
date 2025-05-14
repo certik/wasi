@@ -1,31 +1,23 @@
-const WASI = require('wasi-js').default;
-const fs = require('fs').promises;
-const nodeBindings = require('wasi-js/dist/bindings/node');
+import { init, Wasmer } from "@wasmer/sdk";
+import { readFile } from "fs/promises";
 
 async function runWasm() {
-    // Provide explicit hrtime binding
-    const bindings = {
-        ...nodeBindings,
-        fs,
-        hrtime: () => process.hrtime.bigint() // Explicitly define hrtime
-    };
-
-    // Initialize WASI
-    const wasi = new WASI({
-        args: [],
-        env: {},
-        bindings
-    });
+    // Initialize the Wasmer SDK
+    await init();
 
     // Load the WASM module
-    const wasmBuffer = await fs.readFile('../example.wasm');
+    const wasmBuffer = await readFile("../example.wasm");
     const wasmModule = await WebAssembly.compile(wasmBuffer);
 
-    // Instantiate the module
-    const instance = await WebAssembly.instantiate(wasmModule, wasi.getImports());
+    // Create a Wasmer instance with WASI
+    const instance = await Wasmer.fromModule(wasmModule, {
+        args: [],
+        env: {},
+    });
 
-    // Run main (optional)
-    wasi.start(instance);
+    // Run main (optional, for testing)
+    const { code, stdout } = await instance.entrypoint.run();
+    console.log(`Main output: ${stdout}`);
 
     // Call the add function
     const add = instance.exports.add;
