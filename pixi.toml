@@ -1,0 +1,14 @@
+[workspace]
+authors = ["Ondřej Čertík <ondrej@certik.us>"]
+channels = ["conda-forge"]
+name = "wasi"
+platforms = ["osx-arm64"]
+version = "0.1.0"
+
+[tasks]
+build = "./build.sh"
+
+[dependencies]
+clang = ">=20.1.4,<21"
+lld = ">=20.1.4,<21"
+wabt = ">=1.0.37,<2"
