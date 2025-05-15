@@ -1,5 +1,6 @@
 #include <math.h>
 #include <stdint.h>
+#include <string.h>
 #include <wasi.h>
 
 
@@ -7,15 +8,6 @@ void print_string(const char* str, uint32_t len) {
     ciovec_t iov = { (void *)str, len };
     size_t nwritten;
     fd_write(1, &iov, 1, &nwritten);
-}
-
-size_t strlen(const char* str) {
-    size_t len = 0;
-    while (*str != '\0') {
-        len++;
-        str++;
-    }
-    return len;
 }
 
 void log_message(const char *text) {
