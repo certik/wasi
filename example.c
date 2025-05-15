@@ -1,6 +1,21 @@
 typedef unsigned long long uint64_t;
+typedef unsigned int uint32_t;
+typedef uint32_t size_t;
 
-extern void log_message(const char*);
+
+void print_string(const char* str, uint32_t len) {
+    __attribute__((import_module("wasi_snapshot_preview1"), import_name("fd_write"))) uint32_t fd_write(int fd, const void* iovs, size_t iovs_len, size_t* nwritten);
+    struct {
+        uint32_t ptr;
+        uint32_t len;
+    } iov = { (uint32_t)str, len };
+    size_t nwritten;
+    fd_write(1, &iov, 1, &nwritten);
+}
+
+void log_message(const char *text) {
+    print_string(text, 5);
+}
 
 static inline double copysign(double x, double y) {
     uint64_t xi = *(uint64_t*)&x;
