@@ -1,13 +1,10 @@
 #include <math.h>
 #include <stdint.h>
+#include <wasi.h>
 
 
 void print_string(const char* str, uint32_t len) {
-    __attribute__((import_module("wasi_snapshot_preview1"), import_name("fd_write"))) uint32_t fd_write(int fd, const void* iovs, size_t iovs_len, size_t* nwritten);
-    struct {
-        uint32_t ptr;
-        uint32_t len;
-    } iov = { (uint32_t)str, len };
+    ciovec_t iov = { (void *)str, len };
     size_t nwritten;
     fd_write(1, &iov, 1, &nwritten);
 }
