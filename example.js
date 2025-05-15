@@ -4,20 +4,23 @@ const wasmBuffer = fs.readFileSync('example.wasm');
 let wasmInstance;
 
 const importObject = {
-  env: {
-    log_message: (ptr) => {
+  wasi_snapshot_preview1: {
+    fd_write: (fd, iovs_ptr, iovs_len, nwritten_ptr) => {
       if (!wasmInstance) {
         console.log('WASM instance not yet initialized');
-        return;
+        return 0;
       }
-      const memory = new Uint8Array(wasmInstance.exports.memory.buffer);
-      const str = [];
-      let i = ptr;
-      while (memory[i] !== 0) {
-        str.push(String.fromCharCode(memory[i]));
-        i++;
+      const memory = new DataView(wasmInstance.exports.memory.buffer);
+      let bytesWritten = 0;
+      for (let i = 0; i < iovs_len; i++) {
+        const ptr = memory.getUint32(iovs_ptr + i * 8, true);
+        const len = memory.getUint32(iovs_ptr + i * 8 + 4, true);
+        const str = new Uint8Array(wasmInstance.exports.memory.buffer, ptr, len);
+        process.stdout.write(Buffer.from(str));
+        bytesWritten += len;
       }
-      console.log(str.join(''));
+      memory.setUint32(nwritten_ptr, bytesWritten, true);
+      return 0;
     }
   }
 };
