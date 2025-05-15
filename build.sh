@@ -4,7 +4,8 @@ set -ex
 
 clang \
     --target=wasm32-unknown-unknown-wasm \
-    -I . \
+    -I stdlib/ \
+    -I wasi/ \
     -O2 -s \
     -Wl,--export=add \
     -Wl,--export=mysin \
