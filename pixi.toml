@@ -11,6 +11,7 @@ clang \
     --target=wasm32-unknown-unknown-wasm \
     -I stdlib/ \
     -I wasi/ \
+    -I . \
     -O2 -s \
     -Wl,--export=add \
     -Wl,--export=mysin \
