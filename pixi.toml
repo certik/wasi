@@ -43,6 +43,7 @@ clang \
     -O2 -s \
     example.c test_example.c native/wasi.c \
     -o test_example
+    -lm
 """ }
 
 [feature.native.dependencies]
