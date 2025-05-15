@@ -11,8 +11,10 @@ async function loadWasmBytes(url) {
   // Check if we are in a Node.js environment
   if (typeof process === 'object' && process.versions != null && process.versions.node != null) {
     // Node.js
-    const fs = await import('fs'); // Dynamic import for Node.js specific module
+    // Use dynamic import to avoid requiring 'fs' in the browser
+    const fs = await import('fs');
     try {
+      console.log(`Loading WASM from file: ${url} in Node.js`);
       return fs.readFileSync(url);
     } catch (e) {
       console.error(`Error reading WASM file in Node.js: ${e}`);
@@ -21,6 +23,7 @@ async function loadWasmBytes(url) {
   } else {
     // Browser environment
     try {
+      console.log(`Workspaceing WASM from URL: ${url} in browser`);
       const response = await fetch(url);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -33,54 +36,74 @@ async function loadWasmBytes(url) {
   }
 }
 
+// Use the standard TextDecoder, available globally in modern environments
+const decoder = new TextDecoder();
+
 const importObject = {
   wasi_snapshot_preview1: {
     fd_write: (fd, iovs_ptr, iovs_len, nwritten_ptr) => {
+      // We'll only handle stdout (fd=1) and stderr (fd=2) for console output
+      // Other file descriptors would require a more complete WASI implementation.
+      if (fd !== 1 && fd !== 2) {
+          console.error(`fd_write called with unsupported fd: ${fd}`);
+          // In a real WASI env, this might return an error code like ERRNO_BADF
+          return -1; // Indicate an error happened
+      }
+
       if (!wasmInstance) {
-        console.log('WASM instance not yet initialized');
-        return 0; // Return success but did nothing
+        console.error('WASM instance not yet initialized in fd_write');
+        return -1; // Indicate error
       }
 
       try {
         const memory = new DataView(wasmInstance.exports.memory.buffer);
         let bytesWritten = 0;
-        let output = ''; // Accumulate output for browsers
+        let outputString = ''; // Accumulate the output as a string
 
         for (let i = 0; i < iovs_len; i++) {
-          const ptr = memory.getUint32(iovs_ptr + i * 8, true);
-          const len = memory.getUint32(iovs_ptr + i * 8 + 4, true);
-          const str = new Uint8Array(wasmInstance.exports.memory.buffer, ptr, len);
+          // Read the iovec structure (pointer, length)
+          const ptr = memory.getUint32(iovs_ptr + i * 8, true); // pointer to buffer
+          const len = memory.getUint32(iovs_ptr + i * 8 + 4, true); // length of buffer
 
-          // Environment-specific output
-          if (typeof process === 'object' && process.versions != null && process.versions.node != null) {
-            // Node.js
-            process.stdout.write(Buffer.from(str)); // Use Buffer for Node.js compatibility
-          } else {
-            // Browser
-            output += new TextDecoder().decode(str);
+          // Ensure pointer and length are within memory bounds
+          if (ptr + len > wasmInstance.exports.memory.buffer.byteLength) {
+              console.error(`fd_write: iovs_ptr ${iovs_ptr}, iov ${i}: offset ${ptr} + length ${len} exceeds memory size ${wasmInstance.exports.memory.buffer.byteLength}`);
+              return -1; // Indicate error
           }
+
+          // Create a Uint8Array view of the buffer in WASM memory
+          const byteSlice = new Uint8Array(wasmInstance.exports.memory.buffer, ptr, len);
+
+          // Decode the byte slice to a string using TextDecoder
+          // Use { stream: true } because output might be fragmented across multiple iovs
+          outputString += decoder.decode(byteSlice, { stream: true });
 
           bytesWritten += len;
         }
 
-        // In browser, log the accumulated output after the loop
-        if (!(typeof process === 'object' && process.versions != null && process.versions.node != null)) {
-             if (output.length > 0) {
-                 console.log(output);
+        // Final decode call to flush any buffered data from { stream: true }
+        outputString += decoder.decode();
+
+        // Log the accumulated string to the console
+        // console.log and console.error handle string output correctly in both environments
+        if (outputString.length > 0) {
+             if (fd === 1) { // stdout
+                 console.log(outputString);
+             } else { // stderr (fd === 2)
+                 console.error(outputString);
              }
         }
 
 
-        // Update the nwritten_ptr with the total bytes written
+        // Update the nwritten_ptr in WASM memory with the total *bytes* written
+        // (This is what the WASM module expects)
         memory.setUint32(nwritten_ptr, bytesWritten, true);
 
-        return 0; // Return 0 for success
+        return 0; // Return 0 to indicate success (WASI convention)
+
       } catch (e) {
-          console.error(`Error in fd_write: ${e}`);
-          // Returning a non-zero value might indicate an error to the WASM module
-          // WASI typically uses 0 for success, specific non-zeros for errors.
-          // A generic non-zero is reasonable here for an unhandled JS error.
-          return -1; // Or some other non-zero error code
+          console.error(`Error inside fd_write implementation: ${e}`);
+          return -1; // Indicate error
       }
     }
   }
