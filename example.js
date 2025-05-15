@@ -5,6 +5,7 @@ const globalScope = globalThis;
 
 let wasmInstance = null;
 let wasmExports = null;
+let logAreaElement = null;
 
 // Function to load WASM bytes, works in Node.js and browser
 async function loadWasmBytes(url) {
@@ -42,12 +43,16 @@ const decoder = new TextDecoder();
 const importObject = {
   wasi_snapshot_preview1: {
     fd_write: (fd, iovs_ptr, iovs_len, nwritten_ptr) => {
-      // We'll only handle stdout (fd=1) and stderr (fd=2) for console output
-      // Other file descriptors would require a more complete WASI implementation.
+      // Only handle stdout (fd=1) and stderr (fd=2) for text output
       if (fd !== 1 && fd !== 2) {
-          console.error(`fd_write called with unsupported fd: ${fd}`);
-          // In a real WASI env, this might return an error code like ERRNO_BADF
-          return -1; // Indicate an error happened
+          // Log to console, but don't send to HTML log area for other fds
+          console.warn(`fd_write called with unsupported fd: ${fd}. Output ignored for HTML log.`);
+          // Still write to console in Node/Browser dev tools
+           if (!wasmInstance) return -1; // Avoid errors if memory isn't there
+           const memory = new DataView(wasmInstance.exports.memory.buffer);
+           // Dummy write to nwritten_ptr if possible
+           try { memory.setUint32(nwritten_ptr, 0, true); } catch(e) { console.error("Failed to set nwritten_ptr for unsupported fd:", e); }
+          return 0; // Success, but no bytes handled for this fd
       }
 
       if (!wasmInstance) {
@@ -61,22 +66,19 @@ const importObject = {
         let outputString = ''; // Accumulate the output as a string
 
         for (let i = 0; i < iovs_len; i++) {
-          // Read the iovec structure (pointer, length)
-          const ptr = memory.getUint32(iovs_ptr + i * 8, true); // pointer to buffer
-          const len = memory.getUint32(iovs_ptr + i * 8 + 4, true); // length of buffer
+          const ptr = memory.getUint32(iovs_ptr + i * 8, true);
+          const len = memory.getUint32(iovs_ptr + i * 8 + 4, true);
 
-          // Ensure pointer and length are within memory bounds
+           // Ensure pointer and length are within memory bounds
           if (ptr + len > wasmInstance.exports.memory.buffer.byteLength) {
               console.error(`fd_write: iovs_ptr ${iovs_ptr}, iov ${i}: offset ${ptr} + length ${len} exceeds memory size ${wasmInstance.exports.memory.buffer.byteLength}`);
               return -1; // Indicate error
           }
 
-          // Create a Uint8Array view of the buffer in WASM memory
           const byteSlice = new Uint8Array(wasmInstance.exports.memory.buffer, ptr, len);
 
           // Decode the byte slice to a string using TextDecoder
-          // Use { stream: true } because output might be fragmented across multiple iovs
-          outputString += decoder.decode(byteSlice, { stream: true });
+          outputString += decoder.decode(byteSlice, { stream: true }); // Use { stream: true } for partial decoding
 
           bytesWritten += len;
         }
@@ -84,8 +86,8 @@ const importObject = {
         // Final decode call to flush any buffered data from { stream: true }
         outputString += decoder.decode();
 
-        // Log the accumulated string to the console
-        // console.log and console.error handle string output correctly in both environments
+
+        // --- Output to Console (same as before) ---
         if (outputString.length > 0) {
              if (fd === 1) { // stdout
                  console.log(outputString);
@@ -94,13 +96,21 @@ const importObject = {
              }
         }
 
+        // --- Output to HTML Text Area (Browser only) ---
+        // Check if we are in a browser environment AND the log area element was found
+        // Node.js will skip this because 'document' is not defined
+        if (typeof document === 'object' && logAreaElement) {
+            // Append the string output to the text area's value
+            logAreaElement.value += outputString;
+            // Optional: Auto-scroll to the bottom
+            logAreaElement.scrollTop = logAreaElement.scrollHeight;
+        }
+
 
         // Update the nwritten_ptr in WASM memory with the total *bytes* written
-        // (This is what the WASM module expects)
         memory.setUint32(nwritten_ptr, bytesWritten, true);
 
         return 0; // Return 0 to indicate success (WASI convention)
-
       } catch (e) {
           console.error(`Error inside fd_write implementation: ${e}`);
           return -1; // Indicate error
