@@ -2,7 +2,7 @@
 
 set -ex
 
-clang \
+clang++ \
     --target=wasm32-unknown-unknown-wasm \
     -O2 -s \
     -Wl,--export=add \
@@ -10,7 +10,7 @@ clang \
     -Wl,--no-entry \
     -nostdlib \
     -o example.wasm \
-    example.c
+    example.cpp
 
 #wasm-objdump -x -j Import example.wasm
 #wasm-objdump -x -j Export example.wasm
