@@ -17,4 +17,10 @@ jobs:
           pixi-version: v0.44.0
 
           cache: true
+
+      - name: Setup `wasmtime`
+        uses: bytecodealliance/actions/wasmtime/setup@v1
+        with:
+          version: "32.0.0"
+
       - run: pixi run all
