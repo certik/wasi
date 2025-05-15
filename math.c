@@ -2,7 +2,7 @@
 #include <stdint.h>
 
 
-double copysign(double x, double y) {
+static inline double copysign(double x, double y) {
     uint64_t xi = *(uint64_t*)&x;
     uint64_t yi = *(uint64_t*)&y;
     xi &= ~(1ULL << 63);  // Clear sign bit
@@ -10,12 +10,12 @@ double copysign(double x, double y) {
     return *(double*)&xi;
 }
 
-double round(double x) {
+static inline double round(double x) {
     return (int)(x + 0.5 * copysign(1.0, x));
 }
 
 // Accurate on [-pi/2,pi/2] to about 1e-15 in relative accuracy
-double kernel_sin(double x) {
+static inline double kernel_sin(double x) {
     const double S1 = 1.0;
     const double S2 = -0.16666666666665748417;
     const double S3 = 8.333333333260810195e-3;
@@ -28,7 +28,7 @@ double kernel_sin(double x) {
     return x * (S1 + z * (S2 + z * (S3 + z * (S4 + z * (S5 + z * (S6 + z * (S7 + z * S8)))))));
 }
 
-double sin(double x) {
+static inline double sin(double x) {
     const double pi = 3.1415926535897932384626433832795;
     int N = (int) round(x / pi);
     double y = x - N * pi;

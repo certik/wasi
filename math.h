@@ -1,3 +1,3 @@
 #pragma once
 
-double sin(double x);
+static inline double sin(double x);
