@@ -23,7 +23,10 @@ size_t strlen(const char* str) {
 }
 
 void log_message(const char *text) {
-    print_string(text, strlen(text));
+    size_t len = strlen(text);
+    char newline = '\n';
+    print_string(text, len);
+    print_string(&newline, 1);
 }
 
 static inline double copysign(double x, double y) {
