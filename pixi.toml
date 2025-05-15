@@ -49,6 +49,12 @@ clang \
 [feature.native.dependencies]
 wabt = ">=1.0.37,<2"
 
+[feature.python.tasks]
+serve = { cmd="python -m http.server", depends-on=["build_wasm"] }
+
+[feature.python.dependencies]
+python = ">=3.13.3,<3.14"
+
 [tasks]
 all = { depends-on=["test_wasmtime", "test_node", "test_native"] }
 
@@ -58,3 +64,4 @@ wabt = ">=1.0.37,<2"
 [environments]
 native = ["native"]
 wasm = ["wasm"]
+python = ["python"]
