@@ -13,8 +13,17 @@ void print_string(const char* str, uint32_t len) {
     fd_write(1, &iov, 1, &nwritten);
 }
 
+size_t strlen(const char* str) {
+    size_t len = 0;
+    while (*str != '\0') {
+        len++;
+        str++;
+    }
+    return len;
+}
+
 void log_message(const char *text) {
-    print_string(text, 5);
+    print_string(text, strlen(text));
 }
 
 static inline double copysign(double x, double y) {
