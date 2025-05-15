@@ -88,7 +88,6 @@ const importObject = {
 
 // Main function to load and run the WASM
 async function loadAndRunWasm() {
-  try {
     console.log('Loading WASM...');
     const wasmBytes = await loadWasmBytes('example.wasm');
     console.log('WASM bytes loaded.');
@@ -110,38 +109,9 @@ async function loadAndRunWasm() {
     const result2 = wasmExports.add(x, y);
     console.log(`JavaScript calling Wasm: add(${x}, ${y}) = ${result2}`);
 
-    // Assuming mysin exists and takes a float
-    // Note: Floating point handling between JS and WASM might require care
-    // depending on how the WASM function is defined and exposed.
-    // If mysin expects a double, ensure the WASM function signature matches.
-    if (wasmExports.mysin) {
-        const z = 1.5;
-        const result3 = wasmExports.mysin(z);
-        console.log(`JavaScript calling Wasm: mysin(${z}) = ${result3}`);
-    } else {
-        console.log('WASM export "mysin" not found.');
-    }
-
-
-    // --- Expose a function globally for browser console interaction ---
-    // Attach to globalThis so it's available as `window.runWasmAddition` in browser
-    // and `global.runWasmAddition` in Node (though less common usage in Node interactive shell)
-    globalScope.runWasmAddition = function(num1, num2) {
-        if (!wasmExports || !wasmExports.add) {
-             console.error("WASM not loaded or add function not exported.");
-             return null;
-        }
-        console.log(`runWasmAddition called with ${num1}, ${num2}`);
-        const sum = wasmExports.add(num1, num2);
-        console.log(`WASM add(${num1}, ${num2}) = ${sum}`);
-        return sum;
-    };
-    console.log('runWasmAddition function exposed globally.');
-
-
-  } catch (err) {
-    console.error('Error loading or running WASM:', err);
-  }
+    const z = 1.5;
+    const result3 = wasmExports.mysin(z);
+    console.log(`JavaScript calling Wasm: mysin(${z}) = ${result3}`);
 }
 
 // Run the main function
