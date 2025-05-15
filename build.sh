@@ -11,7 +11,6 @@ clang \
     -Wl,--no-entry \
     -nostdlib \
     -o example.wasm \
-    math.c \
     example.c
 
 #wasm-objdump -x -j Import example.wasm
