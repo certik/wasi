@@ -1,10 +1,16 @@
 const fs = require('fs');
 const wasmBuffer = fs.readFileSync('example.wasm');
 
+let wasmInstance;
+
 const importObject = {
   env: {
-    log_message: (ptr, instance) => {
-      const memory = new Uint8Array(instance.exports.memory.buffer);
+    log_message: (ptr) => {
+      if (!wasmInstance) {
+        console.log('WASM instance not yet initialized');
+        return;
+      }
+      const memory = new Uint8Array(wasmInstance.exports.memory.buffer);
       const str = [];
       let i = ptr;
       while (memory[i] !== 0) {
@@ -18,11 +24,7 @@ const importObject = {
 
 WebAssembly.instantiate(wasmBuffer, importObject)
   .then(obj => {
-    const wasmInstance = obj.instance;
-    importObject.env.log_message = (ptr) => {
-      importObject.env.log_message(ptr, wasmInstance);
-    };
-
+    wasmInstance = obj.instance;
     const wasmExports = wasmInstance.exports;
 
     const a = 3;
