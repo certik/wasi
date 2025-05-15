@@ -4,12 +4,14 @@ set -ex
 
 clang \
     --target=wasm32-unknown-unknown-wasm \
+    -I . \
     -O2 -s \
     -Wl,--export=add \
     -Wl,--export=mysin \
     -Wl,--no-entry \
     -nostdlib \
     -o example.wasm \
+    math.c \
     example.c
 
 #wasm-objdump -x -j Import example.wasm
