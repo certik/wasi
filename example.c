@@ -1,4 +1,16 @@
-#include <math.h>
+typedef unsigned long long uint64_t;
+
+static inline double copysign(double x, double y) {
+    uint64_t xi = *(uint64_t*)&x;
+    uint64_t yi = *(uint64_t*)&y;
+    xi &= ~(1ULL << 63);  // Clear sign bit
+    xi |= yi & (1ULL << 63);  // Set sign bit to y's sign
+    return *(double*)&xi;
+}
+
+static inline double round(double x) {
+    return (int)(x + 0.5 * copysign(1.0, x));
+}
 
 // Accurate on [-pi/2,pi/2] to about 1e-15 in relative accuracy
 static inline double kernel_sin(double x) {
