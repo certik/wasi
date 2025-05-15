@@ -7,6 +7,7 @@ clang \
     -O2 -s \
     -Wl,--export=add \
     -Wl,--export=mysin \
+    -Wl,--allow-undefined \
     -Wl,--no-entry \
     -nostdlib \
     -o example.wasm \
@@ -15,6 +16,6 @@ clang \
 #wasm-objdump -x -j Import example.wasm
 #wasm-objdump -x -j Export example.wasm
 
-wasmtime run --invoke mysin example.wasm 1.5
-wasmtime run --invoke add example.wasm 5 7
+#wasmtime run --invoke mysin example.wasm 1.5
+#wasmtime run --invoke add example.wasm 5 7
 node example.js
