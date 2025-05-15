@@ -1,5 +1,7 @@
 typedef unsigned long long uint64_t;
 
+extern void log_message(const char*);
+
 static inline double copysign(double x, double y) {
     uint64_t xi = *(uint64_t*)&x;
     uint64_t yi = *(uint64_t*)&y;
@@ -36,9 +38,11 @@ static inline double fast_sin(double x) {
 
 // Export the add function for JavaScript and Wasmtime
 int add(int a, int b) {
+    log_message("Adding two numbers");
     return a + b;
 }
 
 double mysin(double a) {
+    log_message("Calculating sine");
     return fast_sin(a);
 }
