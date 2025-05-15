@@ -121,6 +121,20 @@ const importObject = {
 
 // Main function to load and run the WASM
 async function loadAndRunWasm() {
+    if (typeof document === 'object') {
+        // Wait for the DOM to be fully loaded before trying to get the element
+        if (document.readyState === 'loading') {
+            await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve));
+        }
+        logAreaElement = document.getElementById('wasm-log-area');
+        if (!logAreaElement) {
+            console.warn("HTML element with ID 'wasm-log-area' not found. WASM fd_write output will only go to console.");
+        } else {
+             // Clear any initial content and add a marker
+             logAreaElement.value = "--- WASM Output Start ---\n";
+             console.log("Found HTML log area element.");
+        }
+    }
     console.log('Loading WASM...');
     const wasmBytes = await loadWasmBytes('example.wasm');
     console.log('WASM bytes loaded.');
