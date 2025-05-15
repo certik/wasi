@@ -11,7 +11,7 @@ clang \
     -Wl,--no-entry \
     -nostdlib \
     -o example.wasm \
-    example.c
+    build.c
 
 #wasm-objdump -x -j Import example.wasm
 #wasm-objdump -x -j Export example.wasm

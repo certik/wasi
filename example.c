@@ -1,6 +1,3 @@
-#include "math.c"
-
-
 #include <math.h>
 #include <stdint.h>
 
