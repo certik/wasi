@@ -27,7 +27,6 @@ wasmtime run --invoke add example.wasm 5 7
 """, depends-on=["build_wasm"] }
 test_node = { cmd="node example.js", depends-on=["build_wasm"] }
 test_native = { cmd="./test_example", depends-on=["build_native"] }
-all = { depends-on=["test_wasmtime", "test_node", "test_native"] }
 
 [feature.wasm.dependencies]
 clang = ">=20.1.4,<21"
@@ -49,6 +48,11 @@ clang \
 [feature.native.dependencies]
 wabt = ">=1.0.37,<2"
 
+[tasks]
+all = { depends-on=["test_wasmtime", "test_node", "test_native"] }
+
+[dependencies]
+wabt = ">=1.0.37,<2"
 
 [environments]
 native = ["native"]
