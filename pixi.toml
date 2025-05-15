@@ -2,7 +2,7 @@
 authors = ["Ondřej Čertík <ondrej@certik.us>"]
 channels = ["conda-forge"]
 name = "wasi"
-platforms = ["osx-arm64"]
+platforms = ["osx-arm64", "linux-64"]
 version = "0.1.0"
 
 [tasks]
