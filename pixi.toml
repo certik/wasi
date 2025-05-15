@@ -6,7 +6,25 @@ platforms = ["osx-arm64"]
 version = "0.1.0"
 
 [tasks]
-build = "./build.sh"
+build = """
+clang \
+    --target=wasm32-unknown-unknown-wasm \
+    -I stdlib/ \
+    -I wasi/ \
+    -O2 -s \
+    -Wl,--export=add \
+    -Wl,--export=mysin \
+    -Wl,--no-entry \
+    -nostdlib \
+    -o example.wasm \
+    build.c
+"""
+test_wasmtime = { cmd="""
+wasmtime run --invoke mysin example.wasm 1.5 &&
+wasmtime run --invoke add example.wasm 5 7
+""", depends-on=["build"] }
+test_node = { cmd="node example.js", depends-on=["build"] }
+all = { depends-on=["test_wasmtime", "test_node"] }
 
 [dependencies]
 clang = ">=20.1.4,<21"
