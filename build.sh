@@ -10,6 +10,7 @@ $CLANG \
     -Wl,--export=add \
     -Wl,--export=mysin \
     -Wl,--no-entry \
+    -nostdlib \
     -o example.wasm \
     example.c
 
