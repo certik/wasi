@@ -22,12 +22,16 @@ size_t strlen(const char* str) {
     return len;
 }
 
-void log_message(const char *text) {
-    size_t len = strlen(text);
-    char newline = '\n';
-    print_string(text, len);
-    print_string(&newline, 1);
-}
+struct Log {
+
+    void log_message(const char *text) {
+        size_t len = strlen(text);
+        char newline = '\n';
+        print_string(text, len);
+        print_string(&newline, 1);
+    }
+
+};
 
 static inline double copysign(double x, double y) {
     uint64_t xi = *(uint64_t*)&x;
@@ -67,12 +71,14 @@ extern "C" {
 
 // Export the add function for JavaScript and Wasmtime
 int add(int a, int b) {
-    log_message("Adding two numbers");
+    Log log;
+    log.log_message("Adding two numbers");
     return a + b;
 }
 
 double mysin(double a) {
-    log_message("Calculating sine");
+    Log log;
+    log.log_message("Calculating sine");
     return fast_sin(a);
 }
 
