@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <wasi.h>
+#include <example.h>
 
 
 void print_string(const char* str, uint32_t len) {
