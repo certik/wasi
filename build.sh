@@ -7,7 +7,6 @@ clang \
     -O2 -s \
     -Wl,--export=add \
     -Wl,--export=mysin \
-    -Wl,--allow-undefined \
     -Wl,--no-entry \
     -nostdlib \
     -o example.wasm \
