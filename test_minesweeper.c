@@ -43,11 +43,12 @@ int main() {
     assert((board_get_cell(&board, x, y) & REVEALED_FLAG) != 0);
     assert(board.revealed_count > 0);
 
-    // Flag a hidden cell
+    // Flag a hidden, non-mine cell
     int flag_x, flag_y;
     for (flag_y = 0; flag_y < 10; flag_y++) {
         for (flag_x = 0; flag_x < 10; flag_x++) {
-            if ((board_get_cell(&board, flag_x, flag_y) & REVEALED_FLAG) == 0) break;
+            uint8_t cell = board_get_cell(&board, flag_x, flag_y);
+            if ((cell & REVEALED_FLAG) == 0 && (cell & 0xF) != MINE_VALUE) break;
         }
         if (flag_x < 10) break;
     }
