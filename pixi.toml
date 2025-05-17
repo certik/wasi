@@ -28,6 +28,7 @@ wasmtime run --invoke add example.wasm 5 7
 """, depends-on=["build_wasm"] }
 test_node = { cmd="node example.js", depends-on=["build_wasm"] }
 test_native = { cmd="./test_example", depends-on=["build_native"] }
+test_native_stdlib = { cmd="./test_example", depends-on=["build_native_stdlib"] }
 
 [feature.wasm.dependencies]
 clang = ">=20.1.4,<21"
@@ -50,6 +51,23 @@ clang \
 [feature.native.dependencies]
 wabt = ">=1.0.37,<2"
 
+[feature.native-stdlib.tasks]
+build_native_stdlib = { cmd="""
+clang \
+    -I wasi/ \
+    -I . \
+    -I stdlib/ \
+    -O2 -s \
+    -nostdinc \
+    -nostdlib \
+    example.c test_example.c native/wasi.c \
+    -o test_example
+    -lm
+""" }
+
+[feature.native-stdlib.dependencies]
+wabt = ">=1.0.37,<2"
+
 [feature.python.tasks]
 serve = { cmd="python -m http.server", depends-on=["build_wasm"] }
 
@@ -57,12 +75,14 @@ serve = { cmd="python -m http.server", depends-on=["build_wasm"] }
 python = ">=3.13.3,<3.14"
 
 [tasks]
-all = { depends-on=["test_wasmtime", "test_node", "test_native"] }
+all = { depends-on=["test_wasmtime", "test_node", "test_native",
+    "test_native_stdlib"] }
 
 [dependencies]
 wabt = ">=1.0.37,<2"
 
 [environments]
 native = ["native"]
+native-stdlib = ["native-stdlib"]
 wasm = ["wasm"]
 python = ["python"]
