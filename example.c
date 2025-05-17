@@ -7,6 +7,8 @@
 #include <example.h>
 #include <minesweeper.h>
 
+#include <time.h>
+
 
 void print_string(const char* str, uint32_t len) {
     ciovec_t iov = { (void *)str, len };
