@@ -36,8 +36,7 @@ double mysin(double a) {
 
 
 void arena_init(Arena* arena, size_t size) {
-    // TODO
-    //arena->memory = malloc(size);
+    arena->memory = malloc(size);
     arena->size = size;
     arena->offset = 0;
 }
@@ -56,8 +55,7 @@ void arena_reset(Arena* arena) {
 }
 
 void arena_free(Arena* arena) {
-    // TODO
-    //free(arena->memory);
+    free(arena->memory);
     arena->memory = NULL;
     arena->size = 0;
     arena->offset = 0;
@@ -81,11 +79,9 @@ void board_init(Board* board, Arena* arena, int width, int height, int mine_coun
     size_t cells_size = width * height * sizeof(uint8_t);
     board->cells = arena_alloc(arena, cells_size);
     if (board->cells == NULL) {
-        // TODO
-        //exit(1); // Handle allocation failure
+        exit(1); // Handle allocation failure
     }
-    // TODO
-    //memset(board->cells, 0, cells_size);
+    memset(board->cells, 0, cells_size);
     board_reset(board, mine_count);
 }
 
@@ -94,16 +90,13 @@ void board_reset(Board* board, int mine_count) {
     board->revealed_count = 0;
     board->game_over = 0;
     board->won = 0;
-    // TODO
-    //memset(board->cells, 0, board->width * board->height * sizeof(uint8_t));
-    // TODO
-    //srand(time(NULL));
+    memset(board->cells, 0, board->width * board->height * sizeof(uint8_t));
+    srand(time(NULL));
     for (int i = 0; i < mine_count; i++) {
         int x, y, idx;
         do {
-            // TODO
-            //x = rand() % board->width;
-            //y = rand() % board->height;
+            x = rand() % board->width;
+            y = rand() % board->height;
             idx = get_index(board, x, y);
         } while ((board->cells[idx] & 0xF) == MINE_VALUE);
         board->cells[idx] = MINE_VALUE;
