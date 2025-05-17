@@ -1,7 +1,7 @@
 #ifndef MINESWEEPER_H
 #define MINESWEEPER_H
 
-//#include <stdint.h>
+#include <stdint.h>
 //#include <stddef.h>
 
 #define MINE_VALUE 9
