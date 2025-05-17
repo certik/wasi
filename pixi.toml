@@ -16,6 +16,7 @@ clang \
     -Wl,--export=add \
     -Wl,--export=mysin \
     -Wl,--no-entry \
+    -nostdinc \
     -nostdlib \
     -o example.wasm \
     build.c
