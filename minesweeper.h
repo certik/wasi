@@ -2,7 +2,7 @@
 #define MINESWEEPER_H
 
 #include <stdint.h>
-//#include <stddef.h>
+#include <stddef.h>
 
 #define MINE_VALUE 9
 #define REVEALED_FLAG (1 << 4)
