@@ -1,3 +1,7 @@
+// This example shows how to use __builtin_wasm_memory_size and
+// __builtin_wasm_memory_grow to implement an allocator. In native build we
+// implement those natively.
+// Compile with:
 // clang --target=wasm32 -nostdlib -Wl,--no-entry -Wl,--export-all -o arena.wasm arena_allocator.c
 
 #include <stdint.h>
