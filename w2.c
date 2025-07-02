@@ -1,3 +1,10 @@
+/*
+ * On WASM:
+ * clang w2.c -target wasm32 --no-standard-libraries -Wl,--no-entry -Wl,--export-all -o w2.wasm
+ * wasmtime w2.wasm
+ * On Linux:
+ * clang w2.c && ./a.out
+ */
 #include <stdio.h>
 #include <stddef.h> // For size_t
 #include <string.h> // For memcpy
