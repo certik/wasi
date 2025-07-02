@@ -6,7 +6,7 @@
 <body>
     <script>
         // Instantiate WebAssembly module
-        WebAssembly.instantiateStreaming(fetch('arena.wasm'), {})
+        WebAssembly.instantiateStreaming(fetch('sbrk_example_safe.wasm'), {})
             .then(({ instance }) => {
                 // Call main function
                 try {
