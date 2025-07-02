@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Arena Allocator Test</title>
+</head>
+<body>
+    <script>
+        // Instantiate WebAssembly module
+        WebAssembly.instantiateStreaming(fetch('arena.wasm'), {})
+            .then(({ instance }) => {
+                // Call main function
+                try {
+                    instance.exports.main();
+                    console.log("Arena allocator test completed successfully.");
+                } catch (e) {
+                    console.error("Error running WebAssembly module:", e);
+                }
+            })
+            .catch(err => console.error("Error loading WebAssembly module:", err));
+    </script>
+</body>
+</html>
