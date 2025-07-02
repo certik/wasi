@@ -1,17 +1,42 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Arena Allocator Test</title>
+    <title>sbrk WASM Safe Example</title>
 </head>
 <body>
     <script>
-        // Instantiate WebAssembly module
         WebAssembly.instantiateStreaming(fetch('sbrk_example_safe.wasm'), {})
             .then(({ instance }) => {
-                // Call main function
                 try {
-                    instance.exports.main();
-                    console.log("Arena allocator test completed successfully.");
+                    // Run the main function
+                    const result = instance.exports.main();
+                    console.log(`Main returned: ${result}`);
+                    if (result === 0) {
+                        console.log("Test passed: Sum of integers is 450 and heap base is valid");
+                    } else {
+                        console.log("Test failed");
+                    }
+                    
+                    // Get the heap base
+                    const heapBase = instance.exports.__heap_base.value;
+                    console.log(`Heap base: ${heapBase}`);
+                    
+                    // Access memory
+                    const memory = new Uint8Array(instance.exports.memory.buffer);
+                    
+                    // Extract string starting at heap_base + 40 (after 10 integers)
+                    let message = "";
+                    for (let i = heapBase + 40; i < heapBase + 60; i++) {
+                        if (memory[i] === 0) break; // Stop at null terminator
+                        message += String.fromCharCode(memory[i]);
+                    }
+                    console.log(`Stored string: ${message}`);
+                    
+                    // Verify integer array (optional, for completeness)
+                    const intArray = new Int32Array(memory.buffer, heapBase, 10);
+                    const sum = intArray.reduce((acc, val) => acc + val, 0);
+                    console.log(`Integer array: [${intArray.join(", ")}]`);
+                    console.log(`Sum of integers: ${sum}`);
                 } catch (e) {
                     console.error("Error running WebAssembly module:", e);
                 }
