@@ -5,7 +5,7 @@
  * On Linux:
  * clang w2.c && ./a.out
  */
-#include <stdio.h>
+//#include <stdio.h>
 #include <stddef.h> // For size_t
 #include <string.h> // For memcpy
 #include <stdint.h> // For uintptr_t
