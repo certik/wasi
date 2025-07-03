@@ -1,7 +1,7 @@
 /*
  * On WASM:
  * clang w2.c stdlib/string.c -target wasm32 -Istdlib/ -Iwasi/ --no-standard-libraries -Wl,--no-entry -Wl,--export-all -o w2.wasm
- * wasmtime w2.wasm
+ * wasmtime --invoke __original_main w2.wasm
  * On Linux:
  * clang w2.c && ./a.out
  */
