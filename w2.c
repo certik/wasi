@@ -9,14 +9,14 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <stddef.h> // For size_t
-#include <string.h> // For memcpy
+#include <string.h> // For strlen
 #include <stdint.h> // For uintptr_t
 
 // The page size in WebAssembly is fixed at 64KB.
 #define WASM_PAGE_SIZE 65536
 
 // The current size of the memory in pages, managed by the application logic.
-size_t current_memory_pages = 1;
+size_t current_memory_pages;
 
 // =============================================================================
 // PLATFORM-SPECIFIC IMPLEMENTATION
@@ -47,8 +47,6 @@ void log_message(const char *text) {
     print_string(text, len);
     print_string(&newline, 1);
 }
-
-
 
 // Helper function to append a size_t value as a string to the buffer
 void append_size_t(char **buf_ptr, size_t val) {
@@ -95,8 +93,8 @@ int printf(const char *format, ...) {
                     fmt_ptr++;  // Skip 'u'
                 }
             } else if (*fmt_ptr == 'c') {  // Handle %c
-                char c = (char)va_arg(args, int);  // Char promoted to int in varargs
-                *buf_ptr++ = c;
+                int c = va_arg(args, int);  // Char promoted to int in varargs
+                *buf_ptr++ = (char)c;  // Explicit cast to char
                 fmt_ptr++;
             } else if (*fmt_ptr == '%') {  // Handle %%
                 *buf_ptr++ = '%';
@@ -192,12 +190,19 @@ char* get_memory() {
 // =============================================================================
 
 int main() {
+    // Initialize current_memory_pages for WebAssembly
+    #if defined(__wasm32__)
+    current_memory_pages = __builtin_wasm_memory_size(0);
+    #else
+    current_memory_pages = 1; // Linux initializes 1 page in init_linux_memory
+    #endif
+
     char* mem = get_memory();
     if (mem == NULL) {
-        printf("NULL\n");
-    } else {
-        printf("NOT NULL\n");
+        printf("Memory is NULL\n");
+        return 1;
     }
+
     printf("--- Memory Test Initial State ---\n");
     printf("Initial memory size: %zu pages (%zu bytes).\n", current_memory_pages, current_memory_pages * WASM_PAGE_SIZE);
 
