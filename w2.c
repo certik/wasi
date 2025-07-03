@@ -6,6 +6,7 @@
  * clang w2.c && ./a.out
  */
 #include <stdio.h>
+#include <stdlib.h>
 #include <stddef.h> // For size_t
 #include <string.h> // For memcpy
 #include <stdint.h> // For uintptr_t
@@ -129,6 +130,11 @@ char* get_memory() {
 
 int main() {
     char* mem = get_memory();
+    if (mem == NULL) {
+        printf("NULL\n");
+    } else {
+        printf("NOT NULL\n");
+    }
     printf("--- Memory Test Initial State ---\n");
     printf("Initial memory size: %zu pages (%zu bytes).\n", current_memory_pages, current_memory_pages * WASM_PAGE_SIZE);
 
