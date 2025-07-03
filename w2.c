@@ -7,6 +7,7 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <stddef.h> // For size_t
 #include <string.h> // For memcpy
 #include <stdint.h> // For uintptr_t
@@ -47,9 +48,71 @@ void log_message(const char *text) {
     print_string(&newline, 1);
 }
 
+
+
+// Helper function to append a size_t value as a string to the buffer
+void append_size_t(char **buf_ptr, size_t val) {
+    char temp[20];  // Enough for 64-bit size_t (max 20 digits)
+    int i = 0;
+    if (val == 0) {
+        temp[i++] = '0';
+    } else {
+        while (val > 0) {
+            temp[i++] = '0' + (val % 10);
+            val /= 10;
+        }
+        // Reverse the digits
+        for (int j = 0; j < i / 2; j++) {
+            char t = temp[j];
+            temp[j] = temp[i - j - 1];
+            temp[i - j - 1] = t;
+        }
+    }
+    // Copy to buffer
+    for (int j = 0; j < i; j++) {
+        *(*buf_ptr)++ = temp[j];
+    }
+}
+
 int printf(const char *format, ...) {
-    log_message(format);
-    return strlen(format);
+    char buffer[512];  // Fixed-size buffer, sufficient for the given use cases
+    char *buf_ptr = buffer;
+    const char *fmt_ptr = format;
+    va_list args;
+    va_start(args, format);
+
+    // Parse the format string
+    while (*fmt_ptr != '\0') {
+        if (*fmt_ptr != '%') {
+            *buf_ptr++ = *fmt_ptr++;  // Copy non-specifier characters
+        } else {
+            fmt_ptr++;  // Skip '%'
+            if (*fmt_ptr == 'z') {
+                fmt_ptr++;  // Skip 'z'
+                if (*fmt_ptr == 'u') {  // Handle %zu
+                    size_t val = va_arg(args, size_t);
+                    append_size_t(&buf_ptr, val);
+                    fmt_ptr++;  // Skip 'u'
+                }
+            } else if (*fmt_ptr == 'c') {  // Handle %c
+                char c = (char)va_arg(args, int);  // Char promoted to int in varargs
+                *buf_ptr++ = c;
+                fmt_ptr++;
+            } else if (*fmt_ptr == '%') {  // Handle %%
+                *buf_ptr++ = '%';
+                fmt_ptr++;
+            } else {
+                // Unsupported specifier, copy as is
+                *buf_ptr++ = '%';
+                *buf_ptr++ = *fmt_ptr++;
+            }
+        }
+    }
+    *buf_ptr = '\0';  // Null-terminate the string
+
+    va_end(args);
+    log_message(buffer);
+    return (buf_ptr - buffer);  // Return number of characters written
 }
 
 #else
