@@ -1,6 +1,6 @@
 /*
  * On WASM:
- * clang w2.c -target wasm32 -Istdlib/ --no-standard-libraries -Wl,--no-entry -Wl,--export-all -o w2.wasm
+ * clang w2.c stdlib/string.c -target wasm32 -Istdlib/ -Iwasi/ --no-standard-libraries -Wl,--no-entry -Wl,--export-all -o w2.wasm
  * wasmtime w2.wasm
  * On Linux:
  * clang w2.c && ./a.out
@@ -30,6 +30,26 @@ char* get_memory() {
 }
 
 // __builtin_wasm_memory_grow is provided by Clang for wasm32; no implementation needed.
+
+#include <wasi.h>
+
+void print_string(const char* str, uint32_t len) {
+    ciovec_t iov = { (void *)str, len };
+    size_t nwritten;
+    fd_write(1, &iov, 1, &nwritten);
+}
+
+void log_message(const char *text) {
+    size_t len = strlen(text);
+    char newline = '\n';
+    print_string(text, len);
+    print_string(&newline, 1);
+}
+
+int printf(const char *format, ...) {
+    log_message(format);
+    return strlen(format);
+}
 
 #else
 // =============================================================================
