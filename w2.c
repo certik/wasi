@@ -193,13 +193,23 @@ int main() {
     // Initialize current_memory_pages for WebAssembly
     #if defined(__wasm32__)
     current_memory_pages = __builtin_wasm_memory_size(0);
+    // Ensure at least 1 page of memory
+    if (current_memory_pages == 0) {
+        size_t result = __builtin_wasm_memory_grow(0, 1);
+        if (result == (size_t)-1) {
+            printf("Failed to initialize memory with 1 page.\n");
+            return 1;
+        }
+        current_memory_pages = 1;
+    }
     #else
     current_memory_pages = 1; // Linux initializes 1 page in init_linux_memory
     #endif
 
     char* mem = get_memory();
-    if (mem == NULL) {
-        printf("Memory is NULL\n");
+    // Instead of checking for NULL, verify memory size
+    if (current_memory_pages == 0) {
+        printf("No memory available (0 pages).\n");
         return 1;
     }
 
