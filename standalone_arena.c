@@ -14,7 +14,7 @@
  * --- Compilation Instructions ---
  *
  * For WebAssembly (WASI):
- * clang --target=wasm32-wasi -nostdlib -Wl,--no-entry -Wl,--export=__heap_base -Wl,--initial-memory=131072 -o arena.wasm standalone_arena.c
+ * clang --target=wasm32-wasi -nostdlib -Wl,--no-entry -Wl,--export=__heap_base -Wl,--export=_start -Wl,--initial-memory=131072 -o arena.wasm standalone_arena.c
  *
  * To Run with wasmtime:
  * wasmtime arena.wasm
