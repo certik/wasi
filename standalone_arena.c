@@ -325,15 +325,15 @@ int main(void) {
     arena_init(&main_arena);
 
     // Allocate and copy some strings onto the arena
-    const char* s1 = "Hello from the Arena! ";
+    char s1[] = "Hello from the Arena!\n";
     char* p1 = arena_alloc(&main_arena, my_strlen(s1) + 1);
     my_strcpy(p1, s1);
 
-    const char* s2 = "This is a standalone C program. ";
+    char s2[] = "This is a standalone C program. ";
     char* p2 = arena_alloc(&main_arena, my_strlen(s2) + 1);
     my_strcpy(p2, s2);
 
-    const char* s3 = "It works on both WASM and Linux.\n";
+    char s3[] = "It works on both WASM and Linux.\n";
     char* p3 = arena_alloc(&main_arena, my_strlen(s3) + 1);
     my_strcpy(p3, s3);
 
