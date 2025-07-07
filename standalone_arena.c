@@ -48,6 +48,7 @@ uint32_t fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nwritte
 void* memory_grow(size_t num_pages);
 size_t memory_size(void);
 void exit_program(int status);
+uint32_t write_all(int fd, ciovec_t* iovs, size_t iovs_len);
 
 // --- Platform-Specific Implementation ---
 
@@ -303,6 +304,43 @@ void arena_reset(Arena* arena) {
     arena->offset = 0;
 }
 
+/**
+ * @brief Writes all data from the iovecs to the specified file descriptor.
+ *
+ * This function repeatedly calls fd_write until all data is written or an error occurs.
+ * It updates the iovecs to skip already-written data.
+ *
+ * @param fd The file descriptor to write to.
+ * @param iovs Array of ciovec_t structures containing the data to write.
+ * @param iovs_len Number of iovecs in the array.
+ * @return 0 on success, or an error code if fd_write fails.
+ */
+uint32_t write_all(int fd, ciovec_t* iovs, size_t iovs_len) {
+    size_t i;
+    size_t nwritten;
+    uint32_t ret;
+
+    for (i = 0; i < iovs_len; ) {
+        ret = fd_write(fd, &iovs[i], iovs_len - i, &nwritten);
+        if (ret != 0) {
+            return ret; // Return error code
+        }
+
+        // Advance through the iovecs based on how much was written
+        while (nwritten > 0 && i < iovs_len) {
+            if (nwritten >= iovs[i].buf_len) {
+                nwritten -= iovs[i].buf_len;
+                i++;
+            } else {
+                iovs[i].buf = (const uint8_t*)iovs[i].buf + nwritten;
+                iovs[i].buf_len -= nwritten;
+                nwritten = 0;
+            }
+        }
+    }
+    return 0; // Success
+}
+
 // Custom strlen to avoid C library dependency
 size_t my_strlen(const char* str) {
     const char* s;
@@ -337,15 +375,18 @@ int main(void) {
     char* p3 = arena_alloc(&main_arena, my_strlen(s3) + 1);
     my_strcpy(p3, s3);
 
-    // Prepare iovecs for fd_write
+    // Prepare iovecs for write_all
     ciovec_t iovs[] = {
         { .buf = p1, .buf_len = my_strlen(p1) },
         { .buf = p2, .buf_len = my_strlen(p2) },
         { .buf = p3, .buf_len = my_strlen(p3) },
     };
 
-    size_t nwritten;
-    fd_write(1, iovs, 3, &nwritten); // 1 = stdout
+    // Write all data to stdout (fd = 1)
+    uint32_t ret = write_all(1, iovs, 3);
+    if (ret != 0) {
+        return 1; // Return non-zero on write error
+    }
 
     return 0; // Success
 }
