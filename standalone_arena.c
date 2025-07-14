@@ -71,7 +71,7 @@ uint32_t write_all(int fd, ciovec_t* iovs, size_t iovs_len);
 extern uint8_t __heap_base;
 
 // WASI syscall function for writing to a file descriptor.
-// We use __attribute__((import_module, import_name to tell the compiler this function
+// We use __attribute__((import_module, import_name)) to tell the compiler this function
 // is provided by the WASI host environment.
 __attribute__((
     __import_module("wasi_snapshot_preview1"),
