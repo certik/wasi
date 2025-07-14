@@ -28,7 +28,7 @@
  * ./arena_linux
  *
  * For macOS (x86_64 or arm64):
- * clang -nostdlib -o arena_macos standalone_arena.c -lSystem -Wl,-e,_start
+ * clang -nostdlib -o arena_macos standalone_arena.c -lSystem -Wl,-e,__start
  *
  * To Run on macOS:
  * ./arena_macos
@@ -74,15 +74,15 @@ extern uint8_t __heap_base;
 // We use __attribute__((import_module, import_name)) to tell the compiler this function
 // is provided by the WASI host environment.
 __attribute__((
-    __import_module("wasi_snapshot_preview1"),
-    __import_name("fd_write")
+    __import_module__("wasi_snapshot_preview1"),
+    __import_name__("fd_write")
 ))
 uint32_t fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nwritten);
 
 
 __attribute__((
-    __import_module("wasi_snapshot_preview1"),
-    __import_name("proc_exit")
+    __import_module__("wasi_snapshot_preview1"),
+    __import_name__("proc_exit")
 ))
 void exit_program(int status);
 
