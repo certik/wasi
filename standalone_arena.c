@@ -282,7 +282,7 @@ void exit_program(int status) {
 // address space but don't commit any physical memory to it initially.
 static void ensure_heap_initialized() {
     if (linux_heap_base == NULL) {
-        linux_heap_base = (uint8_t*)syscall(
+        long mmap_ret = syscall(
             SYS_MMAP,
             (long)NULL,          // address hint
             (long)RESERVED_SIZE,       // size
@@ -291,10 +291,10 @@ static void ensure_heap_initialized() {
             (long)-1,                  // file descriptor
             (long)0                    // offset
         );
-        // A simple check to see if mmap failed. A more robust solution
-        // would check for specific error values.
-        if ((long)linux_heap_base > -4096L) {
+        if (mmap_ret < 0) {
             linux_heap_base = NULL;
+        } else {
+            linux_heap_base = (uint8_t*)mmap_ret;
         }
     }
 }
@@ -359,6 +359,16 @@ typedef struct {
     size_t offset;
 } Arena;
 
+size_t my_strlen(const char* str);
+
+// Function to print error and exit
+static void allocation_error(void) {
+    const char* err_str = "Error: Failed to grow memory for arena allocation.\n";
+    ciovec_t iov = { .buf = err_str, .buf_len = my_strlen(err_str) };
+    write_all(1, &iov, 1); // Write to stdout; alternatively use fd=2 for stderr
+    exit_program(1);
+}
+
 /**
  * @brief Initializes an Arena allocator.
  *
@@ -373,10 +383,7 @@ void arena_init(Arena* arena) {
     size_t current_pages = memory_size();
     if (current_pages == 0) {
         if (memory_grow(1) == NULL) { // Try to allocate one page
-            arena->base = NULL;
-            arena->capacity = 0;
-            arena->offset = 0;
-            return;
+            allocation_error();
         }
         current_pages = 1;
     }
@@ -394,10 +401,10 @@ void arena_init(Arena* arena) {
  *
  * @param arena Pointer to the Arena.
  * @param size The number of bytes to allocate.
- * @return A pointer to the allocated memory, or NULL on failure.
+ * @return A pointer to the allocated memory (always succeeds or exits).
  */
 void* arena_alloc(Arena* arena, size_t size) {
-    if (arena->base == NULL) return NULL;
+    if (arena->base == NULL) allocation_error();
 
     // Simple alignment to 8 bytes
     size = (size + 7) & ~7;
@@ -407,7 +414,7 @@ void* arena_alloc(Arena* arena, size_t size) {
         size_t pages_to_grow = (needed_bytes + WASM_PAGE_SIZE - 1) / WASM_PAGE_SIZE;
 
         if (memory_grow(pages_to_grow) == NULL) {
-            return NULL; // Failed to grow memory
+            allocation_error();
         }
         arena->capacity += pages_to_grow * WASM_PAGE_SIZE;
     }
