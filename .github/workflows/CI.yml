@@ -7,34 +7,25 @@ on:
     branches: [main]
 
 jobs:
-  linux:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: prefix-dev/setup-pixi@v0.8.11
-        with:
-          pixi-version: v0.49.0
-          cache: true
-
-      - name: Build and test Linux
-        run: pixi run -e linux test_linux
-
-  macos:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: prefix-dev/setup-pixi@v0.8.11
-        with:
-          pixi-version: v0.49.0
-          cache: true
-
-      - name: Build and test macOS
-        run: pixi run -e macos test_macos
-
-  wasm:
-    runs-on: ubuntu-latest
+  test:
+    strategy:
+      matrix:
+        include:
+          - platform: linux
+            os: ubuntu-latest
+            pixi-command: pixi run -e linux test_linux
+          - platform: macos
+            os: macos-latest
+            pixi-command: pixi run -e macos test_macos
+          - platform: wasm
+            os: ubuntu-latest
+            pixi-command: |
+              pixi run -e wasm build_wasm
+              wasmtime arena.wasm
+    
+    runs-on: ${{ matrix.os }}
+    name: Test ${{ matrix.platform }}
+    
     steps:
       - uses: actions/checkout@v4
 
@@ -44,11 +35,10 @@ jobs:
           cache: true
 
       - name: Setup wasmtime
+        if: matrix.platform == 'wasm'
         uses: bytecodealliance/actions/wasmtime/setup@v1
         with:
           version: "32.0.0"
 
-      - name: Build and test WebAssembly
-        run: |
-          pixi run -e wasm build_wasm
-          wasmtime arena.wasm
+      - name: Build and test ${{ matrix.platform }}
+        run: ${{ matrix.pixi-command }}
