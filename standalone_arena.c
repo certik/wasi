@@ -41,21 +41,27 @@ typedef unsigned int uint32_t;
 typedef unsigned char uint8_t;
 
 #define NULL ((void*)0)
-#define WASM_PAGE_SIZE 65536 // 64KiB
 
 // --- Platform-Agnostic Interface ---
+
+
+// Forward declarations for our platform-agnostic functions.
+#define WASM_PAGE_SIZE 65536 // 64KiB
+void* memory_grow(size_t num_pages);
+size_t memory_size(void);
 
 // WASI-style iovec structure, used by fd_write on all platforms.
 typedef struct ciovec_s {
     const void* buf;
     size_t buf_len;
 } ciovec_t;
-
-// Forward declarations for our platform-agnostic functions.
 uint32_t fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nwritten);
-void* memory_grow(size_t num_pages);
-size_t memory_size(void);
+
 void proc_exit(int status);
+
+
+// Build on top
+
 uint32_t write_all(int fd, ciovec_t* iovs, size_t iovs_len);
 
 // --- Platform-Specific Implementation ---
