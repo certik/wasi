@@ -17,6 +17,9 @@ jobs:
           - platform: macos
             os: macos-latest
             pixi-command: pixi run -e macos test_macos
+          - platform: windows
+            os: windows-latest
+            pixi-command: pixi run -e windows test_windows
           - platform: wasm
             os: ubuntu-latest
             pixi-command: |
