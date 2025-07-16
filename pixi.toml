@@ -2,7 +2,7 @@
 authors = ["Ondřej Čertík <ondrej@certik.us>"]
 channels = ["conda-forge"]
 name = "wasi"
-platforms = ["osx-arm64", "linux-64"]
+platforms = ["osx-arm64", "linux-64", "win-64"]
 version = "0.1.0"
 
 [feature.wasm.tasks]
@@ -55,11 +55,42 @@ test_macos = { cmd="./arena_macos", depends-on=["build_macos"] }
 [feature.macos.dependencies]
 clang = ">=20.1.4,<21"
 
+[feature.windows.tasks]
+build_windows = { cmd="""
+cl \
+    /nologo \
+    /GS- \
+    /Gs0 \
+    /kernel \
+    /c \
+    standalone_arena.c \
+    /Fo:standalone_arena.obj && \
+link \
+    /nologo \
+    /subsystem:console \
+    /nodefaultlib \
+    /entry:_start \
+    kernel32.lib \
+    standalone_arena.obj \
+    /out:arena_windows.exe
+""", inputs = ["standalone_arena.c"] }
+
+test_windows = { cmd="arena_windows.exe", depends-on=["build_windows"] }
+
+[feature.windows.dependencies]
+# Note: MSVC is not available through conda-forge, so we rely on system installation
+# Users need to have Visual Studio or Build Tools for Visual Studio installed
+# The cl.exe and link.exe commands should be available in PATH
+
 [tasks]
 all = { depends-on=["test_wasm", "test_linux"] }
 all_with_macos = { depends-on=["test_wasm", "test_linux", "test_macos"] }
+all_with_windows = { depends-on=["test_wasm", "test_linux", "test_windows"] }
+all_platforms = { depends-on=["test_wasm", "test_linux", "test_macos", "test_windows"] }
 build_all = { depends-on=["build_wasm", "build_linux"] }
 build_all_with_macos = { depends-on=["build_wasm", "build_linux", "build_macos"] }
+build_all_with_windows = { depends-on=["build_wasm", "build_linux", "build_windows"] }
+build_all_platforms = { depends-on=["build_wasm", "build_linux", "build_macos", "build_windows"] }
 
 [dependencies]
 clang = ">=20.1.4,<21"
@@ -69,3 +100,4 @@ default = { features = ["linux"], solve-group = "default" }
 wasm = ["wasm"]
 linux = { features = ["linux"], solve-group = "linux" }
 macos = { features = ["macos"], solve-group = "macos" }
+windows = { features = ["windows"], solve-group = "windows" }
