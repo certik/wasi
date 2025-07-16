@@ -44,7 +44,12 @@
  */
 
 // Basic type definitions to avoid including any standard headers.
+#if defined(_WIN32) || defined(_WIN64)
+// On Windows, we need some basic types from the compiler
+typedef unsigned long long size_t;  // Use 64-bit size_t on Windows
+#else
 typedef unsigned long size_t;
+#endif
 typedef signed long ssize_t;
 typedef unsigned int uint32_t;
 typedef unsigned char uint8_t;
@@ -269,7 +274,7 @@ __declspec(dllimport) void __stdcall ExitProcess(unsigned int uExitCode);
 // Our emulated heap state for Windows
 static uint8_t* windows_heap_base = NULL;
 static size_t committed_pages = 0;
-static const size_t RESERVED_SIZE = 1UL << 32; // Reserve 4GB of virtual address space
+static const size_t RESERVED_SIZE = 1ULL << 32; // Reserve 4GB of virtual address space
 
 // Emulation of `fd_write` using Windows WriteFile API
 uint32_t fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nwritten) {
@@ -342,6 +347,18 @@ void* memory_grow(size_t num_pages) {
     return (void*)(prev_size * WASM_PAGE_SIZE);
 }
 
+// Windows memory_size implementation
+size_t memory_size(void) {
+    ensure_heap_initialized();
+    return committed_pages;
+}
+
+// Stub for __chkstk which is normally provided by the C runtime
+// Since we're using /kernel flag, we need to provide this ourselves
+void __chkstk(void) {
+    // Do nothing - we're not using large stack allocations
+}
+
 // Process exit function
 void proc_exit(int status) {
     ExitProcess((unsigned int)status);
@@ -380,7 +397,7 @@ void _start(void) {
 // Our emulated heap state for Linux
 static uint8_t* linux_heap_base = NULL;
 static size_t committed_pages = 0;
-static const size_t RESERVED_SIZE = 1UL << 32; // Reserve 4GB of virtual address space
+static const size_t RESERVED_SIZE = 1ULL << 32; // Reserve 4GB of virtual address space
 
 // Helper function to make a raw syscall.
 static inline long syscall(long n, long a1, long a2, long a3, long a4, long a5, long a6) {
