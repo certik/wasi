@@ -46,4 +46,10 @@ jobs:
           version: "32.0.0"
 
       - name: Build and test ${{ matrix.platform }}
+        if: matrix.platform != 'windows'
         run: ${{ matrix.pixi-command }}
+
+      - name: Build and test ${{ matrix.platform }}
+        if: matrix.platform == 'windows'
+        run: ${{ matrix.pixi-command }}
+        shell: cmd
