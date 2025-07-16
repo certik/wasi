@@ -12,7 +12,7 @@
  * 4. Windows using Windows API directly.
  *
  * The program implements an Arena allocator on top of a heap that is managed
- * either by the WASM runtime or by `mmap` on Linux/macOS. It then allocates a few
+ * either by the WASM runtime, by `mmap` on Linux/macOS, or by `VirtualAlloc` on Windows. It then allocates a few
  * strings onto the arena and prints them to stdout using the `fd_write` syscall.
  *
  * --- Compilation Instructions ---
@@ -662,7 +662,7 @@ int main(void) {
     char* p2 = arena_alloc(&main_arena, my_strlen(s2) + 1);
     my_strcpy(p2, s2);
 
-    char s3[] = "It works on WASM, Linux, and macOS.\n";
+    char s3[] = "It works on WASM, Linux, macOS, and Windows.\n";
     char* p3 = arena_alloc(&main_arena, my_strlen(s3) + 1);
     my_strcpy(p3, s3);
 
