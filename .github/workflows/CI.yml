@@ -47,4 +47,3 @@ jobs:
 
       - name: Build and test ${{ matrix.platform }}
         run: ${{ matrix.pixi-command }}
-        shell: ${{ matrix.platform == 'windows' && 'cmd' || 'bash' }}
