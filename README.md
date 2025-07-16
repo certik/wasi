@@ -5,8 +5,9 @@ This project demonstrates a standalone C program with an Arena allocator that co
 * **Linux native** (using raw syscalls, `-nostdlib`)
 * **WebAssembly** (using WASI)
 * **macOS native** (using libSystem but minimal libc functions, `-nostdlib`)
+* **Windows native** (using Windows API directly, no C runtime)
 
-The program implements an Arena allocator on top of a heap managed either by the WASM runtime or by `mmap` on Linux/macOS. It allocates a few strings onto the arena and prints them to stdout.
+The program implements an Arena allocator on top of a heap managed either by the WASM runtime, by `mmap` on Linux/macOS, or by `VirtualAlloc` on Windows. It allocates a few strings onto the arena and prints them to stdout.
 
 ## Quick Start
 
@@ -38,12 +39,22 @@ pixi run -e macos build_macos  # On macOS only
 pixi run -e macos test_macos   # On macOS only
 ```
 
+**Windows native:**
+```bash
+pixi run -e windows build_windows  # On Windows only
+pixi run -e windows test_windows   # On Windows only
+```
+
 ### Additional Tasks
 
 ```bash
 pixi run build_all              # Build Linux + WASM
 pixi run build_all_with_macos   # Build all three platforms (macOS only)
+pixi run build_all_with_windows # Build Linux + WASM + Windows
+pixi run build_all_platforms    # Build all four platforms
 pixi run all_with_macos         # Test all three platforms (macOS only)
+pixi run all_with_windows       # Test Linux + WASM + Windows
+pixi run all_platforms          # Test all four platforms
 ```
 
 ## About the Implementation
@@ -55,23 +66,26 @@ The `standalone_arena.c` file contains:
    - WASI syscalls for WebAssembly
    - Raw Linux syscalls (x86_64)
    - macOS libSystem wrappers
-3. **Memory management** using `mmap`/`mprotect` on native platforms and WASM linear memory
+   - Windows API direct calls
+3. **Memory management** using `mmap`/`mprotect` on Linux/macOS, `VirtualAlloc` on Windows, and WASM linear memory
 4. **Custom implementations** of basic functions (`strlen`, `strcpy`, `memcpy`) to avoid libc dependencies
 
 ## Current Status
 
 ✅ **Linux native**: Fully working, builds and runs successfully  
 ✅ **WebAssembly**: Builds successfully, tested compilation  
-⚠️ **macOS native**: Configuration ready, requires macOS to test  
+✅ **macOS native**: Fully working, builds and runs successfully  
+✅ **Windows native**: Fully working, builds and runs successfully  
 
 The builds create optimized standalone executables that demonstrate cross-platform arena allocation without standard library dependencies.
 
 ## Continuous Integration
 
-The project includes GitHub Actions CI that tests all three platforms:
+The project includes GitHub Actions CI that tests all four platforms:
 
 - **Linux**: Tests on `ubuntu-latest` using `pixi run -e linux test_linux`
 - **macOS**: Tests on `macos-latest` using `pixi run -e macos test_macos`  
+- **Windows**: Tests on `windows-latest` using `pixi run -e windows test_windows`
 - **WebAssembly**: Tests on `ubuntu-latest` using `pixi run -e wasm build_wasm` + `wasmtime`
 
 All builds use pixi for dependency management and consistent build environments.
