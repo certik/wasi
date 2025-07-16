@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Build for Linux
+      run: gcc -nostdlib -o arena_linux standalone_arena.c
+    
+    - name: Run Linux binary
+      run: ./arena_linux
+
+  macos:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Build for macOS
+      run: clang -nostdlib -o arena_macos standalone_arena.c -lSystem -Wl,-e,__start
+    
+    - name: Run macOS binary
+      run: ./arena_macos
+
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install clang and wasmtime
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang
+        curl https://wasmtime.dev/install.sh -sSf | bash
+        echo "$HOME/.wasmtime/bin" >> $GITHUB_PATH
+    
+    - name: Build for WebAssembly (WASI)
+      run: clang --target=wasm32-wasi -nostdlib -Wl,--no-entry -Wl,--export=__heap_base -Wl,--export=_start -Wl,--initial-memory=131072 -o arena.wasm standalone_arena.c
+    
+    - name: Run WASM binary with wasmtime
+      run: wasmtime arena.wasm
