@@ -41,21 +41,27 @@ typedef unsigned int uint32_t;
 typedef unsigned char uint8_t;
 
 #define NULL ((void*)0)
-#define WASM_PAGE_SIZE 65536 // 64KiB
 
 // --- Platform-Agnostic Interface ---
+
+
+// Forward declarations for our platform-agnostic functions.
+#define WASM_PAGE_SIZE 65536 // 64KiB
+void* memory_grow(size_t num_pages);
+size_t memory_size(void);
 
 // WASI-style iovec structure, used by fd_write on all platforms.
 typedef struct ciovec_s {
     const void* buf;
     size_t buf_len;
 } ciovec_t;
-
-// Forward declarations for our platform-agnostic functions.
 uint32_t fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nwritten);
-void* memory_grow(size_t num_pages);
-size_t memory_size(void);
-void exit_program(int status);
+
+void proc_exit(int status);
+
+
+// Build on top
+
 uint32_t write_all(int fd, ciovec_t* iovs, size_t iovs_len);
 
 // --- Platform-Specific Implementation ---
@@ -84,7 +90,7 @@ __attribute__((
     __import_module__("wasi_snapshot_preview1"),
     __import_name__("proc_exit")
 ))
-void exit_program(int status);
+void proc_exit(int status);
 
 
 // Wrapper around the `memory.size` WASM instruction.
@@ -111,7 +117,7 @@ int main(void);
 
 void _start(void) {
     int status = main();
-    exit_program(status);
+    proc_exit(status);
 }
 
 #elif defined(__APPLE__)
@@ -175,7 +181,7 @@ uint32_t fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nwritte
     return 0;
 }
 
-void exit_program(int status) {
+void proc_exit(int status) {
     _exit(status);
 }
 
@@ -222,7 +228,7 @@ int main(void);
 void _start(void) {
     ensure_heap_initialized();
     int status = main();
-    exit_program(status);
+    proc_exit(status);
 }
 
 #else
@@ -273,7 +279,7 @@ uint32_t fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nwritte
     return 0; // Success
 }
 
-void exit_program(int status) {
+void proc_exit(int status) {
     syscall(SYS_EXIT, (long)status, 0, 0, 0, 0, 0);
     __builtin_unreachable();
 }
@@ -346,7 +352,7 @@ int main(void);
 void _start(void) {
     ensure_heap_initialized();
     int status = main();
-    exit_program(status);
+    proc_exit(status);
 }
 
 #endif
@@ -366,7 +372,7 @@ static void allocation_error(void) {
     const char* err_str = "Error: Failed to grow memory for arena allocation.\n";
     ciovec_t iov = { .buf = err_str, .buf_len = my_strlen(err_str) };
     write_all(1, &iov, 1); // Write to stdout; alternatively use fd=2 for stderr
-    exit_program(1);
+    proc_exit(1);
 }
 
 /**
@@ -481,6 +487,16 @@ size_t my_strlen(const char* str) {
 char* my_strcpy(char* dest, const char* src) {
     char* d = dest;
     while ((*d++ = *src++) != '\0');
+    return dest;
+}
+
+// Custom memcpy to avoid C library dependency
+void* memcpy(void* dest, const void* src, size_t n) {
+    unsigned char* d = (unsigned char*)dest;
+    const unsigned char* s = (const unsigned char*)src;
+    for (size_t i = 0; i < n; i++) {
+        d[i] = s[i];
+    }
     return dest;
 }
 
