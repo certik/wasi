@@ -62,8 +62,10 @@ build_all = { depends-on=["build_wasm", "build_linux"] }
 build_all_with_macos = { depends-on=["build_wasm", "build_linux", "build_macos"] }
 
 [dependencies]
+clang = ">=20.1.4,<21"
 
 [environments]
+default = { features = ["linux"], solve-group = "default" }
 wasm = ["wasm"]
 linux = { features = ["linux"], solve-group = "linux" }
 macos = { features = ["macos"], solve-group = "macos" }
