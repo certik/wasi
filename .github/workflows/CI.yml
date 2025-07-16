@@ -19,7 +19,9 @@ jobs:
             pixi-command: pixi run -e macos test_macos
           - platform: windows
             os: windows-latest
-            pixi-command: pixi run -e windows test_windows
+            pixi-command: |
+              call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+              pixi run -e windows test_windows
           - platform: wasm
             os: ubuntu-latest
             pixi-command: |
@@ -45,3 +47,4 @@ jobs:
 
       - name: Build and test ${{ matrix.platform }}
         run: ${{ matrix.pixi-command }}
+        shell: ${{ matrix.platform == 'windows' && 'cmd' || 'bash' }}
