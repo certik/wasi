@@ -53,7 +53,8 @@ clang \
 test_macos = { cmd="./arena_macos", depends-on=["build_macos"] }
 
 [feature.macos.dependencies]
-clang = ">=20.1.4,<21"
+# Use the system Clang on macOS
+#clang = ">=20.1.4,<21"
 
 [feature.windows.tasks]
 build_windows = { cmd="""
@@ -93,7 +94,8 @@ build_all_with_windows = { depends-on=["build_wasm", "build_linux", "build_windo
 build_all_platforms = { depends-on=["build_wasm", "build_linux", "build_macos", "build_windows"] }
 
 [dependencies]
-clang = ">=20.1.4,<21"
+# on macOS we want system Clang
+#clang = ">=20.1.4,<21"
 
 [environments]
 default = { features = ["linux"], solve-group = "default" }
