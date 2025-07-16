@@ -78,7 +78,9 @@ link \
 test_windows = { cmd="arena_windows.exe", depends-on=["build_windows"] }
 
 [feature.windows.dependencies]
-vs2022_win-64 = "*"
+# Note: MSVC is not available through conda-forge, so we rely on system installation
+# Users need to have Visual Studio or Build Tools for Visual Studio installed
+# The cl.exe and link.exe commands should be available in PATH
 
 [tasks]
 all = { depends-on=["test_wasm", "test_linux"] }
