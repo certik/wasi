@@ -28,7 +28,9 @@
 // [reserved] [data] [stack] [heap                    ]
 //                           ^ __heap_base             ^ memory_size()
 //
-// In WASM all of this is part of the samme linear contiguous memory.
+// In WASM all of this is part of the samme linear contiguous memory. The
+// __heap_base is created by wasm-ld (might not be at a page boundary?), and
+// memory_size() starts at a page boundary.
 //
 // Linux with Clang:
 // [reserved] [data] [...] [heap                    ]                 [stack]
@@ -36,7 +38,8 @@
 // The [...] are other ELF sections, and any possible shared libraries, maybe
 // also some unused space. The [stack] starts at the highest virtual address
 // and grows down. The [heap] is our own memory reserved to 4GB via mmap, and
-// we commit to more pages when `memory_grow()` is called.
+// we commit to more pages when `memory_grow()` is called. The __heap_base is
+// the initial pointer returned by mmap.
 // There will be regions which are not reserved (will segfault) both before
 // heap and after heap.
 //
@@ -55,6 +58,9 @@ void* memory_grow(size_t num_pages);
 // Returns the total size of memory as a position (pointer) of the last
 // allocated byte plus one. TODO: Might return it in page size, need to check.
 // Should probably return in bytes, to make it platform agnostic.
+// memory_size() is always at a page boundary at all times on all platforms.
+// The __heap_base however is at a page boundary on native platforms, but maybe
+// not in WASM, need to check.
 size_t memory_size(void);
 
 
