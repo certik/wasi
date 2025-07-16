@@ -55,7 +55,7 @@ typedef struct ciovec_s {
 uint32_t fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nwritten);
 void* memory_grow(size_t num_pages);
 size_t memory_size(void);
-void exit_program(int status);
+void proc_exit(int status);
 uint32_t write_all(int fd, ciovec_t* iovs, size_t iovs_len);
 
 // --- Platform-Specific Implementation ---
@@ -84,7 +84,7 @@ __attribute__((
     __import_module__("wasi_snapshot_preview1"),
     __import_name__("proc_exit")
 ))
-void exit_program(int status);
+void proc_exit(int status);
 
 
 // Wrapper around the `memory.size` WASM instruction.
@@ -111,7 +111,7 @@ int main(void);
 
 void _start(void) {
     int status = main();
-    exit_program(status);
+    proc_exit(status);
 }
 
 #elif defined(__APPLE__)
@@ -175,7 +175,7 @@ uint32_t fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nwritte
     return 0;
 }
 
-void exit_program(int status) {
+void proc_exit(int status) {
     _exit(status);
 }
 
@@ -222,7 +222,7 @@ int main(void);
 void _start(void) {
     ensure_heap_initialized();
     int status = main();
-    exit_program(status);
+    proc_exit(status);
 }
 
 #else
@@ -273,7 +273,7 @@ uint32_t fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nwritte
     return 0; // Success
 }
 
-void exit_program(int status) {
+void proc_exit(int status) {
     syscall(SYS_EXIT, (long)status, 0, 0, 0, 0, 0);
     __builtin_unreachable();
 }
@@ -346,7 +346,7 @@ int main(void);
 void _start(void) {
     ensure_heap_initialized();
     int status = main();
-    exit_program(status);
+    proc_exit(status);
 }
 
 #endif
@@ -366,7 +366,7 @@ static void allocation_error(void) {
     const char* err_str = "Error: Failed to grow memory for arena allocation.\n";
     ciovec_t iov = { .buf = err_str, .buf_len = my_strlen(err_str) };
     write_all(1, &iov, 1); // Write to stdout; alternatively use fd=2 for stderr
-    exit_program(1);
+    proc_exit(1);
 }
 
 /**
