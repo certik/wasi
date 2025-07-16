@@ -57,7 +57,9 @@ clang = ">=20.1.4,<21"
 
 [tasks]
 all = { depends-on=["test_wasm", "test_linux"] }
+all_with_macos = { depends-on=["test_wasm", "test_linux", "test_macos"] }
 build_all = { depends-on=["build_wasm", "build_linux"] }
+build_all_with_macos = { depends-on=["build_wasm", "build_linux", "build_macos"] }
 
 [dependencies]
 

@@ -38,6 +38,14 @@ pixi run -e macos build_macos  # On macOS only
 pixi run -e macos test_macos   # On macOS only
 ```
 
+### Additional Tasks
+
+```bash
+pixi run build_all              # Build Linux + WASM
+pixi run build_all_with_macos   # Build all three platforms (macOS only)
+pixi run all_with_macos         # Test all three platforms (macOS only)
+```
+
 ## About the Implementation
 
 The `standalone_arena.c` file contains:
@@ -57,6 +65,16 @@ The `standalone_arena.c` file contains:
 ⚠️ **macOS native**: Configuration ready, requires macOS to test  
 
 The builds create optimized standalone executables that demonstrate cross-platform arena allocation without standard library dependencies.
+
+## Continuous Integration
+
+The project includes GitHub Actions CI that tests all three platforms:
+
+- **Linux**: Tests on `ubuntu-latest` using `pixi run -e linux test_linux`
+- **macOS**: Tests on `macos-latest` using `pixi run -e macos test_macos`  
+- **WebAssembly**: Tests on `ubuntu-latest` using `pixi run -e wasm build_wasm` + `wasmtime`
+
+All builds use pixi for dependency management and consistent build environments.
 
 ## Installation Requirements
 
