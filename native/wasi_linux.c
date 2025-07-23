@@ -71,6 +71,11 @@ static void ensure_heap_initialized() {
     }
 }
 
+void* memory_base() {
+    return linux_heap_base;
+}
+
+
 // Emulation of `__builtin_wasm_memory_size`. Returns committed page count.
 size_t memory_size(void) {
     ensure_heap_initialized();
@@ -107,14 +112,11 @@ void* memory_grow(size_t num_pages) {
     return old_top;
 }
 
-uint8_t* __heap_base = NULL;
-
 // Forward declaration for main
 int main(void);
 
 // The entry point for a -nostdlib Linux program is `_start`.
 void _start(void) {
-    __heap_base = (*(uint8_t**)&linux_heap_base)
     ensure_heap_initialized();
     int status = main();
     proc_exit(status);

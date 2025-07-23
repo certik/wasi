@@ -112,7 +112,7 @@ void arena_init(Arena* arena) {
         current_pages = 1;
     }
 
-    arena->base = (uint8_t*)&__heap_base;
+    arena->base = (uint8_t*)memory_base();
     arena->capacity = current_pages * WASM_PAGE_SIZE;
     arena->offset = 0;
 }
