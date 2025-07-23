@@ -62,6 +62,10 @@ void proc_exit(int status) {
     _exit(status);
 }
 
+void* memory_base() {
+    return linux_heap_base;
+}
+
 // Emulation of memory_size.
 size_t memory_size(void) {
     ensure_heap_initialized();
@@ -94,9 +98,6 @@ void* memory_grow(size_t num_pages) {
     committed_pages = new_total_pages;
     return old_top;
 }
-
-// Define __heap_base for consistency with other platforms.
-#define __heap_base (*(uint8_t**)&linux_heap_base)
 
 // Forward declaration for main
 int main(void);
