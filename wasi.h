@@ -49,7 +49,7 @@
 // __heap_base`. It is not guaranteed that all addresses below __heap_base are
 // addressable.
 
-extern uint8_t* __heap_base;
+void* memory_base();
 
 #define WASM_PAGE_SIZE 65536 // 64KiB, the page size used by memory_grow().
 // memory.grow WASM instruction

@@ -42,6 +42,13 @@ void* memory_grow(size_t num_pages) {
     return (void*)(prev_size * WASM_PAGE_SIZE);
 }
 
+
+extern uint8_t* __heap_base;
+
+void* memory_base() {
+    return &__heap_base;
+}
+
 // For WASI, the entry point is `_start`, which we define to call our `main` function.
 void _start(void);
 int main(void);
