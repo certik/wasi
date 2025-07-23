@@ -62,8 +62,6 @@ typedef unsigned char uint8_t;
 
 // Build on top
 
-uint32_t write_all(int fd, ciovec_t* iovs, size_t iovs_len);
-
 // --- Platform-Specific Implementation ---
 
 #if defined(__wasm__) && defined(__wasm32__)
@@ -76,7 +74,10 @@ uint32_t write_all(int fd, ciovec_t* iovs, size_t iovs_len);
     #include "native/wasi_linux.c"
 #endif
 
+
 // --- Arena Allocator Implementation ---
+
+uint32_t write_all(int fd, ciovec_t* iovs, size_t iovs_len);
 
 typedef struct {
     uint8_t* base;
