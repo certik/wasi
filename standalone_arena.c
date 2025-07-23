@@ -60,8 +60,6 @@ typedef unsigned char uint8_t;
 
 #include "wasi.h"
 
-// Build on top
-
 // --- Platform-Specific Implementation ---
 
 #if defined(__wasm__) && defined(__wasm32__)

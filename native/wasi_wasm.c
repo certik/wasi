@@ -5,7 +5,7 @@
 // __heap_base is a special symbol provided by the wasm-ld linker. It marks
 // the end of the static data section and the beginning of the linear memory
 // heap that we can manage. It is declared as an external variable.
-extern uint8_t __heap_base;
+//extern uint8_t __heap_base;
 
 // WASI syscall function for writing to a file descriptor.
 // We use __attribute__((import_module, import_name)) to tell the compiler this function

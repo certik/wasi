@@ -107,15 +107,14 @@ void* memory_grow(size_t num_pages) {
     return old_top;
 }
 
-// For Linux, we define `__heap_base` as our mmap'd region.
-// This is a bit of a trick to make the Arena code more uniform.
-#define __heap_base (*(uint8_t**)&linux_heap_base)
+uint8_t* __heap_base = NULL;
 
 // Forward declaration for main
 int main(void);
 
 // The entry point for a -nostdlib Linux program is `_start`.
 void _start(void) {
+    __heap_base = (*(uint8_t**)&linux_heap_base)
     ensure_heap_initialized();
     int status = main();
     proc_exit(status);
