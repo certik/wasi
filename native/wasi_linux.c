@@ -78,13 +78,11 @@ void* memory_base() {
 
 // Emulation of `__builtin_wasm_memory_size`. Returns committed page count.
 size_t memory_size(void) {
-    ensure_heap_initialized();
     return committed_pages;
 }
 
 // Emulation of `__builtin_wasm_memory_grow`. Commits pages using `mprotect`.
 void* memory_grow(size_t num_pages) {
-    ensure_heap_initialized();
     if (linux_heap_base == NULL) {
         return NULL;
     }
