@@ -99,6 +99,10 @@ void* memory_grow(size_t num_pages) {
     return (void*)(prev_size * WASM_PAGE_SIZE);
 }
 
+void* memory_base() {
+    return windows_heap_base;
+}
+
 // Windows memory_size implementation
 size_t memory_size(void) {
     ensure_heap_initialized();
@@ -115,9 +119,6 @@ void __chkstk(void) {
 void proc_exit(int status) {
     ExitProcess((unsigned int)status);
 }
-
-// Define __heap_base for consistency with other platforms
-#define __heap_base (*(uint8_t**)&windows_heap_base)
 
 // Forward declaration for main
 int main(void);
