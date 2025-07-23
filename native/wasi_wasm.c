@@ -1,0 +1,52 @@
+// =============================================================================
+// == WebAssembly (WASI) Implementation
+// =============================================================================
+
+// __heap_base is a special symbol provided by the wasm-ld linker. It marks
+// the end of the static data section and the beginning of the linear memory
+// heap that we can manage. It is declared as an external variable.
+extern uint8_t __heap_base;
+
+// WASI syscall function for writing to a file descriptor.
+// We use __attribute__((import_module, import_name)) to tell the compiler this function
+// is provided by the WASI host environment.
+__attribute__((
+    __import_module__("wasi_snapshot_preview1"),
+    __import_name__("fd_write")
+))
+uint32_t fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nwritten);
+
+
+__attribute__((
+    __import_module__("wasi_snapshot_preview1"),
+    __import_name__("proc_exit")
+))
+void proc_exit(int status);
+
+
+// Wrapper around the `memory.size` WASM instruction.
+// The argument `0` is required for the current memory space.
+// Returns the current memory size in units of WASM_PAGE_SIZE (64KiB).
+size_t memory_size(void) {
+    return __builtin_wasm_memory_size(0);
+}
+
+// Wrapper around the `memory.grow` WASM instruction.
+// Attempts to grow the linear memory by `num_pages`.
+// Returns the previous size in pages on success, or -1 on failure.
+void* memory_grow(size_t num_pages) {
+    size_t prev_size = __builtin_wasm_memory_grow(0, num_pages);
+    if (prev_size == (size_t)-1) {
+        return NULL;
+    }
+    return (void*)(prev_size * WASM_PAGE_SIZE);
+}
+
+// For WASI, the entry point is `_start`, which we define to call our `main` function.
+void _start(void);
+int main(void);
+
+void _start(void) {
+    int status = main();
+    proc_exit(status);
+}
