@@ -16,7 +16,7 @@ extern void* mmap(void *addr, size_t len, int prot, int flags, int fd, off_t off
 extern int mprotect(void *addr, size_t len, int prot);
 extern ssize_t writev(int fd, const struct iovec *iov, int iovcnt);
 extern void _exit(int status);
-extern int * __error(void); // Returns pointer to errno
+extern int * __error(); // Returns pointer to errno
 
 // Protection and mapping flags (macOS-specific values)
 #define PROT_NONE  0x00
@@ -31,7 +31,7 @@ static uint8_t* linux_heap_base = NULL; // Reuse name for consistency
 static size_t committed_pages = 0;
 static const size_t RESERVED_SIZE = 1ULL << 32; // 4GB virtual space
 
-static void ensure_heap_initialized(void) {
+static void ensure_heap_initialized() {
     if (linux_heap_base == NULL) {
         linux_heap_base = (uint8_t*)mmap(
             NULL,
@@ -42,6 +42,7 @@ static void ensure_heap_initialized(void) {
             0
         );
         if (linux_heap_base == (void*)-1) {
+            // TODO: abort here if we cannot reserve the memory
             linux_heap_base = NULL;
         }
     }
@@ -67,14 +68,12 @@ void* memory_base() {
 }
 
 // Emulation of memory_size.
-size_t memory_size(void) {
-    ensure_heap_initialized();
+size_t memory_size() {
     return committed_pages;
 }
 
 // Emulation of memory_grow using mprotect to commit pages.
 void* memory_grow(size_t num_pages) {
-    ensure_heap_initialized();
     if (linux_heap_base == NULL) {
         return NULL;
     }
@@ -100,10 +99,10 @@ void* memory_grow(size_t num_pages) {
 }
 
 // Forward declaration for main
-int main(void);
+int main();
 
 // Entry point for macOS.
-void _start(void) {
+void _start() {
     ensure_heap_initialized();
     int status = main();
     proc_exit(status);

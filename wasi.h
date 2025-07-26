@@ -62,7 +62,7 @@ void* memory_grow(size_t num_pages);
 // memory_size() is always at a page boundary at all times on all platforms.
 // The __heap_base however is at a page boundary on native platforms, but maybe
 // not in WASM, need to check.
-size_t memory_size(void);
+size_t memory_size();
 
 
 // WASI import functions
