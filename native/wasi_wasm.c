@@ -27,7 +27,7 @@ void proc_exit(int status);
 // Wrapper around the `memory.size` WASM instruction.
 // The argument `0` is required for the current memory space.
 // Returns the current memory size in units of WASM_PAGE_SIZE (64KiB).
-size_t memory_size(void) {
+size_t memory_size() {
     return __builtin_wasm_memory_size(0);
 }
 
@@ -50,10 +50,9 @@ void* memory_base() {
 }
 
 // For WASI, the entry point is `_start`, which we define to call our `main` function.
-void _start(void);
-int main(void);
+int main();
 
-void _start(void) {
+void _start() {
     int status = main();
     proc_exit(status);
 }
