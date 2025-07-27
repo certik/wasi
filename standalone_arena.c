@@ -249,5 +249,14 @@ int main(void) {
         return 1; // Return non-zero on write error
     }
 
+    // TODO: Rename to:
+    // `void *heap_base()` and `size_t heap_size()`.
+    void* ms1 = memory_size();
+    size_t size1 = (size_t)memory_size() - (size_t)memory_base();
+    void* mg = memory_grow(4 * WASM_PAGE_SIZE);
+    void* ms2 = memory_size();
+    size_t size2 = (size_t)memory_size() - (size_t)memory_base();
+    // TODO: print the numbers above, both pointers and size
+
     return 0; // Success
 }
