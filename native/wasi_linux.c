@@ -77,7 +77,7 @@ void* memory_base() {
 
 
 // Emulation of `__builtin_wasm_memory_size`. Returns committed page count.
-size_t memory_size() {
+void* memory_size() {
     return (void*)(linux_heap_base + (committed_pages * WASM_PAGE_SIZE));
 }
 
