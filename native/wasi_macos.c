@@ -68,8 +68,8 @@ void* memory_base() {
 }
 
 // Emulation of memory_size.
-size_t memory_size() {
-    return committed_pages;
+void* memory_size() {
+    return (void*)(linux_heap_base + (committed_pages * WASM_PAGE_SIZE));
 }
 
 // Emulation of memory_grow using mprotect to commit pages.
