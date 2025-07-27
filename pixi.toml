@@ -32,7 +32,7 @@ clang \
     -fno-builtin \
     -o arena_linux \
     standalone_arena.c
-""", inputs = ["standalone_arena.c"] }
+""", inputs = ["standalone_arena.c", "native/wasi_linux.c"] }
 
 test_linux = { cmd="./arena_linux", depends-on=["build_linux"] }
 
