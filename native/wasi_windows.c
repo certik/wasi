@@ -57,7 +57,7 @@ uint32_t fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nwritte
 }
 
 // Initialize the heap by reserving and committing initial memory
-static void ensure_heap_initialized(void) {
+static void ensure_heap_initialized() {
     if (windows_heap_base == NULL) {
         // Reserve a large virtual address space
         windows_heap_base = (uint8_t*)VirtualAlloc(NULL, RESERVED_SIZE, MEM_RESERVE, PAGE_READWRITE);
@@ -75,10 +75,11 @@ static void ensure_heap_initialized(void) {
 }
 
 // Windows memory_grow implementation using VirtualAlloc
-void* memory_grow(size_t num_pages) {
-    ensure_heap_initialized();
+void* memory_grow(size_t num_bytes) {
+    size_t num_pages = num_bytes / WASM_PAGE_SIZE;
     
     if (num_pages == 0) {
+        // TODO: what should be returned here?
         return (void*)(committed_pages * WASM_PAGE_SIZE);
     }
     
@@ -96,7 +97,7 @@ void* memory_grow(size_t num_pages) {
     
     size_t prev_size = committed_pages;
     committed_pages += num_pages;
-    return (void*)(prev_size * WASM_PAGE_SIZE);
+    return (void*)(windows_heap_base + prev_size * WASM_PAGE_SIZE);
 }
 
 void* memory_base() {
@@ -104,14 +105,13 @@ void* memory_base() {
 }
 
 // Windows memory_size implementation
-size_t memory_size(void) {
-    ensure_heap_initialized();
-    return committed_pages;
+void* memory_size() {
+    return (void*)(windows_heap_base + committed_pages * WASM_PAGE_SIZE);
 }
 
 // Stub for __chkstk which is normally provided by the C runtime
 // Since we're using /kernel flag, we need to provide this ourselves
-void __chkstk(void) {
+void __chkstk() {
     // Do nothing - we're not using large stack allocations
 }
 
@@ -121,10 +121,10 @@ void proc_exit(int status) {
 }
 
 // Forward declaration for main
-int main(void);
+int main();
 
 // Entry point for Windows - MSVC uses _start but we need to set it up correctly
-void _start(void) {
+void _start() {
     ensure_heap_initialized();
     int status = main();
     proc_exit(status);
