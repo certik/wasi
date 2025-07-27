@@ -77,12 +77,13 @@ void* memory_base() {
 
 
 // Emulation of `__builtin_wasm_memory_size`. Returns committed page count.
-size_t memory_size(void) {
-    return committed_pages;
+size_t memory_size() {
+    return (void*)(linux_heap_base + (committed_pages * WASM_PAGE_SIZE));
 }
 
 // Emulation of `__builtin_wasm_memory_grow`. Commits pages using `mprotect`.
-void* memory_grow(size_t num_pages) {
+void* memory_grow(size_t num_bytes) {
+    size_t num_pages = num_bytes / WASM_PAGE_SIZE;
     if (linux_heap_base == NULL) {
         return NULL;
     }
@@ -111,10 +112,10 @@ void* memory_grow(size_t num_pages) {
 }
 
 // Forward declaration for main
-int main(void);
+int main();
 
 // The entry point for a -nostdlib Linux program is `_start`.
-void _start(void) {
+void _start() {
     ensure_heap_initialized();
     int status = main();
     proc_exit(status);
