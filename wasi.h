@@ -48,21 +48,20 @@
 // On all platforms the heap size is thus computed as `memory_size() -
 // __heap_base`. It is not guaranteed that all addresses below __heap_base are
 // addressable.
+// The __heap_base is at a page boundary on native platforms, but not in WASM.
 
 void* memory_base();
 
 #define WASM_PAGE_SIZE 65536 // 64KiB, the page size used by memory_grow().
 // memory.grow WASM instruction
-void* memory_grow(size_t num_pages);
+// Returns the pointer to the new region (equal to the last `memory_size()`)
+// Accepts the number of bytes (not pages) to grow
+void* memory_grow(size_t num_bytes);
 
 // memory.size WASM instruction
 // Returns the total size of memory as a position (pointer) of the last
-// allocated byte plus one. TODO: Might return it in page size, need to check.
-// Should probably return in bytes, to make it platform agnostic.
-// memory_size() is always at a page boundary at all times on all platforms.
-// The __heap_base however is at a page boundary on native platforms, but maybe
-// not in WASM, need to check.
-size_t memory_size();
+// allocated byte plus one.
+void* memory_size();
 
 
 // WASI import functions

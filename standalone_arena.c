@@ -102,18 +102,16 @@ static void allocation_error(void) {
  * @param arena Pointer to the Arena struct to initialize.
  */
 void arena_init(Arena* arena) {
-    // On Linux/macOS, __heap_base is NULL initially, so memory_size() will call
-    // ensure_heap_initialized() to set it up.
-    size_t current_pages = memory_size();
-    if (current_pages == 0) {
-        if (memory_grow(1) == NULL) { // Try to allocate one page
+    void* current_size = memory_size();
+    if (current_size == NULL) {
+        if (memory_grow(WASM_PAGE_SIZE) == NULL) { // Try to allocate one page
             allocation_error();
         }
-        current_pages = 1;
+        current_size = memory_size();
     }
 
     arena->base = (uint8_t*)memory_base();
-    arena->capacity = current_pages * WASM_PAGE_SIZE;
+    arena->capacity = (size_t)current_size - (size_t)memory_base();
     arena->offset = 0;
 }
 
@@ -137,7 +135,7 @@ void* arena_alloc(Arena* arena, size_t size) {
         size_t needed_bytes = (arena->offset + size) - arena->capacity;
         size_t pages_to_grow = (needed_bytes + WASM_PAGE_SIZE - 1) / WASM_PAGE_SIZE;
 
-        if (memory_grow(pages_to_grow) == NULL) {
+        if (memory_grow(pages_to_grow*WASM_PAGE_SIZE) == NULL) {
             allocation_error();
         }
         arena->capacity += pages_to_grow * WASM_PAGE_SIZE;
