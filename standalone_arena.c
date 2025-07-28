@@ -270,5 +270,10 @@ int main(void) {
     size_t ms2 = heap_size();
     // TODO: print the numbers above, both pointers and size
 
+    char* p2b = malloc(my_strlen(s2) + 1);
+    my_strcpy(p2b, s2);
+    free(p2b);
+
+
     return 0; // Success
 }
