@@ -50,6 +50,7 @@ typedef unsigned long long size_t;  // Use 64-bit size_t on Windows
 #else
 typedef unsigned long size_t;
 #endif
+typedef __UINTPTR_TYPE__ uintptr_t;
 typedef signed long ssize_t;
 typedef unsigned int uint32_t;
 typedef unsigned char uint8_t;

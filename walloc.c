@@ -20,9 +20,9 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-typedef __SIZE_TYPE__ size_t;
-typedef __UINTPTR_TYPE__ uintptr_t;
-typedef __UINT8_TYPE__ uint8_t;
+//typedef __SIZE_TYPE__ size_t;
+//typedef __UINTPTR_TYPE__ uintptr_t;
+//typedef __UINT8_TYPE__ uint8_t;
 
 //#define NULL ((void *) 0)
 
@@ -313,15 +313,10 @@ allocate_large_object(size_t size) {
   return best;
 }
 
-static void*
-allocate_large(size_t size) {
-  struct large_object *obj = allocate_large_object(size);
-  return obj ? get_large_object_payload(obj) : NULL;
-}
-  
 void*
 malloc(size_t size) {
-  return allocate_large(size);
+  struct large_object *obj = allocate_large_object(size);
+  return obj ? get_large_object_payload(obj) : NULL;
 }
 
 void
