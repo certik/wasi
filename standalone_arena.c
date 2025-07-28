@@ -60,7 +60,7 @@ typedef unsigned long uintptr_t;      // 64-bit pointer on 64-bit Unix systems
 typedef unsigned int uintptr_t;       // 32-bit pointer on 32-bit Unix systems
 #endif
 #endif
-//typedef signed long ssize_t;
+typedef signed long ssize_t;
 typedef unsigned int uint32_t;
 typedef unsigned char uint8_t;
 
