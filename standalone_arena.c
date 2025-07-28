@@ -61,6 +61,10 @@ typedef unsigned char uint8_t;
 
 #include "wasi.h"
 
+static inline uintptr_t align(uintptr_t val, uintptr_t alignment) {
+  return (val + alignment - 1) & ~(alignment - 1);
+}
+
 // --- Platform-Specific Implementation ---
 
 #if defined(__wasm__) && defined(__wasm32__)

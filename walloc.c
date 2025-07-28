@@ -38,9 +38,11 @@
 static inline size_t max(size_t a, size_t b) {
   return a < b ? b : a;
 }
+/*
 static inline uintptr_t align(uintptr_t val, uintptr_t alignment) {
   return (val + alignment - 1) & ~(alignment - 1);
 }
+*/
 #define ASSERT_ALIGNED(x, y) ASSERT((x) == align((x), y))
 
 #define CHUNK_SIZE 256

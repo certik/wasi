@@ -36,7 +36,7 @@ size_t heap_size() {
 // Attempts to grow the linear memory by `num_pages`.
 // Returns the previous size in pages on success, or -1 on failure.
 void* heap_grow(size_t num_bytes) {
-    size_t num_pages = num_pages / WASM_PAGE_SIZE; // TODO: pad it up
+    size_t num_pages = align(num_bytes, WASM_PAGE_SIZE) / WASM_PAGE_SIZE;
     size_t prev_size = __builtin_wasm_memory_grow(0, num_pages);
     if (prev_size == (size_t)(-1)) {
         return NULL;
