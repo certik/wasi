@@ -54,14 +54,13 @@ void* heap_base();
 
 #define WASM_PAGE_SIZE 65536 // 64KiB
 // memory.grow WASM instruction
-// Returns the pointer to the new region (equal to the last `heap_size()`)
+// Returns the pointer to the new region (equal to the last `heap_base()+heap_size()`)
 // Accepts the number of bytes (not pages) to grow
 void* heap_grow(size_t num_bytes);
 
-// memory.size WASM instruction
-// Returns the total size of memory as a position (pointer) of the last
-// allocated byte plus one.
-void* heap_size();
+// Returns the size of the heap in bytes
+// Computed using the memory.size WASM instruction minus heap_base()
+size_t heap_size();
 
 
 // WASI import functions

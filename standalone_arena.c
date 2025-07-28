@@ -102,8 +102,8 @@ static void allocation_error(void) {
  * @param arena Pointer to the Arena struct to initialize.
  */
 void arena_init(Arena* arena) {
-    void* current_size = heap_size();
-    if (current_size == NULL) {
+    size_t current_size = heap_size();
+    if (current_size == 0) {
         if (heap_grow(WASM_PAGE_SIZE) == NULL) { // Try to allocate one page
             allocation_error();
         }
@@ -111,7 +111,7 @@ void arena_init(Arena* arena) {
     }
 
     arena->base = (uint8_t*)heap_base();
-    arena->capacity = (size_t)current_size - (size_t)heap_base();
+    arena->capacity = current_size;
     arena->offset = 0;
 }
 
@@ -249,13 +249,10 @@ int main(void) {
         return 1; // Return non-zero on write error
     }
 
-    // TODO: Rename to:
-    // `void *heap_base()` and `size_t heap_size()`.
-    void* ms1 = heap_size();
-    size_t size1 = (size_t)heap_size() - (size_t)heap_base();
+    void* hb = heap_base();
+    size_t ms1 = heap_size();
     void* mg = heap_grow(4 * WASM_PAGE_SIZE);
-    void* ms2 = heap_size();
-    size_t size2 = (size_t)heap_size() - (size_t)heap_base();
+    size_t ms2 = heap_size();
     // TODO: print the numbers above, both pointers and size
 
     return 0; // Success
