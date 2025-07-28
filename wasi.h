@@ -52,7 +52,7 @@
 
 void* heap_base();
 
-#define WASM_PAGE_SIZE 65536 // 64KiB, the page size used by memory_grow().
+#define WASM_PAGE_SIZE 65536 // 64KiB
 // memory.grow WASM instruction
 // Returns the pointer to the new region (equal to the last `memory_size()`)
 // Accepts the number of bytes (not pages) to grow
