@@ -71,7 +71,7 @@ static void ensure_heap_initialized() {
     }
 }
 
-void* memory_base() {
+void* heap_base() {
     return linux_heap_base;
 }
 

@@ -46,7 +46,7 @@ void* memory_grow(size_t num_bytes) {
 
 extern uint8_t* __heap_base;
 
-void* memory_base() {
+void* heap_base() {
     return &__heap_base;
 }
 

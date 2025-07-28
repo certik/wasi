@@ -100,7 +100,7 @@ void* memory_grow(size_t num_bytes) {
     return (void*)(windows_heap_base + prev_size * WASM_PAGE_SIZE);
 }
 
-void* memory_base() {
+void* heap_base() {
     return windows_heap_base;
 }
 

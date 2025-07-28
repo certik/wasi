@@ -63,7 +63,7 @@ void proc_exit(int status) {
     _exit(status);
 }
 
-void* memory_base() {
+void* heap_base() {
     return linux_heap_base;
 }
 
