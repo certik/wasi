@@ -26,42 +26,42 @@
 // The memory is organized as follows:
 // WASM with Clang:
 // [reserved] [data] [stack] [heap                    ]
-//                           ^ __heap_base             ^ memory_size()
+//                           ^ __heap_base             ^ heap_size()
 //
 // In WASM all of this is part of the samme linear contiguous memory. The
 // __heap_base is created by wasm-ld (might not be at a page boundary?), and
-// memory_size() starts at a page boundary.
+// heap_size() starts at a page boundary.
 //
 // Linux with Clang:
 // [reserved] [data] [...] [heap                    ]                 [stack]
-//                         ^ __heap_base             ^ memory_size()
+//                         ^ __heap_base             ^ heap_size()
 // The [...] are other ELF sections, and any possible shared libraries, maybe
 // also some unused space. The [stack] starts at the highest virtual address
 // and grows down. The [heap] is our own memory reserved to 4GB via mmap, and
-// we commit to more pages when `memory_grow()` is called. The __heap_base is
+// we commit to more pages when `heap_grow()` is called. The __heap_base is
 // the initial pointer returned by mmap.
 // There will be regions which are not reserved (will segfault) both before
 // heap and after heap.
 //
 // macOS and Windows likely work in a similar way.
 //
-// On all platforms the heap size is thus computed as `memory_size() -
+// On all platforms the heap size is thus computed as `heap_size() -
 // __heap_base`. It is not guaranteed that all addresses below __heap_base are
 // addressable.
 // The __heap_base is at a page boundary on native platforms, but not in WASM.
 
-void* memory_base();
+void* heap_base();
 
-#define WASM_PAGE_SIZE 65536 // 64KiB, the page size used by memory_grow().
+#define WASM_PAGE_SIZE 65536 // 64KiB
 // memory.grow WASM instruction
-// Returns the pointer to the new region (equal to the last `memory_size()`)
+// Returns the pointer to the new region (equal to the last `heap_size()`)
 // Accepts the number of bytes (not pages) to grow
-void* memory_grow(size_t num_bytes);
+void* heap_grow(size_t num_bytes);
 
 // memory.size WASM instruction
 // Returns the total size of memory as a position (pointer) of the last
 // allocated byte plus one.
-void* memory_size();
+void* heap_size();
 
 
 // WASI import functions

@@ -34,7 +34,7 @@ static inline long syscall(long n, long a1, long a2, long a3, long a4, long a5, 
     return ret;
 }
 
-// Emulation of `fd_write` using the `writev` syscall.
+// Implementation of `fd_write` using the `writev` syscall.
 uint32_t fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nwritten) {
     ssize_t ret = syscall(SYS_WRITEV, (long)fd, (long)iovs, (long)iovs_len, 0, 0, 0);
     if (ret < 0) {
@@ -71,18 +71,18 @@ static void ensure_heap_initialized() {
     }
 }
 
-void* memory_base() {
+void* heap_base() {
     return linux_heap_base;
 }
 
 
-// Emulation of `__builtin_wasm_memory_size`. Returns committed page count.
-void* memory_size() {
+// Implementation of heap_size(). Returns committed page count.
+void* heap_size() {
     return (void*)(linux_heap_base + (committed_pages * WASM_PAGE_SIZE));
 }
 
-// Emulation of `__builtin_wasm_memory_grow`. Commits pages using `mprotect`.
-void* memory_grow(size_t num_bytes) {
+// Implementation of heap_grow(). Commits pages using `mprotect`.
+void* heap_grow(size_t num_bytes) {
     size_t num_pages = num_bytes / WASM_PAGE_SIZE;
     if (linux_heap_base == NULL) {
         return NULL;

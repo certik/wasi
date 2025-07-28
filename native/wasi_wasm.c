@@ -27,14 +27,14 @@ void proc_exit(int status);
 // Wrapper around the `memory.size` WASM instruction.
 // The argument `0` is required for the current memory space.
 // Returns the pointer to the last allocated byte plus one.
-void* memory_size() {
+void* heap_size() {
     return (void*)(WASM_PAGE_SIZE * __builtin_wasm_memory_size(0));
 }
 
 // Wrapper around the `memory.grow` WASM instruction.
 // Attempts to grow the linear memory by `num_pages`.
 // Returns the previous size in pages on success, or -1 on failure.
-void* memory_grow(size_t num_bytes) {
+void* heap_grow(size_t num_bytes) {
     size_t num_pages = num_pages / WASM_PAGE_SIZE; // TODO: pad it up
     size_t prev_size = __builtin_wasm_memory_grow(0, num_pages);
     if (prev_size == (size_t)(-1)) {
@@ -46,7 +46,7 @@ void* memory_grow(size_t num_bytes) {
 
 extern uint8_t* __heap_base;
 
-void* memory_base() {
+void* heap_base() {
     return &__heap_base;
 }
 

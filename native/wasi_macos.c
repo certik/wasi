@@ -48,7 +48,7 @@ static void ensure_heap_initialized() {
     }
 }
 
-// Emulation of fd_write using writev.
+// Implementation of fd_write using writev.
 uint32_t fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nwritten) {
     ssize_t ret = writev(fd, (const struct iovec *)iovs, (int)iovs_len);
     if (ret < 0) {
@@ -63,17 +63,16 @@ void proc_exit(int status) {
     _exit(status);
 }
 
-void* memory_base() {
+void* heap_base() {
     return linux_heap_base;
 }
 
-// Emulation of memory_size.
-void* memory_size() {
+void* heap_size() {
     return (void*)(linux_heap_base + (committed_pages * WASM_PAGE_SIZE));
 }
 
-// Emulation of memory_grow using mprotect to commit pages.
-void* memory_grow(size_t num_pages) {
+// Implementation of heap_grow using mprotect to commit pages.
+void* heap_grow(size_t num_pages) {
     if (linux_heap_base == NULL) {
         return NULL;
     }
