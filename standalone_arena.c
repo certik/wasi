@@ -104,7 +104,7 @@ static void allocation_error(void) {
 void arena_init(Arena* arena) {
     void* current_size = memory_size();
     if (current_size == NULL) {
-        if (memory_grow(WASM_PAGE_SIZE) == NULL) { // Try to allocate one page
+        if (heap_grow(WASM_PAGE_SIZE) == NULL) { // Try to allocate one page
             allocation_error();
         }
         current_size = memory_size();
@@ -135,7 +135,7 @@ void* arena_alloc(Arena* arena, size_t size) {
         size_t needed_bytes = (arena->offset + size) - arena->capacity;
         size_t pages_to_grow = (needed_bytes + WASM_PAGE_SIZE - 1) / WASM_PAGE_SIZE;
 
-        if (memory_grow(pages_to_grow*WASM_PAGE_SIZE) == NULL) {
+        if (heap_grow(pages_to_grow*WASM_PAGE_SIZE) == NULL) {
             allocation_error();
         }
         arena->capacity += pages_to_grow * WASM_PAGE_SIZE;
@@ -253,7 +253,7 @@ int main(void) {
     // `void *heap_base()` and `size_t heap_size()`.
     void* ms1 = memory_size();
     size_t size1 = (size_t)memory_size() - (size_t)heap_base();
-    void* mg = memory_grow(4 * WASM_PAGE_SIZE);
+    void* mg = heap_grow(4 * WASM_PAGE_SIZE);
     void* ms2 = memory_size();
     size_t size2 = (size_t)memory_size() - (size_t)heap_base();
     // TODO: print the numbers above, both pointers and size

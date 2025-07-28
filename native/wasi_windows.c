@@ -74,8 +74,8 @@ static void ensure_heap_initialized() {
     }
 }
 
-// Windows memory_grow implementation using VirtualAlloc
-void* memory_grow(size_t num_bytes) {
+// Windows heap_grow implementation using VirtualAlloc
+void* heap_grow(size_t num_bytes) {
     size_t num_pages = num_bytes / WASM_PAGE_SIZE;
     
     if (num_pages == 0) {

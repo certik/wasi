@@ -38,7 +38,7 @@
 // The [...] are other ELF sections, and any possible shared libraries, maybe
 // also some unused space. The [stack] starts at the highest virtual address
 // and grows down. The [heap] is our own memory reserved to 4GB via mmap, and
-// we commit to more pages when `memory_grow()` is called. The __heap_base is
+// we commit to more pages when `heap_grow()` is called. The __heap_base is
 // the initial pointer returned by mmap.
 // There will be regions which are not reserved (will segfault) both before
 // heap and after heap.
@@ -56,7 +56,7 @@ void* heap_base();
 // memory.grow WASM instruction
 // Returns the pointer to the new region (equal to the last `memory_size()`)
 // Accepts the number of bytes (not pages) to grow
-void* memory_grow(size_t num_bytes);
+void* heap_grow(size_t num_bytes);
 
 // memory.size WASM instruction
 // Returns the total size of memory as a position (pointer) of the last
