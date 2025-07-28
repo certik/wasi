@@ -72,6 +72,7 @@ typedef unsigned char uint8_t;
     #include "native/wasi_linux.c"
 #endif
 
+#include "walloc.c"
 
 // --- Arena Allocator Implementation ---
 
