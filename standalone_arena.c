@@ -47,10 +47,19 @@
 #if defined(_WIN32) || defined(_WIN64)
 // On Windows, we need some basic types from the compiler
 typedef unsigned long long size_t;  // Use 64-bit size_t on Windows
+#ifdef _WIN64
+typedef unsigned long long uintptr_t;  // 64-bit pointer on Win64
+#else
+typedef unsigned int uintptr_t;       // 32-bit pointer on Win32
+#endif
 #else
 typedef unsigned long size_t;
+#if defined(__LP64__) || defined(_LP64)
+typedef unsigned long uintptr_t;      // 64-bit pointer on 64-bit Unix systems
+#else
+typedef unsigned int uintptr_t;       // 32-bit pointer on 32-bit Unix systems
 #endif
-typedef __UINTPTR_TYPE__ uintptr_t;
+#endif
 typedef signed long ssize_t;
 typedef unsigned int uint32_t;
 typedef unsigned char uint8_t;
