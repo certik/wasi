@@ -64,13 +64,9 @@ struct chunk {
   char data[CHUNK_SIZE];
 };
 
-enum chunk_kind {
-  FREE_LARGE_OBJECT = 254,
-  LARGE_OBJECT = 255
-};
-
 struct page_header {
-  uint8_t chunk_kinds[CHUNKS_PER_PAGE];
+  // Header now empty - we don't track chunk kinds anymore
+  char padding[CHUNK_SIZE];
 };
 
 struct page {
@@ -146,8 +142,7 @@ allocate_pages(size_t payload_size, size_t *n_allocated) {
 }
 
 static char*
-allocate_chunk(struct page *page, unsigned idx, enum chunk_kind kind) {
-  page->header.chunk_kinds[idx] = kind;
+allocate_chunk(struct page *page, unsigned idx) {
   return page->chunks[idx].data;
 }
 
@@ -167,10 +162,19 @@ maybe_merge_free_large_object(struct large_object** prev) {
       return prev;
     }
     struct page *page = get_page(end);
-    if (page->header.chunk_kinds[chunk] != FREE_LARGE_OBJECT) {
+    struct large_object *next = (struct large_object*) end;
+    
+    // Check if 'next' is actually in our free list
+    int found_in_freelist = 0;
+    for (struct large_object *walk = large_objects; walk; walk = walk->next) {
+      if (walk == next) {
+        found_in_freelist = 1;
+        break;
+      }
+    }
+    if (!found_in_freelist) {
       return prev;
     }
-    struct large_object *next = (struct large_object*) end;
 
     struct large_object **prev_prev = &large_objects, *walk = large_objects;
     while (1) {
@@ -240,7 +244,7 @@ allocate_large_object(size_t size) {
     if (!page) {
       return NULL;
     }
-    char *ptr = allocate_chunk(page, FIRST_ALLOCATABLE_CHUNK, LARGE_OBJECT);
+    char *ptr = allocate_chunk(page, FIRST_ALLOCATABLE_CHUNK);
     best = (struct large_object *)ptr;
     size_t page_header = ptr - ((char*) page);
     best->next = large_objects;
@@ -249,7 +253,7 @@ allocate_large_object(size_t size) {
     ASSERT(best_size >= size_with_header);
   }
 
-  allocate_chunk(get_page(best), get_chunk_index(best), LARGE_OBJECT);
+  allocate_chunk(get_page(best), get_chunk_index(best));
 
   struct large_object *next = best->next;
   *best_prev = next;
@@ -271,13 +275,13 @@ allocate_large_object(size_t size) {
       ASSERT_ALIGNED((uintptr_t)end, PAGE_SIZE);
       size_t first_page_size = PAGE_SIZE - (((uintptr_t)start) & PAGE_MASK);
       struct large_object *head = best;
-      allocate_chunk(start_page, get_chunk_index(start), FREE_LARGE_OBJECT);
+      allocate_chunk(start_page, get_chunk_index(start));
       head->size = first_page_size;
       head->next = large_objects;
       large_objects = head;
 
       struct page *next_page = start_page + 1;
-      char *ptr = allocate_chunk(next_page, FIRST_ALLOCATABLE_CHUNK, LARGE_OBJECT);
+      char *ptr = allocate_chunk(next_page, FIRST_ALLOCATABLE_CHUNK);
       best = (struct large_object *) ptr;
       best->size = best_size = best_size - first_page_size - CHUNK_SIZE - LARGE_OBJECT_HEADER_SIZE;
       ASSERT(best_size >= size);
@@ -304,7 +308,7 @@ allocate_large_object(size_t size) {
     
     if (tail_size) {
       struct page *page = get_page(end - tail_size);
-      char *tail_ptr = allocate_chunk(page, tail_idx, FREE_LARGE_OBJECT);
+      char *tail_ptr = allocate_chunk(page, tail_idx);
       struct large_object *tail = (struct large_object *) tail_ptr;
       tail->next = large_objects;
       tail->size = tail_size - LARGE_OBJECT_HEADER_SIZE;
@@ -328,12 +332,11 @@ free(void *ptr) {
   if (!ptr) return;
   struct page *page = get_page(ptr);
   unsigned chunk = get_chunk_index(ptr);
-  uint8_t kind = page->header.chunk_kinds[chunk];
-  if (kind == LARGE_OBJECT) {
-    struct large_object *obj = get_large_object(ptr);
-    obj->next = large_objects;
-    large_objects = obj;
-    allocate_chunk(page, chunk, FREE_LARGE_OBJECT);
-    pending_large_object_compact = 1;
-  }
+  
+  // Since we only have large objects, we can directly treat this as one
+  struct large_object *obj = get_large_object(ptr);
+  obj->next = large_objects;
+  large_objects = obj;
+  allocate_chunk(page, chunk);
+  pending_large_object_compact = 1;
 }
