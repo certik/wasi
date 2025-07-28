@@ -104,8 +104,8 @@ void* heap_base() {
     return windows_heap_base;
 }
 
-// Windows memory_size implementation
-void* memory_size() {
+// Windows heap_size implementation
+void* heap_size() {
     return (void*)(windows_heap_base + committed_pages * WASM_PAGE_SIZE);
 }
 
