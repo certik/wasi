@@ -77,8 +77,8 @@ void* heap_base() {
 
 
 // Implementation of heap_size(). Returns committed page count.
-void* heap_size() {
-    return (void*)(linux_heap_base + (committed_pages * WASM_PAGE_SIZE));
+size_t heap_size() {
+    return committed_pages * WASM_PAGE_SIZE;
 }
 
 // Implementation of heap_grow(). Commits pages using `mprotect`.

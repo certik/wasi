@@ -27,8 +27,9 @@ void proc_exit(int status);
 // Wrapper around the `memory.size` WASM instruction.
 // The argument `0` is required for the current memory space.
 // Returns the pointer to the last allocated byte plus one.
-void* heap_size() {
-    return (void*)(WASM_PAGE_SIZE * __builtin_wasm_memory_size(0));
+size_t heap_size() {
+    return WASM_PAGE_SIZE * __builtin_wasm_memory_size(0)
+        - (size_t)heap_base();
 }
 
 // Wrapper around the `memory.grow` WASM instruction.

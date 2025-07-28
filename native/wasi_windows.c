@@ -105,8 +105,8 @@ void* heap_base() {
 }
 
 // Windows heap_size implementation
-void* heap_size() {
-    return (void*)(windows_heap_base + committed_pages * WASM_PAGE_SIZE);
+size_t heap_size() {
+    return committed_pages * WASM_PAGE_SIZE;
 }
 
 // Stub for __chkstk which is normally provided by the C runtime
