@@ -52,13 +52,19 @@ typedef unsigned long size_t;
 #endif
 typedef signed long ssize_t;
 typedef unsigned int uint32_t;
+typedef unsigned long long uint64_t;
 typedef unsigned char uint8_t;
+typedef uint64_t uintptr_t;
 
 #define NULL ((void*)0)
 
 // --- Platform-Agnostic Interface ---
 
 #include "wasi.h"
+
+static inline uintptr_t align(uintptr_t val, uintptr_t alignment) {
+  return (val + alignment - 1) & ~(alignment - 1);
+}
 
 // --- Platform-Specific Implementation ---
 
