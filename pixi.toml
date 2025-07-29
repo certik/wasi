@@ -11,6 +11,7 @@ clang \
     --target=wasm32-wasi \
     -nostdlib \
     -fno-builtin \
+    -I stdlib \
     -Wl,--no-entry \
     -Wl,--export=__heap_base \
     -Wl,--export=_start \
@@ -44,6 +45,7 @@ build_macos = { cmd="""
 clang \
     -nostdlib \
     -fno-builtin \
+    -I stdlib \
     -o arena_macos \
     standalone_arena.c \
     -lSystem \
