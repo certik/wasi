@@ -72,7 +72,8 @@ size_t heap_size() {
 }
 
 // Implementation of heap_grow using mprotect to commit pages.
-void* heap_grow(size_t num_pages) {
+void* heap_grow(size_t num_bytes) {
+    size_t num_pages = align(num_bytes, WASM_PAGE_SIZE) / WASM_PAGE_SIZE;
     if (linux_heap_base == NULL) {
         return NULL;
     }
