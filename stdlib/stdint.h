@@ -10,18 +10,11 @@ typedef signed short int16_t;
 typedef signed int int32_t;
 typedef signed long long int64_t;
 
-#if defined(_WIN32)
-  #if defined(_WIN64)
-    typedef uint64_t size_t;
-    typedef int64_t ssize_t;
+#if defined(_WIN32) && defined(_WIN64)
+    // For 64 bit Windows the long is 4 bytes, but pointer is 8 bytes
     typedef uint64_t uintptr_t;
-  #else
-    typedef uint32_t size_t;
-    typedef int32_t ssize_t;
-    typedef uint32_t uintptr_t;
-  #endif
 #else
-  typedef unsigned long size_t;
-  typedef signed long ssize_t;
-  typedef unsigned long uintptr_t;
+    // For 32 bit platforms and wasm64 the long and a pointer is 4 bytes, for
+    // 64 bit macOS/Linux the long and pointer is 8 bytes
+    typedef unsigned long uintptr_t;
 #endif
