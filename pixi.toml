@@ -10,7 +10,9 @@ build_wasm = """
 clang \
     --target=wasm32-wasi \
     -nostdlib \
+    -nostdinc \
     -fno-builtin \
+    -I stdlib \
     -Wl,--no-entry \
     -Wl,--export=__heap_base \
     -Wl,--export=_start \
@@ -29,7 +31,9 @@ lld = ">=20.1.4,<21"
 build_linux = { cmd="""
 clang \
     -nostdlib \
+    -nostdinc \
     -fno-builtin \
+    -I stdlib \
     -o arena_linux \
     standalone_arena.c
 """, inputs = ["standalone_arena.c", "native/wasi_linux.c"] }
@@ -43,7 +47,9 @@ clang = ">=20.1.4,<21"
 build_macos = { cmd="""
 clang \
     -nostdlib \
+    -nostdinc \
     -fno-builtin \
+    -I stdlib \
     -o arena_macos \
     standalone_arena.c \
     -lSystem \
@@ -60,6 +66,8 @@ test_macos = { cmd="./arena_macos", depends-on=["build_macos"] }
 build_windows = { cmd="""
 cl \
     /nologo \
+    /X \
+    /I"stdlib" \
     /GS- \
     /Gs0 \
     /kernel \
