@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+
 #if defined(_WIN32) && defined(_WIN64)
     // 64 bit Windows has 8 byte size_t (but 4 byte long)
     typedef uint64_t size_t;
