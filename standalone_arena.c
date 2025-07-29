@@ -43,6 +43,7 @@
  * arena_windows.exe
  */
 
+#include <stddef.h>
 #include <stdint.h>
 
 #define NULL ((void*)0)
