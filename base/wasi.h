@@ -81,5 +81,5 @@ void proc_exit(int status);
 // If WASM backend is enabled, we need to have the definitions in a header
 // file.
 #if defined(__wasm__) && defined(__wasm32__)
-    #include "native/wasi_wasm.h"
+    #include <wasi_wasm.h>
 #endif
