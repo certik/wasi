@@ -38,10 +38,13 @@ clang \
     -nostdlib \
     -nostdinc \
     -fno-builtin \
+    -I base \
     -I stdlib \
+    -I native \
     -o arena_linux \
     standalone_arena.c \
-    stdlib/stdio.c
+    stdlib/stdio.c \
+    base/base_io.c
 """
 
 test_linux = { cmd="./arena_linux", depends-on=["build_linux"] }
@@ -58,6 +61,7 @@ clang \
     -fno-builtin \
     -I base \
     -I stdlib \
+    -I native \
     -o arena_macos \
     standalone_arena.c \
     stdlib/stdio.c \
@@ -77,13 +81,16 @@ build_windows = """
 cl \
     /nologo \
     /X \
+    /I"base" \
     /I"stdlib" \
+    /I"native" \
     /GS- \
     /Gs0 \
     /kernel \
     /c \
     standalone_arena.c \
     stdlib/stdio.c \
+    base/base_io.c \
     /Fo:standalone_arena.obj && \
 link \
     /nologo \
