@@ -3,9 +3,7 @@
 #include <stddef.h>
 #include <stdio.h>
 
-#include <wasi.h>
-
-uint32_t write_all(int fd, ciovec_t* iovs, size_t iovs_len);
+#include <base_io.h>
 
 // Buffer for formatting numbers (enough for 32-bit int + null terminator)
 static char format_buffer[12];
