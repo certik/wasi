@@ -7,9 +7,13 @@
 // heap that we can manage. It is declared as an external variable.
 //extern uint8_t __heap_base;
 
+#include <stdlib.h>
+#include <wasi_wasm.h>
+
 // WASI syscall function for writing to a file descriptor.
 // We use __attribute__((import_module, import_name)) to tell the compiler this function
 // is provided by the WASI host environment.
+/*
 __attribute__((
     __import_module__("wasi_snapshot_preview1"),
     __import_name__("fd_write")
@@ -22,6 +26,7 @@ __attribute__((
     __import_name__("proc_exit")
 ))
 void proc_exit(int status);
+*/
 
 
 // Wrapper around the `memory.size` WASM instruction.
@@ -30,6 +35,10 @@ void proc_exit(int status);
 size_t heap_size() {
     return WASM_PAGE_SIZE * __builtin_wasm_memory_size(0)
         - (size_t)heap_base();
+}
+
+static inline uintptr_t align(uintptr_t val, uintptr_t alignment) {
+  return (val + alignment - 1) & ~(alignment - 1);
 }
 
 // Wrapper around the `memory.grow` WASM instruction.

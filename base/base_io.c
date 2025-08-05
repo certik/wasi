@@ -1,5 +1,15 @@
 #include <base_io.h>
 
+#if defined(__wasm__) && defined(__wasm32__)
+    #include "../native/wasi_wasm.h"
+#elif defined(__APPLE__)
+    //#include "native/wasi_macos.h"
+#elif defined(_WIN32) || defined(_WIN64)
+    //#include "native/wasi_windows.h"
+#else
+    //#include "native/wasi_linux.h"
+#endif
+
 uint32_t write_all(int fd, ciovec_t* iovs, size_t iovs_len) {
     size_t i;
     size_t nwritten;

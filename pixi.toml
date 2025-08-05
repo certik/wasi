@@ -15,6 +15,7 @@ clang \
     -fno-builtin \
     -I base \
     -I stdlib \
+    -I native \
     -Wl,--no-entry \
     -Wl,--export=__heap_base \
     -Wl,--export=_start \
@@ -54,10 +55,12 @@ clang \
     -nostdlib \
     -nostdinc \
     -fno-builtin \
+    -I base \
     -I stdlib \
     -o arena_macos \
     standalone_arena.c \
     stdlib/stdio.c \
+    base/base_io.c \
     -lSystem \
     -Wl,-e,__start
 """, inputs = ["standalone_arena.c"] }
