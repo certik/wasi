@@ -48,6 +48,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#include <base_io.h>
+
 // --- Platform-Agnostic Interface ---
 
 #include "wasi.h"
@@ -70,8 +72,6 @@ static inline uintptr_t align(uintptr_t val, uintptr_t alignment) {
 
 
 // --- Arena Allocator Implementation ---
-
-uint32_t write_all(int fd, ciovec_t* iovs, size_t iovs_len);
 
 typedef struct {
     uint8_t* base;
@@ -149,43 +149,6 @@ void* arena_alloc(Arena* arena, size_t size) {
  */
 void arena_reset(Arena* arena) {
     arena->offset = 0;
-}
-
-/**
- * @brief Writes all data from the iovecs to the specified file descriptor.
- *
- * This function repeatedly calls fd_write until all data is written or an error occurs.
- * It updates the iovecs to skip already-written data.
- *
- * @param fd The file descriptor to write to.
- * @param iovs Array of ciovec_t structures containing the data to write.
- * @param iovs_len Number of iovecs in the array.
- * @return 0 on success, or an error code if fd_write fails.
- */
-uint32_t write_all(int fd, ciovec_t* iovs, size_t iovs_len) {
-    size_t i;
-    size_t nwritten;
-    uint32_t ret;
-
-    for (i = 0; i < iovs_len; ) {
-        ret = fd_write(fd, &iovs[i], iovs_len - i, &nwritten);
-        if (ret != 0) {
-            return ret; // Return error code
-        }
-
-        // Advance through the iovecs based on how much was written
-        while (nwritten > 0 && i < iovs_len) {
-            if (nwritten >= iovs[i].buf_len) {
-                nwritten -= iovs[i].buf_len;
-                i++;
-            } else {
-                iovs[i].buf = (const uint8_t*)iovs[i].buf + nwritten;
-                iovs[i].buf_len -= nwritten;
-                nwritten = 0;
-            }
-        }
-    }
-    return 0; // Success
 }
 
 // Custom strlen to avoid C library dependency

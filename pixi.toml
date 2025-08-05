@@ -21,7 +21,8 @@ clang \
     -Wl,--initial-memory=131072 \
     -o arena.wasm \
     standalone_arena.c \
-    stdlib/stdio.c
+    stdlib/stdio.c \
+    base/base_io.c
 """
 
 test_wasm = { cmd="wasmtime arena.wasm || echo 'wasmtime not found, install separately'", depends-on=["build_wasm"] }
