@@ -23,7 +23,8 @@ clang \
     -o arena.wasm \
     standalone_arena.c \
     stdlib/stdio.c \
-    base/base_io.c
+    base/base_io.c \
+    native/wasi_wasm.c
 """
 
 test_wasm = { cmd="wasmtime arena.wasm || echo 'wasmtime not found, install separately'", depends-on=["build_wasm"] }
@@ -44,7 +45,8 @@ clang \
     -o arena_linux \
     standalone_arena.c \
     stdlib/stdio.c \
-    base/base_io.c
+    base/base_io.c \
+    native/wasi_linux.c
 """
 
 test_linux = { cmd="./arena_linux", depends-on=["build_linux"] }
@@ -66,6 +68,7 @@ clang \
     standalone_arena.c \
     stdlib/stdio.c \
     base/base_io.c \
+    native/wasi_macos.c \
     -lSystem \
     -Wl,-e,__start
 """
@@ -91,6 +94,7 @@ cl \
     standalone_arena.c \
     stdlib/stdio.c \
     base/base_io.c \
+    native/wasi_windows.c \
     /Fo:standalone_arena.obj && \
 link \
     /nologo \

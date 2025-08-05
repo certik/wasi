@@ -47,24 +47,9 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
-
 #include <base_io.h>
+#include <wasi.h>
 
-// --- Platform-Agnostic Interface ---
-
-#include "wasi.h"
-
-// --- Platform-Specific Implementation ---
-
-#if defined(__wasm__) && defined(__wasm32__)
-    #include "native/wasi_wasm.c"
-#elif defined(__APPLE__)
-    #include "native/wasi_macos.c"
-#elif defined(_WIN32) || defined(_WIN64)
-    #include "native/wasi_windows.c"
-#else
-    #include "native/wasi_linux.c"
-#endif
 
 
 // --- Arena Allocator Implementation ---
