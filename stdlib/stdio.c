@@ -3,12 +3,8 @@
 #include <stddef.h>
 #include <stdio.h>
 
-typedef struct ciovec_s {
-    const void* buf;
-    size_t buf_len;
-} ciovec_t;
+#include <wasi.h>
 
-uint32_t fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nwritten);
 uint32_t write_all(int fd, ciovec_t* iovs, size_t iovs_len);
 
 // Buffer for formatting numbers (enough for 32-bit int + null terminator)

@@ -9,9 +9,11 @@ version = "0.1.0"
 build_wasm = """
 clang \
     --target=wasm32-wasi \
+    -Os \
     -nostdlib \
     -nostdinc \
     -fno-builtin \
+    -I base \
     -I stdlib \
     -Wl,--no-entry \
     -Wl,--export=__heap_base \
