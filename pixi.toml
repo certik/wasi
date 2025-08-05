@@ -64,7 +64,7 @@ clang \
     base/base_io.c \
     -lSystem \
     -Wl,-e,__start
-""", inputs = ["standalone_arena.c"] }
+"""}
 
 test_macos = { cmd="./arena_macos", depends-on=["build_macos"] }
 

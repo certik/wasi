@@ -3,17 +3,26 @@
 #include <stdint.h>
 #include <stddef.h>
 
-typedef char* va_list;
-#define va_start(ap, last) ((ap) = (va_list)&(last) + sizeof(last))
-#define va_arg(ap, type) (*(type*)((ap) += sizeof(type), (ap) - sizeof(type)))
-#define va_end(ap)
 
-/*
-typedef struct {
-    char* ptr;
-} va_list;
+#if defined(_WIN32) || defined(_WIN64)
 
-#define va_start(ap, last) ((ap).ptr = (char*)&(last) + sizeof(last))
-#define va_arg(ap, type) (*(type*)((ap).ptr += sizeof(type), (ap).ptr - sizeof(type)))
-#define va_end(ap) ((void)0)
-*/
+typedef char * va_list;
+
+#define _INTSIZEOF(n) ((sizeof(n) + sizeof(int) - 1) & ~(sizeof(int) - 1))
+#define _ADDRESSOF(v) (&(v))
+
+#define va_start(ap, v) ((void)((ap) = (va_list)_ADDRESSOF(v) + _INTSIZEOF(v)))
+#define va_arg(ap, t) (*(t *)((ap += _INTSIZEOF(t)) - _INTSIZEOF(t)))
+#define va_end(ap) ((void)((ap) = (va_list)0))
+#define va_copy(dest, src) ((void)((dest) = (src)))
+
+#else
+
+typedef __builtin_va_list va_list;
+
+#define va_start(ap, last) __builtin_va_start((ap), (last))
+#define va_arg(ap, type) __builtin_va_arg((ap), type)
+#define va_end(ap) __builtin_va_end((ap))
+#define va_copy(dest, src) __builtin_va_copy((dest), (src))
+
+#endif
