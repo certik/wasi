@@ -18,7 +18,8 @@ clang \
     -Wl,--export=_start \
     -Wl,--initial-memory=131072 \
     -o arena.wasm \
-    standalone_arena.c
+    standalone_arena.c \
+    stdlib/stdio.c
 """
 
 test_wasm = { cmd="wasmtime arena.wasm || echo 'wasmtime not found, install separately'", depends-on=["build_wasm"] }
@@ -35,7 +36,8 @@ clang \
     -fno-builtin \
     -I stdlib \
     -o arena_linux \
-    standalone_arena.c
+    standalone_arena.c \
+    stdlib/stdio.c
 """, inputs = ["standalone_arena.c", "native/wasi_linux.c"] }
 
 test_linux = { cmd="./arena_linux", depends-on=["build_linux"] }
@@ -52,6 +54,7 @@ clang \
     -I stdlib \
     -o arena_macos \
     standalone_arena.c \
+    stdlib/stdio.c \
     -lSystem \
     -Wl,-e,__start
 """, inputs = ["standalone_arena.c"] }
@@ -73,6 +76,7 @@ cl \
     /kernel \
     /c \
     standalone_arena.c \
+    stdlib/stdio.c \
     /Fo:standalone_arena.obj && \
 link \
     /nologo \

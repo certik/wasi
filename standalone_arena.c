@@ -46,6 +46,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 // --- Platform-Agnostic Interface ---
 
@@ -217,6 +218,10 @@ void* memcpy(void* dest, const void* src, size_t n) {
 int main(void) {
     Arena main_arena;
     arena_init(&main_arena);
+
+    printf("Hello World!\n");
+    int i = 10;
+    printf("i = %d\n", i);
 
     // Allocate and copy some strings onto the arena
     char s1[] = "Hello from the Arena!\n";
