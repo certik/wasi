@@ -33,7 +33,7 @@ clang = ">=20.1.4,<21"
 lld = ">=20.1.4,<21"
 
 [feature.linux.tasks]
-build_linux = { cmd="""
+build_linux = """
 clang \
     -nostdlib \
     -nostdinc \
@@ -42,7 +42,7 @@ clang \
     -o arena_linux \
     standalone_arena.c \
     stdlib/stdio.c
-""", inputs = ["standalone_arena.c", "native/wasi_linux.c"] }
+"""
 
 test_linux = { cmd="./arena_linux", depends-on=["build_linux"] }
 
@@ -50,7 +50,7 @@ test_linux = { cmd="./arena_linux", depends-on=["build_linux"] }
 clang = ">=20.1.4,<21"
 
 [feature.macos.tasks]
-build_macos = { cmd="""
+build_macos = """
 clang \
     -g \
     -nostdlib \
@@ -64,7 +64,7 @@ clang \
     base/base_io.c \
     -lSystem \
     -Wl,-e,__start
-"""}
+"""
 
 test_macos = { cmd="./arena_macos", depends-on=["build_macos"] }
 
@@ -73,7 +73,7 @@ test_macos = { cmd="./arena_macos", depends-on=["build_macos"] }
 #clang = ">=20.1.4,<21"
 
 [feature.windows.tasks]
-build_windows = { cmd="""
+build_windows = """
 cl \
     /nologo \
     /X \
@@ -93,7 +93,7 @@ link \
     kernel32.lib \
     standalone_arena.obj \
     /out:arena_windows.exe
-""", inputs = ["standalone_arena.c"] }
+"""
 
 test_windows = { cmd="arena_windows.exe", depends-on=["build_windows"] }
 
