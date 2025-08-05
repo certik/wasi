@@ -95,7 +95,7 @@ cl \
     stdlib/stdio.c \
     base/base_io.c \
     native/wasi_windows.c \
-    /Fo:standalone_arena.obj && \
+    && \
 link \
     /nologo \
     /subsystem:console \
@@ -103,6 +103,9 @@ link \
     /entry:_start \
     kernel32.lib \
     standalone_arena.obj \
+    stdio.obj \
+    base_io.obj \
+    wasi_windows.obj \
     /out:arena_windows.exe
 """
 
