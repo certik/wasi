@@ -76,6 +76,10 @@ static void ensure_heap_initialized() {
     }
 }
 
+static inline uintptr_t align(uintptr_t val, uintptr_t alignment) {
+  return (val + alignment - 1) & ~(alignment - 1);
+}
+
 // Windows heap_grow implementation using VirtualAlloc
 void* heap_grow(size_t num_bytes) {
     size_t num_pages = align(num_bytes, WASM_PAGE_SIZE) / WASM_PAGE_SIZE;
