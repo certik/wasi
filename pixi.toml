@@ -52,6 +52,7 @@ clang = ">=20.1.4,<21"
 [feature.macos.tasks]
 build_macos = { cmd="""
 clang \
+    -g \
     -nostdlib \
     -nostdinc \
     -fno-builtin \
