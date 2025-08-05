@@ -1,4 +1,5 @@
 #include <wasi.h>
+#include <stdlib.h>
 
 // =============================================================================
 // == Windows Implementation (MSVC)
