@@ -32,7 +32,7 @@ void* heap_grow(size_t num_bytes) {
     if (prev_size == (size_t)(-1)) {
         return NULL;
     }
-    return (void*)(prev_size * WASM_PAGE_SIZE);
+    return (void*)(prev_size * WASM_PAGE_SIZE - (size_t)heap_base());
 }
 
 
