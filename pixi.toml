@@ -9,16 +9,22 @@ version = "0.1.0"
 build_wasm = """
 clang \
     --target=wasm32-wasi \
+    -Os \
     -nostdlib \
     -nostdinc \
     -fno-builtin \
+    -I base \
     -I stdlib \
+    -I native \
     -Wl,--no-entry \
     -Wl,--export=__heap_base \
     -Wl,--export=_start \
     -Wl,--initial-memory=131072 \
     -o arena.wasm \
-    standalone_arena.c
+    standalone_arena.c \
+    stdlib/stdio.c \
+    base/base_io.c \
+    native/wasi_wasm.c
 """
 
 test_wasm = { cmd="wasmtime arena.wasm || echo 'wasmtime not found, install separately'", depends-on=["build_wasm"] }
@@ -28,15 +34,20 @@ clang = ">=20.1.4,<21"
 lld = ">=20.1.4,<21"
 
 [feature.linux.tasks]
-build_linux = { cmd="""
+build_linux = """
 clang \
     -nostdlib \
     -nostdinc \
     -fno-builtin \
+    -I base \
     -I stdlib \
+    -I native \
     -o arena_linux \
-    standalone_arena.c
-""", inputs = ["standalone_arena.c", "native/wasi_linux.c"] }
+    standalone_arena.c \
+    stdlib/stdio.c \
+    base/base_io.c \
+    native/wasi_linux.c
+"""
 
 test_linux = { cmd="./arena_linux", depends-on=["build_linux"] }
 
@@ -44,17 +55,23 @@ test_linux = { cmd="./arena_linux", depends-on=["build_linux"] }
 clang = ">=20.1.4,<21"
 
 [feature.macos.tasks]
-build_macos = { cmd="""
+build_macos = """
 clang \
+    -g \
     -nostdlib \
     -nostdinc \
     -fno-builtin \
+    -I base \
     -I stdlib \
+    -I native \
     -o arena_macos \
     standalone_arena.c \
+    stdlib/stdio.c \
+    base/base_io.c \
+    native/wasi_macos.c \
     -lSystem \
     -Wl,-e,__start
-""", inputs = ["standalone_arena.c"] }
+"""
 
 test_macos = { cmd="./arena_macos", depends-on=["build_macos"] }
 
@@ -63,17 +80,22 @@ test_macos = { cmd="./arena_macos", depends-on=["build_macos"] }
 #clang = ">=20.1.4,<21"
 
 [feature.windows.tasks]
-build_windows = { cmd="""
+build_windows = """
 cl \
     /nologo \
     /X \
+    /I"base" \
     /I"stdlib" \
+    /I"native" \
     /GS- \
     /Gs0 \
     /kernel \
     /c \
     standalone_arena.c \
-    /Fo:standalone_arena.obj && \
+    stdlib/stdio.c \
+    base/base_io.c \
+    native/wasi_windows.c \
+    && \
 link \
     /nologo \
     /subsystem:console \
@@ -81,8 +103,11 @@ link \
     /entry:_start \
     kernel32.lib \
     standalone_arena.obj \
+    stdio.obj \
+    base_io.obj \
+    wasi_windows.obj \
     /out:arena_windows.exe
-""", inputs = ["standalone_arena.c"] }
+"""
 
 test_windows = { cmd="arena_windows.exe", depends-on=["build_windows"] }
 

@@ -1,3 +1,7 @@
+#include <wasi.h>
+
+#include <stdlib.h>
+
 // =============================================================================
 // == macOS Implementation
 // =============================================================================
@@ -69,6 +73,10 @@ void* heap_base() {
 
 size_t heap_size() {
     return committed_pages * WASM_PAGE_SIZE;
+}
+
+static inline uintptr_t align(uintptr_t val, uintptr_t alignment) {
+  return (val + alignment - 1) & ~(alignment - 1);
 }
 
 // Implementation of heap_grow using mprotect to commit pages.

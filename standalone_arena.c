@@ -46,31 +46,13 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <stdio.h>
+#include <base_io.h>
+#include <wasi.h>
 
-// --- Platform-Agnostic Interface ---
-
-#include "wasi.h"
-
-static inline uintptr_t align(uintptr_t val, uintptr_t alignment) {
-  return (val + alignment - 1) & ~(alignment - 1);
-}
-
-// --- Platform-Specific Implementation ---
-
-#if defined(__wasm__) && defined(__wasm32__)
-    #include "native/wasi_wasm.c"
-#elif defined(__APPLE__)
-    #include "native/wasi_macos.c"
-#elif defined(_WIN32) || defined(_WIN64)
-    #include "native/wasi_windows.c"
-#else
-    #include "native/wasi_linux.c"
-#endif
 
 
 // --- Arena Allocator Implementation ---
-
-uint32_t write_all(int fd, ciovec_t* iovs, size_t iovs_len);
 
 typedef struct {
     uint8_t* base;
@@ -150,43 +132,6 @@ void arena_reset(Arena* arena) {
     arena->offset = 0;
 }
 
-/**
- * @brief Writes all data from the iovecs to the specified file descriptor.
- *
- * This function repeatedly calls fd_write until all data is written or an error occurs.
- * It updates the iovecs to skip already-written data.
- *
- * @param fd The file descriptor to write to.
- * @param iovs Array of ciovec_t structures containing the data to write.
- * @param iovs_len Number of iovecs in the array.
- * @return 0 on success, or an error code if fd_write fails.
- */
-uint32_t write_all(int fd, ciovec_t* iovs, size_t iovs_len) {
-    size_t i;
-    size_t nwritten;
-    uint32_t ret;
-
-    for (i = 0; i < iovs_len; ) {
-        ret = fd_write(fd, &iovs[i], iovs_len - i, &nwritten);
-        if (ret != 0) {
-            return ret; // Return error code
-        }
-
-        // Advance through the iovecs based on how much was written
-        while (nwritten > 0 && i < iovs_len) {
-            if (nwritten >= iovs[i].buf_len) {
-                nwritten -= iovs[i].buf_len;
-                i++;
-            } else {
-                iovs[i].buf = (const uint8_t*)iovs[i].buf + nwritten;
-                iovs[i].buf_len -= nwritten;
-                nwritten = 0;
-            }
-        }
-    }
-    return 0; // Success
-}
-
 // Custom strlen to avoid C library dependency
 size_t my_strlen(const char* str) {
     const char* s;
@@ -217,6 +162,10 @@ void* memcpy(void* dest, const void* src, size_t n) {
 int main(void) {
     Arena main_arena;
     arena_init(&main_arena);
+
+    printf("Hello World!\n");
+    int i = 10;
+    printf("i = %d\n", i);
 
     // Allocate and copy some strings onto the arena
     char s1[] = "Hello from the Arena!\n";

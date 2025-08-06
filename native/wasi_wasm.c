@@ -1,3 +1,5 @@
+#include <wasi.h>
+
 // =============================================================================
 // == WebAssembly (WASI) Implementation
 // =============================================================================
@@ -7,22 +9,7 @@
 // heap that we can manage. It is declared as an external variable.
 //extern uint8_t __heap_base;
 
-// WASI syscall function for writing to a file descriptor.
-// We use __attribute__((import_module, import_name)) to tell the compiler this function
-// is provided by the WASI host environment.
-__attribute__((
-    __import_module__("wasi_snapshot_preview1"),
-    __import_name__("fd_write")
-))
-uint32_t fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nwritten);
-
-
-__attribute__((
-    __import_module__("wasi_snapshot_preview1"),
-    __import_name__("proc_exit")
-))
-void proc_exit(int status);
-
+#include <stdlib.h>
 
 // Wrapper around the `memory.size` WASM instruction.
 // The argument `0` is required for the current memory space.
@@ -30,6 +17,10 @@ void proc_exit(int status);
 size_t heap_size() {
     return WASM_PAGE_SIZE * __builtin_wasm_memory_size(0)
         - (size_t)heap_base();
+}
+
+static inline uintptr_t align(uintptr_t val, uintptr_t alignment) {
+  return (val + alignment - 1) & ~(alignment - 1);
 }
 
 // Wrapper around the `memory.grow` WASM instruction.

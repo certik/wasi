@@ -1,3 +1,6 @@
+#include <wasi.h>
+#include <stdlib.h>
+
 // =============================================================================
 // == Linux (x86_64) Implementation
 // =============================================================================
@@ -79,6 +82,10 @@ void* heap_base() {
 // Implementation of heap_size(). Returns committed page count.
 size_t heap_size() {
     return committed_pages * WASM_PAGE_SIZE;
+}
+
+static inline uintptr_t align(uintptr_t val, uintptr_t alignment) {
+  return (val + alignment - 1) & ~(alignment - 1);
 }
 
 // Implementation of heap_grow(). Commits pages using `mprotect`.

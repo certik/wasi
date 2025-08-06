@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stddef.h>
+
 /*
  * The following functions provide a C interface to WASM / WASI.
  *
@@ -73,3 +75,11 @@ typedef struct ciovec_s {
 uint32_t fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nwritten);
 
 void proc_exit(int status);
+
+
+
+// If WASM backend is enabled, we need to have the definitions in a header
+// file.
+#if defined(__wasm__) && defined(__wasm32__)
+    #include <wasi_wasm.h>
+#endif

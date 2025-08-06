@@ -1,3 +1,6 @@
+#include <wasi.h>
+#include <stdlib.h>
+
 // =============================================================================
 // == Windows Implementation (MSVC)
 // =============================================================================
@@ -72,6 +75,10 @@ static void ensure_heap_initialized() {
         }
         committed_pages = 1;
     }
+}
+
+static inline uintptr_t align(uintptr_t val, uintptr_t alignment) {
+  return (val + alignment - 1) & ~(alignment - 1);
 }
 
 // Windows heap_grow implementation using VirtualAlloc
