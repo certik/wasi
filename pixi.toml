@@ -23,7 +23,9 @@ clang \
     -o arena.wasm \
     standalone_arena.c \
     stdlib/stdio.c \
+    stdlib/string.c \
     base/base_io.c \
+    base/arena.c \
     native/wasi_wasm.c
 """
 
@@ -45,7 +47,9 @@ clang \
     -o arena_linux \
     standalone_arena.c \
     stdlib/stdio.c \
+    stdlib/string.c \
     base/base_io.c \
+    base/arena.c \
     native/wasi_linux.c
 """
 
@@ -67,7 +71,9 @@ clang \
     -o arena_macos \
     standalone_arena.c \
     stdlib/stdio.c \
+    stdlib/string.c \
     base/base_io.c \
+    base/arena.c \
     native/wasi_macos.c \
     -lSystem \
     -Wl,-e,__start
@@ -93,7 +99,9 @@ cl \
     /c \
     standalone_arena.c \
     stdlib/stdio.c \
+    stdlib/string.c \
     base/base_io.c \
+    base/arena.c \
     native/wasi_windows.c \
     && \
 link \
@@ -104,7 +112,9 @@ link \
     kernel32.lib \
     standalone_arena.obj \
     stdio.obj \
+    string.obj \
     base_io.obj \
+    arena.obj \
     wasi_windows.obj \
     /out:arena_windows.exe
 """
