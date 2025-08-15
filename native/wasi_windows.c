@@ -65,13 +65,13 @@ static void ensure_heap_initialized() {
         // Reserve a large virtual address space
         windows_heap_base = (uint8_t*)VirtualAlloc(NULL, RESERVED_SIZE, MEM_RESERVE, PAGE_READWRITE);
         if (windows_heap_base == NULL) {
-            proc_exit(1); // Failed to reserve memory
+            wasi_proc_exit(1); // Failed to reserve memory
         }
         
         // Commit the first page
         void* committed = VirtualAlloc(windows_heap_base, WASM_PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE);
         if (committed == NULL) {
-            proc_exit(1); // Failed to commit memory
+            wasi_proc_exit(1); // Failed to commit memory
         }
         committed_pages = 1;
     }
@@ -123,7 +123,7 @@ void __chkstk() {
 }
 
 // Process exit function
-void proc_exit(int status) {
+void wasi_proc_exit(int status) {
     ExitProcess((unsigned int)status);
 }
 
@@ -134,5 +134,5 @@ int main();
 void _start() {
     ensure_heap_initialized();
     int status = main();
-    proc_exit(status);
+    wasi_proc_exit(status);
 }

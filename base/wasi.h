@@ -72,6 +72,6 @@ typedef struct ciovec_s {
     size_t buf_len;
 } ciovec_t;
 
-uint32_t fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nwritten);
+uint32_t wasi_fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nwritten);
 
-void proc_exit(int status);
+void wasi_proc_exit(int status);

@@ -6,7 +6,7 @@ uint32_t write_all(int fd, ciovec_t* iovs, size_t iovs_len) {
     uint32_t ret;
 
     for (i = 0; i < iovs_len; ) {
-        ret = fd_write(fd, &iovs[i], iovs_len - i, &nwritten);
+        ret = wasi_fd_write(fd, &iovs[i], iovs_len - i, &nwritten);
         if (ret != 0) {
             return ret; // Return error code
         }

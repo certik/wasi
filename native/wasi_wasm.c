@@ -1,4 +1,12 @@
 #include <wasi.h>
+#include <stdlib.h>
+
+#define WASI(name) __attribute__((__import_module__("wasi_snapshot_preview1"), __import_name__(#name))) name
+
+uint32_t WASI(fd_write)(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nwritten);
+void WASI(proc_exit)(int status);
+
+#undef WASI
 
 // =============================================================================
 // == WebAssembly (WASI) Implementation
@@ -8,8 +16,6 @@
 // the end of the static data section and the beginning of the linear memory
 // heap that we can manage. It is declared as an external variable.
 //extern uint8_t __heap_base;
-
-#include <stdlib.h>
 
 // Wrapper around the `memory.size` WASM instruction.
 // The argument `0` is required for the current memory space.
@@ -42,10 +48,18 @@ void* heap_base() {
     return &__heap_base;
 }
 
+void wasi_proc_exit(int status) {
+    proc_exit(status);
+}
+
+uint32_t wasi_fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nwritten) {
+    return fd_write(fd, iovs, iovs_len, nwritten);
+}
+
 // For WASI, the entry point is `_start`, which we define to call our `main` function.
 int main();
 
 void _start() {
     int status = main();
-    proc_exit(status);
+    wasi_proc_exit(status);
 }
