@@ -32,17 +32,17 @@ int main(void) {
 
     printf("%s%s%s", p1, p2, p3);
 
-    void* hb = heap_base();
+    void* hb = wasi_heap_base();
     printf("heap_base = %p (%zu)\n", hb, (size_t)hb);
-    size_t ms1 = heap_size();
+    size_t ms1 = wasi_heap_size();
     printf("heap_size = %zu\n", ms1);
-    void* mg = heap_grow(4 * WASM_PAGE_SIZE);
+    void* mg = wasi_heap_grow(4 * WASM_PAGE_SIZE);
     printf("heap_grow_return = %p (%zu)\n", mg, (size_t)mg);
-    size_t ms2 = heap_size();
+    size_t ms2 = wasi_heap_size();
     printf("heap_size = %zu\n", ms2);
-    mg = heap_grow(4 * WASM_PAGE_SIZE);
+    mg = wasi_heap_grow(4 * WASM_PAGE_SIZE);
     printf("heap_grow_return = %p (%zu)\n", mg, (size_t)mg);
-    ms2 = heap_size();
+    ms2 = wasi_heap_size();
     printf("heap_size = %zu\n", ms2);
 
     return 0; // Success

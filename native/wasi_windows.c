@@ -81,8 +81,8 @@ static inline uintptr_t align(uintptr_t val, uintptr_t alignment) {
   return (val + alignment - 1) & ~(alignment - 1);
 }
 
-// Windows heap_grow implementation using VirtualAlloc
-void* heap_grow(size_t num_bytes) {
+// Windows wasi_heap_grow implementation using VirtualAlloc
+void* wasi_heap_grow(size_t num_bytes) {
     size_t num_pages = align(num_bytes, WASM_PAGE_SIZE) / WASM_PAGE_SIZE;
     
     if (num_pages == 0) {
@@ -107,12 +107,12 @@ void* heap_grow(size_t num_bytes) {
     return (void*)(windows_heap_base + prev_size * WASM_PAGE_SIZE);
 }
 
-void* heap_base() {
+void* wasi_heap_base() {
     return windows_heap_base;
 }
 
-// Windows heap_size implementation
-size_t heap_size() {
+// Windows wasi_heap_size implementation
+size_t wasi_heap_size() {
     return committed_pages * WASM_PAGE_SIZE;
 }
 

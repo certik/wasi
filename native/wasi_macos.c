@@ -67,11 +67,11 @@ void wasi_proc_exit(int status) {
     _exit(status);
 }
 
-void* heap_base() {
+void* wasi_heap_base() {
     return linux_heap_base;
 }
 
-size_t heap_size() {
+size_t wasi_heap_size() {
     return committed_pages * WASM_PAGE_SIZE;
 }
 
@@ -79,8 +79,8 @@ static inline uintptr_t align(uintptr_t val, uintptr_t alignment) {
   return (val + alignment - 1) & ~(alignment - 1);
 }
 
-// Implementation of heap_grow using mprotect to commit pages.
-void* heap_grow(size_t num_bytes) {
+// Implementation of wasi_heap_grow using mprotect to commit pages.
+void* wasi_heap_grow(size_t num_bytes) {
     size_t num_pages = align(num_bytes, WASM_PAGE_SIZE) / WASM_PAGE_SIZE;
     if (linux_heap_base == NULL) {
         return NULL;
