@@ -2,10 +2,12 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <assert.h>
 #include <base_io.h>
 #include <wasi.h>
 #include <arena.h>
 #include <string.h>
+#include <stdbool.h>
 
 
 
@@ -38,6 +40,8 @@ int main(void) {
     printf("heap_size = %zu\n", ms1);
     void* mg = wasi_heap_grow(4 * WASM_PAGE_SIZE);
     printf("heap_grow_return = %p (%zu)\n", mg, (size_t)mg);
+    assert((size_t)hb + ms1 == (size_t)mg);
+
     size_t ms2 = wasi_heap_size();
     printf("heap_size = %zu\n", ms2);
     mg = wasi_heap_grow(4 * WASM_PAGE_SIZE);
