@@ -62,7 +62,7 @@ static void allocation_error(void) {
     const char* err_str = "Error: Failed to grow memory for arena allocation.\n";
     ciovec_t iov = { .buf = err_str, .buf_len = strlen(err_str) };
     write_all(1, &iov, 1); // Write to stdout; alternatively use fd=2 for stderr
-    proc_exit(1);
+    wasi_proc_exit(1);
 }
 
 /**
