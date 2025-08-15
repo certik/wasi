@@ -34,6 +34,7 @@ int main(void) {
 
     void* hb = wasi_heap_base();
     printf("heap_base = %p (%zu)\n", hb, (size_t)hb);
+    exit(1);
     size_t ms1 = wasi_heap_size();
     printf("heap_size = %zu\n", ms1);
     void* mg = wasi_heap_grow(4 * WASM_PAGE_SIZE);
