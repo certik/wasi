@@ -53,7 +53,7 @@ static void ensure_heap_initialized() {
 }
 
 // Implementation of fd_write using writev.
-uint32_t fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nwritten) {
+uint32_t wasi_fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nwritten) {
     ssize_t ret = writev(fd, (const struct iovec *)iovs, (int)iovs_len);
     if (ret < 0) {
         *nwritten = 0;
