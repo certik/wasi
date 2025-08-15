@@ -71,7 +71,7 @@ void* wasi_heap_base() {
     return linux_heap_base;
 }
 
-size_t heap_size() {
+size_t wasi_heap_size() {
     return committed_pages * WASM_PAGE_SIZE;
 }
 

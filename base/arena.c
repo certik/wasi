@@ -74,12 +74,12 @@ static void allocation_error(void) {
  * @param arena Pointer to the Arena struct to initialize.
  */
 void arena_init(Arena* arena) {
-    size_t current_size = heap_size();
+    size_t current_size = wasi_heap_size();
     if (current_size == 0) {
         if (heap_grow(WASM_PAGE_SIZE) == NULL) { // Try to allocate one page
             allocation_error();
         }
-        current_size = heap_size();
+        current_size = wasi_heap_size();
     }
 
     arena->base = (uint8_t*)wasi_heap_base();

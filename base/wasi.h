@@ -62,7 +62,7 @@ void* heap_grow(size_t num_bytes);
 
 // Returns the size of the heap in bytes
 // Computed using the memory.size WASM instruction minus heap_base()
-size_t heap_size();
+size_t wasi_heap_size();
 
 
 // WASI import functions

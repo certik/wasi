@@ -79,8 +79,8 @@ void* wasi_heap_base() {
 }
 
 
-// Implementation of heap_size(). Returns committed page count.
-size_t heap_size() {
+// Implementation of wasi_heap_size(). Returns committed page count.
+size_t wasi_heap_size() {
     return committed_pages * WASM_PAGE_SIZE;
 }
 

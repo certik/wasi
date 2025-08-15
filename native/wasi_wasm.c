@@ -20,7 +20,7 @@ void WASI(proc_exit)(int status);
 // Wrapper around the `memory.size` WASM instruction.
 // The argument `0` is required for the current memory space.
 // Returns the pointer to the last allocated byte plus one.
-size_t heap_size() {
+size_t wasi_heap_size() {
     return WASM_PAGE_SIZE * __builtin_wasm_memory_size(0)
         - (size_t)wasi_heap_base();
 }

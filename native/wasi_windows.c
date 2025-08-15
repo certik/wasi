@@ -111,8 +111,8 @@ void* wasi_heap_base() {
     return windows_heap_base;
 }
 
-// Windows heap_size implementation
-size_t heap_size() {
+// Windows wasi_heap_size implementation
+size_t wasi_heap_size() {
     return committed_pages * WASM_PAGE_SIZE;
 }
 
