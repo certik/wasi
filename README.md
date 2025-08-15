@@ -130,3 +130,9 @@ a program, as well as native implementation to be able to run the program
 natively. It runs in wasmtime/wasmer out of the box.
 
 Compared to emscripten, we tightly control the API, so there are no unnecessary calls back and forth with JavaScript.
+
+## WASI
+
+The API from C is described for example in:
+
+* https://github.com/WebAssembly/wasi-libc/blob/50ae11904df674fecaa311537967fe138c21fcc7/libc-bottom-half/headers/public/wasi/api.h
