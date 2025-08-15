@@ -82,7 +82,7 @@ void arena_init(Arena* arena) {
         current_size = heap_size();
     }
 
-    arena->base = (uint8_t*)heap_base();
+    arena->base = (uint8_t*)wasi_heap_base();
     arena->capacity = current_size;
     arena->offset = 0;
 }

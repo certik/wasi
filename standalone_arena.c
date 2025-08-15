@@ -32,7 +32,7 @@ int main(void) {
 
     printf("%s%s%s", p1, p2, p3);
 
-    void* hb = heap_base();
+    void* hb = wasi_heap_base();
     printf("heap_base = %p (%zu)\n", hb, (size_t)hb);
     size_t ms1 = heap_size();
     printf("heap_size = %zu\n", ms1);

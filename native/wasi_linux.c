@@ -74,7 +74,7 @@ static void ensure_heap_initialized() {
     }
 }
 
-void* heap_base() {
+void* wasi_heap_base() {
     return linux_heap_base;
 }
 

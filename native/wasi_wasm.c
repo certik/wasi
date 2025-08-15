@@ -22,7 +22,7 @@ void WASI(proc_exit)(int status);
 // Returns the pointer to the last allocated byte plus one.
 size_t heap_size() {
     return WASM_PAGE_SIZE * __builtin_wasm_memory_size(0)
-        - (size_t)heap_base();
+        - (size_t)wasi_heap_base();
 }
 
 static inline uintptr_t align(uintptr_t val, uintptr_t alignment) {
@@ -38,13 +38,13 @@ void* heap_grow(size_t num_bytes) {
     if (prev_size == (size_t)(-1)) {
         return NULL;
     }
-    return (void*)(prev_size * WASM_PAGE_SIZE - (size_t)heap_base());
+    return (void*)(prev_size * WASM_PAGE_SIZE - (size_t)wasi_heap_base());
 }
 
 
 extern uint8_t* __heap_base;
 
-void* heap_base() {
+void* wasi_heap_base() {
     return &__heap_base;
 }
 

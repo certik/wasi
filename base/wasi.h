@@ -52,7 +52,7 @@
 // addressable.
 // The __heap_base is at a page boundary on native platforms, but not in WASM.
 
-void* heap_base();
+void* wasi_heap_base();
 
 #define WASM_PAGE_SIZE 65536 // 64KiB
 // memory.grow WASM instruction

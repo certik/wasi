@@ -67,7 +67,7 @@ void wasi_proc_exit(int status) {
     _exit(status);
 }
 
-void* heap_base() {
+void* wasi_heap_base() {
     return linux_heap_base;
 }
 
