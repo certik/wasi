@@ -32,7 +32,7 @@ static size_t committed_pages = 0;
 static const size_t RESERVED_SIZE = 1ULL << 32; // Reserve 4GB of virtual address space
 
 // Emulation of `fd_write` using Windows WriteFile API
-uint32_t fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nwritten) {
+uint32_t wasi_fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nwritten) {
     if (fd != 1) { // Only support stdout
         *nwritten = 0;
         return 1; // Error
