@@ -30,7 +30,7 @@ clang \
     native/wasi_wasm.c
 """
 
-test_wasm = { cmd="wasmtime arena.wasm || echo 'wasmtime not found, install separately'", depends-on=["build_wasm"] }
+test_wasm = { cmd="wasmtime arena.wasm", depends-on=["build_wasm"] }
 
 [feature.wasm.dependencies]
 clang = ">=20.1.4,<21"
