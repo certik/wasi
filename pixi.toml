@@ -19,7 +19,7 @@ clang \
     -Wl,--no-entry \
     -Wl,--export=__heap_base \
     -Wl,--export=_start \
-    -Wl,--initial-memory=131072 \
+    -Wl,--initial-memory=13107200 \
     -o arena.wasm \
     standalone_arena.c \
     stdlib/assert.c \
@@ -27,6 +27,7 @@ clang \
     stdlib/stdlib.c \
     stdlib/string.c \
     base/base_io.c \
+    base/buddy.c \
     base/arena.c \
     native/wasi_wasm.c
 """
@@ -53,6 +54,7 @@ clang \
     stdlib/stdlib.c \
     stdlib/string.c \
     base/base_io.c \
+    base/buddy.c \
     base/arena.c \
     native/wasi_linux.c
 """
@@ -79,6 +81,7 @@ clang \
     stdlib/stdlib.c \
     stdlib/string.c \
     base/base_io.c \
+    base/buddy.c \
     base/arena.c \
     native/wasi_macos.c \
     -lSystem \
@@ -109,6 +112,7 @@ cl \
     stdlib/stdlib.c \
     stdlib/string.c \
     base/base_io.c \
+    base/buddy.c \
     base/arena.c \
     native/wasi_windows.c \
     && \
@@ -124,6 +128,7 @@ link \
     stdlib.obj \
     string.obj \
     base_io.obj \
+    buddy.obj \
     arena.obj \
     wasi_windows.obj \
     /out:arena_windows.exe
