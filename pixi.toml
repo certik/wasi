@@ -23,13 +23,14 @@ clang \
     -o arena.wasm \
     standalone_arena.c \
     stdlib/stdio.c \
+    stdlib/stdlib.c \
     stdlib/string.c \
     base/base_io.c \
     base/arena.c \
     native/wasi_wasm.c
 """
 
-test_wasm = { cmd="wasmtime arena.wasm || echo 'wasmtime not found, install separately'", depends-on=["build_wasm"] }
+test_wasm = { cmd="wasmtime arena.wasm", depends-on=["build_wasm"] }
 
 [feature.wasm.dependencies]
 clang = ">=20.1.4,<21"
@@ -47,6 +48,7 @@ clang \
     -o arena_linux \
     standalone_arena.c \
     stdlib/stdio.c \
+    stdlib/stdlib.c \
     stdlib/string.c \
     base/base_io.c \
     base/arena.c \
@@ -71,6 +73,7 @@ clang \
     -o arena_macos \
     standalone_arena.c \
     stdlib/stdio.c \
+    stdlib/stdlib.c \
     stdlib/string.c \
     base/base_io.c \
     base/arena.c \
@@ -99,6 +102,7 @@ cl \
     /c \
     standalone_arena.c \
     stdlib/stdio.c \
+    stdlib/stdlib.c \
     stdlib/string.c \
     base/base_io.c \
     base/arena.c \
@@ -112,6 +116,7 @@ link \
     kernel32.lib \
     standalone_arena.obj \
     stdio.obj \
+    stdlib.obj \
     string.obj \
     base_io.obj \
     arena.obj \
