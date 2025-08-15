@@ -58,7 +58,7 @@ void* wasi_heap_base();
 // memory.grow WASM instruction
 // Returns the pointer to the new region (equal to the last `heap_base()+heap_size()`)
 // Accepts the number of bytes (not pages) to grow
-void* heap_grow(size_t num_bytes);
+void* wasi_heap_grow(size_t num_bytes);
 
 // Returns the size of the heap in bytes
 // Computed using the memory.size WASM instruction minus heap_base()

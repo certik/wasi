@@ -88,8 +88,8 @@ static inline uintptr_t align(uintptr_t val, uintptr_t alignment) {
   return (val + alignment - 1) & ~(alignment - 1);
 }
 
-// Implementation of heap_grow(). Commits pages using `mprotect`.
-void* heap_grow(size_t num_bytes) {
+// Implementation of wasi_heap_grow(). Commits pages using `mprotect`.
+void* wasi_heap_grow(size_t num_bytes) {
     size_t num_pages = align(num_bytes, WASM_PAGE_SIZE) / WASM_PAGE_SIZE;
     if (linux_heap_base == NULL) {
         return NULL;

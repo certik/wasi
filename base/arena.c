@@ -76,7 +76,7 @@ static void allocation_error(void) {
 void arena_init(Arena* arena) {
     size_t current_size = wasi_heap_size();
     if (current_size == 0) {
-        if (heap_grow(WASM_PAGE_SIZE) == NULL) { // Try to allocate one page
+        if (wasi_heap_grow(WASM_PAGE_SIZE) == NULL) { // Try to allocate one page
             allocation_error();
         }
         current_size = wasi_heap_size();
@@ -107,7 +107,7 @@ void* arena_alloc(Arena* arena, size_t size) {
         size_t needed_bytes = (arena->offset + size) - arena->capacity;
         size_t pages_to_grow = (needed_bytes + WASM_PAGE_SIZE - 1) / WASM_PAGE_SIZE;
 
-        if (heap_grow(pages_to_grow*WASM_PAGE_SIZE) == NULL) {
+        if (wasi_heap_grow(pages_to_grow*WASM_PAGE_SIZE) == NULL) {
             allocation_error();
         }
         arena->capacity += pages_to_grow * WASM_PAGE_SIZE;
