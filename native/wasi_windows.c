@@ -1,6 +1,8 @@
 #include <wasi.h>
 #include <stdlib.h>
 
+#include <buddy.h>
+
 // =============================================================================
 // == Windows Implementation (MSVC)
 // =============================================================================
@@ -133,6 +135,7 @@ int main();
 // Entry point for Windows - MSVC uses _start but we need to set it up correctly
 void _start() {
     ensure_heap_initialized();
+    buddy_init();
     int status = main();
     wasi_proc_exit(status);
 }

@@ -13,9 +13,6 @@
 
 
 int main(void) {
-    // The underlying buddy allocator must be initialized before the arena can be used.
-    buddy_init();
-
     printf("## Creating a new arena with an initial size of 4KB...\n");
     // Create the arena. The new API returns a pointer to the arena structure.
     arena_t *main_arena = arena_new(4096);
