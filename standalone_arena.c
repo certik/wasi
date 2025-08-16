@@ -48,17 +48,42 @@ int main(void) {
     printf("Strings allocated. Printing from the arena:\n");
     printf("%s%s%s\n", p1, p2, p3);
 
+    // --- Part 2: Save Position and Make Temporary Allocations ---
+    printf("\n## Part 2: Saving position and making temporary allocations\n");
+    arena_pos_t saved_pos = arena_get_pos(main_arena);
+    printf("Position saved.\n");
+
+    char s_temp[] = "[--THIS IS A TEMPORARY ALLOCATION THAT WILL BE ROLLED BACK--]";
+    char *p_temp = arena_alloc(main_arena, strlen(s_temp) + 1);
+    strcpy(p_temp, s_temp);
+    printf("Allocated temporary string: %s\n", p_temp);
+
+    // --- Part 3: Reset to Saved Position ---
+    printf("\n## Part 3: Resetting to saved position\n");
+    arena_reset_to(main_arena, saved_pos);
+    printf("Arena reset to saved position. The temporary allocation is now invalid.\n");
+
+    // --- Part 4: Allocate Again ---
+    printf("\n## Part 4: Allocating again from the saved position\n");
+    char s4[] = "String 3, allocated after reset.\n";
+    char *p4 = arena_alloc(main_arena, strlen(s3) + 1);
+    strcpy(p4, s4);
+    printf("Allocated: %s", p4);
+
+    printf("\nFinal content of the arena (first two strings are still valid):\n");
+    printf("-> %s%s%s%s", p1, p2, p3, p4);
+
     // --- Reset Example ---
     printf("## Resetting the arena...\n");
     arena_reset(main_arena);
     printf("Arena has been reset. Pointers p1, p2, and p3 are now invalid.\n");
     printf("Allocating a new string to show that memory is being reused:\n");
 
-    char s4[] = "This new string overwrites the old data after the reset!\n";
-    char *p4 = arena_alloc(main_arena, strlen(s4) + 1);
-    strcpy(p4, s4);
+    char s5[] = "This new string overwrites the old data after the reset!\n";
+    char *p5 = arena_alloc(main_arena, strlen(s5) + 1);
+    strcpy(p5, s5);
 
-    printf("%s\n", p4);
+    printf("%s\n", p5);
 
     // --- Freeing Example ---
     printf("## Freeing the arena...\n");
