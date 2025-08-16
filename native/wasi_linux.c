@@ -1,5 +1,6 @@
 #include <wasi.h>
 #include <stdlib.h>
+#include <buddy.h>
 
 // =============================================================================
 // == Linux (x86_64) Implementation
@@ -124,6 +125,7 @@ int main();
 // The entry point for a -nostdlib Linux program is `_start`.
 void _start() {
     ensure_heap_initialized();
+    buddy_init();
     int status = main();
     wasi_proc_exit(status);
 }

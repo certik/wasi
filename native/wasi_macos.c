@@ -2,6 +2,8 @@
 
 #include <stdlib.h>
 
+#include <buddy.h>
+
 // =============================================================================
 // == macOS Implementation
 // =============================================================================
@@ -112,6 +114,7 @@ int main();
 // Entry point for macOS.
 void _start() {
     ensure_heap_initialized();
+    buddy_init();
     int status = main();
     wasi_proc_exit(status);
 }
