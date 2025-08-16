@@ -166,18 +166,3 @@ void arena_reset_to(arena_t *arena, arena_pos_t pos) {
 
     arena->remaining_in_chunk = (current_pos < chunk_end) ? (chunk_end - current_pos) : 0;
 }
-
-void arena_reset(arena_t *arena) {
-    if (!arena || !arena->first_chunk) {
-        return;
-    }
-
-    // A full reset is just a reset to the beginning of the first chunk.
-    arena_pos_t start_pos;
-    start_pos.chunk = arena->first_chunk;
-
-    uintptr_t data_start = align_up((uintptr_t)(arena->first_chunk + 1));
-    start_pos.ptr = (char *)data_start;
-
-    arena_reset_to(arena, start_pos);
-}

@@ -64,14 +64,6 @@ arena_pos_t arena_get_pos(arena_t *arena);
 void arena_reset_to(arena_t *arena, arena_pos_t pos);
 
 /**
- * @brief Resets the arena completely, making all its memory available for reuse.
- * This is equivalent to resetting to the very beginning of the arena.
- *
- * @param arena A pointer to the arena.
- */
-void arena_reset(arena_t *arena);
-
-/**
  * @brief Deallocates all memory used by the arena.
  *
  * This function iterates through all chunks owned by the arena, frees them
