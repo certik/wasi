@@ -19,7 +19,7 @@ clang \
     -Wl,--no-entry \
     -Wl,--export=__heap_base \
     -Wl,--export=_start \
-    -Wl,--initial-memory=13107200 \
+    -Wl,--initial-memory=131072 \
     -o arena.wasm \
     standalone_arena.c \
     stdlib/assert.c \
