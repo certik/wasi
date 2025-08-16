@@ -61,7 +61,7 @@ arena_t *arena_new(size_t initial_size) {
 
     arena->current_ptr = (char *)data_start;
     arena->remaining_in_chunk = (data_start < chunk_end) ? (chunk_end - data_start) : 0;
-    
+
     return arena;
 }
 
@@ -76,7 +76,7 @@ void arena_reset(arena_t *arena) {
 
     uintptr_t data_start = align_up((uintptr_t)(chunk + 1));
     uintptr_t chunk_end = (uintptr_t)chunk + chunk->size;
-    
+
     arena->current_ptr = (char *)data_start;
     arena->remaining_in_chunk = (data_start < chunk_end) ? (chunk_end - data_start) : 0;
 }
@@ -121,19 +121,19 @@ try_alloc:
         struct arena_chunk* chunk = arena->current_chunk;
         uintptr_t data_start = align_up((uintptr_t)(chunk + 1));
         uintptr_t chunk_end = (uintptr_t)chunk + chunk->size;
-    
+
         arena->current_ptr = (char *)data_start;
         arena->remaining_in_chunk = (data_start < chunk_end) ? (chunk_end - data_start) : 0;
 
         goto try_alloc; // Retry allocation in the next chunk.
     }
-    
+
     // No more reusable chunks are available, so allocate a new one.
     size_t new_chunk_data_size = arena->default_chunk_size;
     if (aligned_size > new_chunk_data_size) {
         new_chunk_data_size = aligned_size; // Ensure the new chunk is large enough.
     }
-    
+
     size_t total_alloc_size = sizeof(struct arena_chunk) + new_chunk_data_size;
     struct arena_chunk *new_chunk = buddy_alloc(total_alloc_size);
     if (!new_chunk) {
@@ -156,7 +156,7 @@ try_alloc:
     uintptr_t chunk_end = (uintptr_t)new_chunk + total_alloc_size;
     arena->current_ptr = (char *)data_start;
     arena->remaining_in_chunk = (data_start < chunk_end) ? (chunk_end - data_start) : 0;
-    
+
     // Retry the allocation now that we have a new, sufficiently large chunk.
     goto try_alloc;
 }
