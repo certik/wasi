@@ -151,7 +151,7 @@ arena_pos_t arena_get_pos(arena_t *arena) {
     return pos;
 }
 
-void arena_reset_to(arena_t *arena, arena_pos_t pos) {
+void arena_reset(arena_t *arena, arena_pos_t pos) {
     if (!arena || !pos.chunk || !pos.ptr) {
         return;
     }

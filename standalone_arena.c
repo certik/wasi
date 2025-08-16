@@ -61,7 +61,7 @@ int main(void) {
 
     // --- Part 3: Reset to Saved Position ---
     printf("\n## Part 3: Resetting to saved position\n");
-    arena_reset_to(main_arena, saved_pos);
+    arena_reset(main_arena, saved_pos);
     printf("Arena reset to saved position. The temporary allocation is now invalid.\n");
 
     // --- Part 4: Allocate Again ---
@@ -76,7 +76,7 @@ int main(void) {
 
     // --- Reset Example ---
     printf("## Resetting the arena...\n");
-    arena_reset_to(main_arena, saved_pos_0);
+    arena_reset(main_arena, saved_pos_0);
     printf("Arena has been reset. Pointers p1, p2, and p3 are now invalid.\n");
     printf("Allocating a new string to show that memory is being reused:\n");
 

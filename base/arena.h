@@ -61,7 +61,7 @@ arena_pos_t arena_get_pos(arena_t *arena);
  * @param arena A pointer to the arena.
  * @param pos The saved position to restore.
  */
-void arena_reset_to(arena_t *arena, arena_pos_t pos);
+void arena_reset(arena_t *arena, arena_pos_t pos);
 
 /**
  * @brief Deallocates all memory used by the arena.
