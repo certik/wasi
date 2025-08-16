@@ -65,39 +65,6 @@ arena_t *arena_new(size_t initial_size) {
     return arena;
 }
 
-void arena_reset(arena_t *arena) {
-    if (!arena || !arena->first_chunk) {
-        return;
-    }
-
-    // Reset current chunk and allocation pointer to the beginning of the first chunk.
-    arena->current_chunk = arena->first_chunk;
-    struct arena_chunk *chunk = arena->first_chunk;
-
-    uintptr_t data_start = align_up((uintptr_t)(chunk + 1));
-    uintptr_t chunk_end = (uintptr_t)chunk + chunk->size;
-
-    arena->current_ptr = (char *)data_start;
-    arena->remaining_in_chunk = (data_start < chunk_end) ? (chunk_end - data_start) : 0;
-}
-
-void arena_free(arena_t *arena) {
-    if (!arena) {
-        return;
-    }
-
-    // Free each chunk in the linked list.
-    struct arena_chunk *current = arena->first_chunk;
-    while (current) {
-        struct arena_chunk *next = current->next;
-        buddy_free(current);
-        current = next;
-    }
-
-    // Finally, free the arena controller struct.
-    buddy_free(arena);
-}
-
 void *arena_alloc(arena_t *arena, size_t size) {
     if (!arena || size == 0) {
         return NULL;
@@ -159,4 +126,58 @@ try_alloc:
 
     // Retry the allocation now that we have a new, sufficiently large chunk.
     goto try_alloc;
+}
+
+void arena_free(arena_t *arena) {
+    if (!arena) return;
+    struct arena_chunk *current = arena->first_chunk;
+    while (current) {
+        struct arena_chunk *next = current->next;
+        buddy_free(current);
+        current = next;
+    }
+    buddy_free(arena);
+}
+
+arena_pos_t arena_get_pos(arena_t *arena) {
+    arena_pos_t pos;
+    if (arena) {
+        pos.chunk = arena->current_chunk;
+        pos.ptr = arena->current_ptr;
+    } else {
+        pos.chunk = NULL;
+        pos.ptr = NULL;
+    }
+    return pos;
+}
+
+void arena_reset_to(arena_t *arena, arena_pos_t pos) {
+    if (!arena || !pos.chunk || !pos.ptr) {
+        return;
+    }
+
+    // Restore the state from the saved position
+    arena->current_chunk = pos.chunk;
+    arena->current_ptr = pos.ptr;
+
+    // Recalculate the remaining size in the restored chunk
+    uintptr_t chunk_end = (uintptr_t)pos.chunk + pos.chunk->size;
+    uintptr_t current_pos = (uintptr_t)pos.ptr;
+
+    arena->remaining_in_chunk = (current_pos < chunk_end) ? (chunk_end - current_pos) : 0;
+}
+
+void arena_reset(arena_t *arena) {
+    if (!arena || !arena->first_chunk) {
+        return;
+    }
+
+    // A full reset is just a reset to the beginning of the first chunk.
+    arena_pos_t start_pos;
+    start_pos.chunk = arena->first_chunk;
+
+    uintptr_t data_start = align_up((uintptr_t)(arena->first_chunk + 1));
+    start_pos.ptr = (char *)data_start;
+
+    arena_reset_to(arena, start_pos);
 }
