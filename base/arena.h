@@ -1,16 +1,75 @@
 #pragma once
 
 #include <stddef.h>
-#include <stdint.h>
 
+// An opaque data type for the arena allocator.
+typedef struct arena_s arena_t;
 
+// Forward-declare the internal chunk struct. This is needed for the arena_pos_t
+// but keeps the full definition private to the .c file.
+struct arena_chunk;
+
+/**
+ * @brief A handle representing a specific position within the arena.
+ * Use this to save the arena's state and later reset back to it.
+ */
 typedef struct {
-    uint8_t* base;
-    size_t capacity;
-    size_t offset;
-} Arena;
+    struct arena_chunk *chunk;
+    char *ptr;
+} arena_pos_t;
 
-static void allocation_error();
-void arena_init(Arena* arena);
-void* arena_alloc(Arena* arena, size_t size);
-void arena_reset(Arena* arena); 
+
+/**
+ * @brief Creates a new arena allocator.
+ *
+ * This function initializes an arena and allocates an initial memory chunk
+ * from the buddy allocator.
+ * @param initial_size The suggested size for the first chunk. The actual size
+ * may be larger to meet alignment and minimum size requirements.
+ * @return A pointer to the newly created arena, or NULL on failure.
+ */
+arena_t *arena_new(size_t initial_size);
+
+/**
+ * @brief Allocates a block of memory from the arena.
+ *
+ * Memory is allocated using a bump pointer for high efficiency. If the current
+ * chunk is full, the arena will advance to the next chunk (if available after a
+ * reset) or allocate a new one from the buddy system.
+ *
+ * @param arena A pointer to the arena.
+ * @param size The number of bytes to allocate.
+ * @return A pointer to the allocated memory, aligned to 16 bytes.
+ * Returns NULL if the arena is invalid or allocation fails.
+ */
+void *arena_alloc(arena_t *arena, size_t size);
+
+/**
+ * @brief Captures the current allocation position in the arena.
+ *
+ * @param arena A pointer to the arena.
+ * @return An arena_pos_t handle that can be used with arena_reset_to().
+ */
+arena_pos_t arena_get_pos(arena_t *arena);
+
+/**
+ * @brief Resets the arena's allocation pointer to a previously saved position.
+ *
+ * This invalidates all allocations made since the position was saved,
+ * making that memory available for new allocations.
+ *
+ * @param arena A pointer to the arena.
+ * @param pos The saved position to restore.
+ */
+void arena_reset(arena_t *arena, arena_pos_t pos);
+
+/**
+ * @brief Deallocates all memory used by the arena.
+ *
+ * This function iterates through all chunks owned by the arena, frees them
+ * using `buddy_free`, and finally frees the arena structure itself.
+ * The arena pointer is invalid after this call.
+ *
+ * @param arena A pointer to the arena.
+ */
+void arena_free(arena_t *arena);

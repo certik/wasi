@@ -1,128 +1,168 @@
-/**
- * @file standalone_arena.c
- * @brief A simple, standalone C program with an Arena allocator.
- *
- * This program does not link against the standard C library (`-nostdlib`) on Linux and WASM.
- * On macOS, it links dynamically against libSystem (libc equivalent) but avoids using standard library functions beyond mmap, mprotect, writev, and _exit.
- * On Windows, it uses MSVC and calls Windows API directly (VirtualAlloc, WriteFile, etc.) without C runtime.
- * It provides four implementations chosen at compile time:
- * 1. WebAssembly (WASM) using WASI system calls.
- * 2. Linux using raw syscalls.
- * 3. macOS using libc wrappers for syscalls.
- * 4. Windows using Windows API directly.
- *
- * The program implements an Arena allocator on top of a heap that is managed
- * either by the WASM runtime, by `mmap` on Linux/macOS, or by `VirtualAlloc` on Windows. It then allocates a few
- * strings onto the arena and prints them to stdout using the `fd_write` syscall.
- *
- * --- Compilation Instructions ---
- *
- * For WebAssembly (WASI):
- * clang --target=wasm32-wasi -nostdlib -Wl,--no-entry -Wl,--export=__heap_base -Wl,--export=_start -Wl,--initial-memory=131072 -o arena.wasm standalone_arena.c
- *
- * To Run with wasmtime:
- * wasmtime arena.wasm
- *
- * For Linux (x86_64):
- * gcc -nostdlib -o arena_linux standalone_arena.c
- *
- * To Run on Linux:
- * ./arena_linux
- *
- * For macOS (x86_64 or arm64):
- * clang -nostdlib -o arena_macos standalone_arena.c -lSystem -Wl,-e,__start
- *
- * To Run on macOS:
- * ./arena_macos
- *
- * For Windows (MSVC):
- * cl /nologo /GS- /Gs0 /kernel /c standalone_arena.c /Fo:standalone_arena.obj
- * link /nologo /subsystem:console /nodefaultlib /entry:_start kernel32.lib standalone_arena.obj /out:arena_windows.exe
- *
- * To Run on Windows:
- * arena_windows.exe
- */
+#include "arena.h"
+#include "buddy.h"
+#include <stdint.h> // For uintptr_t
 
-#include <arena.h>
+// All allocations will be aligned to this boundary (must be a power of two).
+#define ARENA_ALIGNMENT 16
+// New chunks will be at least this large.
+#define MIN_CHUNK_SIZE 4096
 
-#include <stddef.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <base_io.h>
-#include <wasi.h>
-#include <string.h>
+// Represents a single chunk of memory obtained from the buddy allocator.
+struct arena_chunk {
+    struct arena_chunk *next;
+    // Total size of the block returned by buddy_alloc for this chunk.
+    size_t size;
+    // The data area for this chunk begins immediately after this struct.
+};
 
+// The main arena structure. Its definition is hidden from the public API.
+struct arena_s {
+    struct arena_chunk *first_chunk;
+    struct arena_chunk *current_chunk;
+    char *current_ptr;
+    size_t remaining_in_chunk;
+    size_t default_chunk_size;
+};
 
-
-// --- Arena Allocator Implementation ---
-
-// Function to print error and exit
-static void allocation_error(void) {
-    const char* err_str = "Error: Failed to grow memory for arena allocation.\n";
-    ciovec_t iov = { .buf = err_str, .buf_len = strlen(err_str) };
-    write_all(1, &iov, 1); // Write to stdout; alternatively use fd=2 for stderr
-    wasi_proc_exit(1);
+// Aligns a value up to the nearest multiple of ARENA_ALIGNMENT.
+static inline uintptr_t align_up(uintptr_t val) {
+    return (val + ARENA_ALIGNMENT - 1) & ~(uintptr_t)(ARENA_ALIGNMENT - 1);
 }
 
-/**
- * @brief Initializes an Arena allocator.
- *
- * It sets up the arena to use the available memory from `__heap_base` up to
- * the current memory size. If no memory is available, it tries to grow it.
- *
- * @param arena Pointer to the Arena struct to initialize.
- */
-void arena_init(Arena* arena) {
-    size_t current_size = wasi_heap_size();
-    if (current_size == 0) {
-        if (wasi_heap_grow(WASM_PAGE_SIZE) == NULL) { // Try to allocate one page
-            allocation_error();
-        }
-        current_size = wasi_heap_size();
+arena_t *arena_new(size_t initial_size) {
+    // Allocate the arena controller struct itself.
+    arena_t *arena = buddy_alloc(sizeof(arena_t));
+    if (!arena) {
+        return NULL;
     }
 
-    arena->base = (uint8_t*)wasi_heap_base();
-    arena->capacity = current_size;
-    arena->offset = 0;
+    if (initial_size < MIN_CHUNK_SIZE) {
+        initial_size = MIN_CHUNK_SIZE;
+    }
+    arena->default_chunk_size = initial_size;
+    arena->first_chunk = NULL;
+
+    // Allocate the first chunk.
+    size_t total_alloc_size = sizeof(struct arena_chunk) + initial_size;
+    struct arena_chunk *first = buddy_alloc(total_alloc_size);
+    if (!first) {
+        buddy_free(arena);
+        return NULL;
+    }
+    first->next = NULL;
+    first->size = total_alloc_size;
+
+    // Initialize arena state to point to the start of the first chunk.
+    arena->first_chunk = first;
+    arena->current_chunk = first;
+
+    uintptr_t data_start = align_up((uintptr_t)(first + 1));
+    uintptr_t chunk_end = (uintptr_t)first + total_alloc_size;
+
+    arena->current_ptr = (char *)data_start;
+    arena->remaining_in_chunk = (data_start < chunk_end) ? (chunk_end - data_start) : 0;
+
+    return arena;
 }
 
-/**
- * @brief Allocates a block of memory from the arena.
- *
- * This is a simple bump allocator. If the arena is out of space, it will
- * attempt to grow the underlying heap.
- *
- * @param arena Pointer to the Arena.
- * @param size The number of bytes to allocate.
- * @return A pointer to the allocated memory (always succeeds or exits).
- */
-void* arena_alloc(Arena* arena, size_t size) {
-    if (arena->base == NULL) allocation_error();
-
-    // Simple alignment to 8 bytes
-    size = (size + 7) & ~7;
-
-    if (arena->offset + size > arena->capacity) {
-        size_t needed_bytes = (arena->offset + size) - arena->capacity;
-        size_t pages_to_grow = (needed_bytes + WASM_PAGE_SIZE - 1) / WASM_PAGE_SIZE;
-
-        if (wasi_heap_grow(pages_to_grow*WASM_PAGE_SIZE) == NULL) {
-            allocation_error();
-        }
-        arena->capacity += pages_to_grow * WASM_PAGE_SIZE;
+void *arena_alloc(arena_t *arena, size_t size) {
+    if (!arena || size == 0) {
+        return NULL;
     }
 
-    void* ptr = arena->base + arena->offset;
-    arena->offset += size;
-    return ptr;
+    size_t aligned_size = (size + ARENA_ALIGNMENT - 1) & ~(size_t)(ARENA_ALIGNMENT - 1);
+
+try_alloc:
+    // If the current chunk has enough space, perform a simple bump allocation.
+    if (aligned_size <= arena->remaining_in_chunk) {
+        void *ptr = arena->current_ptr;
+        arena->current_ptr += aligned_size;
+        arena->remaining_in_chunk -= aligned_size;
+        return ptr;
+    }
+
+    // Not enough space. If a next chunk already exists (from previous use), move to it.
+    if (arena->current_chunk && arena->current_chunk->next) {
+        arena->current_chunk = arena->current_chunk->next;
+
+        struct arena_chunk* chunk = arena->current_chunk;
+        uintptr_t data_start = align_up((uintptr_t)(chunk + 1));
+        uintptr_t chunk_end = (uintptr_t)chunk + chunk->size;
+
+        arena->current_ptr = (char *)data_start;
+        arena->remaining_in_chunk = (data_start < chunk_end) ? (chunk_end - data_start) : 0;
+
+        goto try_alloc; // Retry allocation in the next chunk.
+    }
+
+    // No more reusable chunks are available, so allocate a new one.
+    size_t new_chunk_data_size = arena->default_chunk_size;
+    if (aligned_size > new_chunk_data_size) {
+        new_chunk_data_size = aligned_size; // Ensure the new chunk is large enough.
+    }
+
+    size_t total_alloc_size = sizeof(struct arena_chunk) + new_chunk_data_size;
+    struct arena_chunk *new_chunk = buddy_alloc(total_alloc_size);
+    if (!new_chunk) {
+        return NULL; // Buddy allocation failed.
+    }
+
+    new_chunk->next = NULL;
+    new_chunk->size = total_alloc_size;
+
+    // Link the new chunk to the end of the list.
+    if (arena->current_chunk) {
+        arena->current_chunk->next = new_chunk;
+    } else {
+        arena->first_chunk = new_chunk;
+    }
+    arena->current_chunk = new_chunk;
+
+    // Set the allocation pointer to the start of the new chunk.
+    uintptr_t data_start = align_up((uintptr_t)(new_chunk + 1));
+    uintptr_t chunk_end = (uintptr_t)new_chunk + total_alloc_size;
+    arena->current_ptr = (char *)data_start;
+    arena->remaining_in_chunk = (data_start < chunk_end) ? (chunk_end - data_start) : 0;
+
+    // Retry the allocation now that we have a new, sufficiently large chunk.
+    goto try_alloc;
 }
 
-/**
- * @brief Resets the arena, effectively "freeing" all allocations.
- *
- * @param arena Pointer to the Arena.
- */
-void arena_reset(Arena* arena) {
-    arena->offset = 0;
+void arena_free(arena_t *arena) {
+    if (!arena) return;
+    struct arena_chunk *current = arena->first_chunk;
+    while (current) {
+        struct arena_chunk *next = current->next;
+        buddy_free(current);
+        current = next;
+    }
+    buddy_free(arena);
+}
+
+arena_pos_t arena_get_pos(arena_t *arena) {
+    arena_pos_t pos;
+    if (arena) {
+        pos.chunk = arena->current_chunk;
+        pos.ptr = arena->current_ptr;
+    } else {
+        pos.chunk = NULL;
+        pos.ptr = NULL;
+    }
+    return pos;
+}
+
+void arena_reset(arena_t *arena, arena_pos_t pos) {
+    if (!arena || !pos.chunk || !pos.ptr) {
+        return;
+    }
+
+    // Restore the state from the saved position
+    arena->current_chunk = pos.chunk;
+    arena->current_ptr = pos.ptr;
+
+    // Recalculate the remaining size in the restored chunk
+    uintptr_t chunk_end = (uintptr_t)pos.chunk + pos.chunk->size;
+    uintptr_t current_pos = (uintptr_t)pos.ptr;
+
+    arena->remaining_in_chunk = (current_pos < chunk_end) ? (chunk_end - current_pos) : 0;
 }
