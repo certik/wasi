@@ -1,41 +1,41 @@
 #include <buddy.h>
 #include <wasi.h>
-
-/*
- * Buddy allocator implementation.
- * Manages memory in power-of-two blocks starting from a minimum page size of 4096 bytes.
- * Allocations are rounded up to the nearest power-of-two multiple of the min page size.
- * Metadata is stored in a fixed-size array supporting up to 4GB of managed memory.
- */
+#include <stdint.h> // Required for uintptr_t
+#include <stddef.h> // Required for NULL
+#include <stdlib.h> // Required for NULL
 
 #define MIN_PAGE_SIZE 4096UL
-#define MAX_PAGES (1UL << 20)  // Supports up to 4GB (1M * 4KB)
-#define MAX_ORDER 20  // 2^20 * 4KB = 4GB
+#define MAX_ORDER 20 // 2^20 * 4KB = 4GB
 
-struct page {
-    struct page *next;
-    struct page *prev;
+/*
+ * Header for each memory block (free or allocated).
+ * This header is stored "inline" at the beginning of each block of memory.
+ */
+struct buddy_block {
+    // The order of the block. Positive if free, negative if allocated.
     int order;
+    struct buddy_block *prev;
+    struct buddy_block *next;
 };
 
 struct list_head {
-    struct page *first;
+    struct buddy_block *first;
 };
 
-static struct page pages[MAX_PAGES];
+// free_lists[i] contains a doubly-linked list of free blocks of order i.
 static struct list_head free_lists[MAX_ORDER + 1];
 static void *heap_base;
 
-static void list_add(struct list_head *lh, struct page *p) {
+static void list_add(struct list_head *lh, struct buddy_block *p) {
     p->next = lh->first;
-    p->prev = (struct page *)0;
+    p->prev = NULL;
     if (lh->first) {
         lh->first->prev = p;
     }
     lh->first = p;
 }
 
-static void list_remove(struct list_head *lh, struct page *p) {
+static void list_remove(struct list_head *lh, struct buddy_block *p) {
     if (p->prev) {
         p->prev->next = p->next;
     } else {
@@ -47,145 +47,153 @@ static void list_remove(struct list_head *lh, struct page *p) {
 }
 
 static void add_memory(void *mem, size_t bytes) {
-    if (bytes < MIN_PAGE_SIZE) {
-        return;
-    }
-    unsigned long start = (unsigned long)mem;
-    unsigned long mis = start % MIN_PAGE_SIZE;
+    uintptr_t start = (uintptr_t)mem;
+    uintptr_t end = start + bytes;
+
+    // Align start address up to a MIN_PAGE_SIZE boundary
+    uintptr_t mis = start % MIN_PAGE_SIZE;
     if (mis) {
         start += MIN_PAGE_SIZE - mis;
     }
-    size_t remaining = bytes - (start - (unsigned long)mem);
-    remaining -= remaining % MIN_PAGE_SIZE;
-    while (remaining >= MIN_PAGE_SIZE) {
+
+    // Carve the memory region into the largest possible power-of-two blocks
+    while (start + MIN_PAGE_SIZE <= end) {
         int order = 0;
-        size_t bs = MIN_PAGE_SIZE;
-        while ((bs << 1) <= remaining && (start % (bs << 1) == 0) && order < MAX_ORDER) {
-            bs <<= 1;
+        size_t block_size = MIN_PAGE_SIZE;
+        while ((block_size << 1) <= (end - start) && (start % (block_size << 1) == 0) && order < MAX_ORDER) {
+            block_size <<= 1;
             order++;
         }
-        size_t idx = (start - (unsigned long)heap_base) / MIN_PAGE_SIZE;
-        if (idx + (1UL << order) > MAX_PAGES) {
-            break;  // Exceeds supported max
-        }
-        struct page *p = &pages[idx];
+
+        struct buddy_block *p = (struct buddy_block *)start;
         p->order = order;
-        p->next = (struct page *)0;
-        p->prev = (struct page *)0;
         list_add(&free_lists[order], p);
-        start += bs;
-        remaining -= bs;
+
+        start += block_size;
     }
 }
 
 void buddy_init(void) {
     heap_base = wasi_heap_base();
-    for (size_t i = 0; i < MAX_PAGES; i++) {
-        pages[i].order = -1;
-        pages[i].next = (struct page *)0;
-        pages[i].prev = (struct page *)0;
-    }
     for (int o = 0; o <= MAX_ORDER; o++) {
-        free_lists[o].first = (struct page *)0;
+        free_lists[o].first = NULL;
     }
     size_t initial_size = wasi_heap_size();
-    add_memory(heap_base, initial_size);
+    if (initial_size > 0) {
+        add_memory(heap_base, initial_size);
+    }
 }
 
 static void *buddy_alloc_order(int order) {
     if (order < 0 || order > MAX_ORDER) {
-        return (void *)0;
+        return NULL;
     }
-    int o;
-    for (o = order; o <= MAX_ORDER; o++) {
-        struct list_head *lh = &free_lists[o];
-        if (lh->first) {
-            struct page *p = lh->first;
-            list_remove(lh, p);
-            while (o > order) {
-                o--;
-                int num_min_pages = 1 << o;
-                int buddy_idx = (int)((p - pages) + num_min_pages);
-                struct page *buddy_p = &pages[buddy_idx];
-                buddy_p->order = o;
-                buddy_p->next = (struct page *)0;
-                buddy_p->prev = (struct page *)0;
-                list_add(&free_lists[o], buddy_p);
-            }
-            p->order = - (order + 1);
-            int idx = (int)(p - pages);
-            void *addr = (void *)((unsigned long)heap_base + (unsigned long)idx * MIN_PAGE_SIZE);
-            return addr;
+
+    // Find the smallest available block that is large enough
+    int current_order;
+    for (current_order = order; current_order <= MAX_ORDER; current_order++) {
+        if (free_lists[current_order].first) {
+            break; // Found a suitable block
         }
     }
-    // Grow heap
-    size_t current_size = wasi_heap_size();
-    unsigned long current_end = (unsigned long)heap_base + current_size;
-    size_t bs = MIN_PAGE_SIZE << (size_t)order;
-    unsigned long mis = current_end % bs;
-    size_t pad = mis ? bs - mis : 0;
-    size_t min_grow = pad + bs;
-    size_t wp = WASM_PAGE_SIZE;
-    size_t grow_by = ((min_grow + wp - 1) / wp) * wp;
-    void *new_mem = wasi_heap_grow(grow_by);
-    if (!new_mem) {
-        wasi_proc_exit(1);
+
+    // If no block is available, grow the heap
+    if (current_order > MAX_ORDER) {
+        size_t required_size = MIN_PAGE_SIZE << order;
+        size_t grow_by = ((required_size + WASM_PAGE_SIZE - 1) / WASM_PAGE_SIZE) * WASM_PAGE_SIZE;
+        void *new_mem = wasi_heap_grow(grow_by);
+        if (!new_mem) {
+            wasi_proc_exit(1); // Or return NULL on failure
+        }
+        add_memory(new_mem, grow_by);
+        return buddy_alloc_order(order); // Retry allocation
     }
-    add_memory(new_mem, grow_by);
-    return buddy_alloc_order(order);
+
+    // We have a block of order 'current_order'. Remove it from its free list.
+    struct buddy_block *p = free_lists[current_order].first;
+    list_remove(&free_lists[current_order], p);
+
+    // Split the block until it's the desired size
+    while (current_order > order) {
+        current_order--;
+        size_t half_size = MIN_PAGE_SIZE << current_order;
+        struct buddy_block *buddy = (struct buddy_block *)((uintptr_t)p + half_size);
+        buddy->order = current_order;
+        list_add(&free_lists[current_order], buddy);
+    }
+
+    // Mark the block as allocated by making its order negative
+    p->order = -(order + 1);
+
+    // Return the pointer to the memory *after* our inline header
+    return (void *)(p + 1);
 }
 
 void *buddy_alloc(size_t size) {
     if (size == 0) {
-        return (void *)0;
+        return NULL;
     }
+
+    // Add space for our header to the requested size
+    size += sizeof(struct buddy_block);
+
+    // Calculate the order required for the allocation
     int order = 0;
-    size_t bs = MIN_PAGE_SIZE;
-    while (bs < size) {
-        bs <<= 1;
+    size_t block_size = MIN_PAGE_SIZE;
+    while (block_size < size) {
+        block_size <<= 1;
         order++;
         if (order > MAX_ORDER) {
-            return (void *)0;
+            return NULL; // Request is too large
         }
     }
     return buddy_alloc_order(order);
 }
 
 void buddy_free(void *ptr) {
-    if (ptr == (void *)0) {
+    if (ptr == NULL) {
         return;
     }
-    unsigned long addr = (unsigned long)ptr;
-    if (addr % MIN_PAGE_SIZE != 0) {
-        return;  // Misaligned
-    }
-    size_t idx = (addr - (unsigned long)heap_base) / MIN_PAGE_SIZE;
-    if (idx >= MAX_PAGES) {
-        return;
-    }
-    struct page *p = &pages[idx];
+
+    // Get the block header from the user-provided pointer
+    struct buddy_block *p = ((struct buddy_block *)ptr) - 1;
+
+    // Retrieve the original order and mark the block as free
     int order = -p->order - 1;
     if (order < 0 || order > MAX_ORDER) {
-        return;
+        return; // Invalid pointer or heap corruption
     }
-    p->order = order;
+
+    uintptr_t heap_end = (uintptr_t)heap_base + wasi_heap_size();
+
+    // Coalesce with buddy if possible
     while (order < MAX_ORDER) {
-        int num_min_pages = 1 << order;
-        size_t buddy_idx = idx ^ (size_t)num_min_pages;
-        if (buddy_idx >= MAX_PAGES) {
+        size_t block_size = MIN_PAGE_SIZE << order;
+        uintptr_t p_addr = (uintptr_t)p;
+        uintptr_t buddy_addr = p_addr ^ block_size;
+
+        // Ensure the buddy is within the heap bounds before accessing it
+        if (buddy_addr < (uintptr_t)heap_base || buddy_addr >= heap_end) {
             break;
         }
-        struct page *buddy_p = &pages[buddy_idx];
-        if (buddy_p->order != order) {
-            break;
+
+        struct buddy_block *buddy = (struct buddy_block *)buddy_addr;
+
+        if (buddy->order != order) {
+            break; // Buddy is not free or not the same size
         }
-        list_remove(&free_lists[order], buddy_p);
-        if (buddy_idx < idx) {
-            idx = buddy_idx;
-            p = buddy_p;
+
+        // Buddy is free and of the same order, so merge them.
+        list_remove(&free_lists[order], buddy);
+
+        // The merged block starts at the lower of the two addresses
+        if (buddy_addr < p_addr) {
+            p = buddy;
         }
+
         order++;
-        p->order = order;
     }
+
+    p->order = order;
     list_add(&free_lists[order], p);
 }
