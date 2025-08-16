@@ -1,6 +1,6 @@
 #include <wasi.h>
 #include <stdlib.h>
-#incldee <buddy.h>
+#include <buddy.h>
 
 // =============================================================================
 // == Linux (x86_64) Implementation
