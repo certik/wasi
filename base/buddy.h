@@ -1,0 +1,7 @@
+#pragma once
+
+#include <stddef.h>
+
+void buddy_init(void);
+void *buddy_alloc(size_t size);
+void buddy_free(void *ptr);

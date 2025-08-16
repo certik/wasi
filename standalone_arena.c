@@ -8,6 +8,7 @@
 #include <arena.h>
 #include <string.h>
 #include <stdbool.h>
+#include <buddy.h>
 
 
 
@@ -53,6 +54,45 @@ int main(void) {
     ms2 = wasi_heap_size();
     printf("heap_size = %zu\n", ms2);
     assert(ms1 + (4+8)*WASM_PAGE_SIZE == ms2);
+
+    // Buddy allocator tests
+    {
+        buddy_init();
+
+        // Allocate a small block (will round up to MIN_PAGE_SIZE)
+        void* p1 = buddy_alloc(100);
+        if (!p1) {
+            printf("Allocation failed\n");
+            exit(1);
+        }
+        printf("Allocated p1\n");
+
+        // Allocate a larger block
+        void* p2 = buddy_alloc(8192);
+        if (!p2) {
+            printf("Allocation failed\n");
+            exit(1);
+        }
+        printf("Allocated p2\n");
+
+        // Free the first block
+        buddy_free(p1);
+        printf("Freed p1\n");
+
+        // Allocate again to demonstrate reuse
+        void* p3 = buddy_alloc(200);
+        if (!p3) {
+            printf("Allocation failed\n");
+            exit(1);
+        }
+        printf("Allocated p3\n");
+
+        // Free remaining
+        buddy_free(p2);
+        buddy_free(p3);
+
+        printf("All freed\n");
+    }
 
     return 0; // Success
 }
