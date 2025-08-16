@@ -5,6 +5,20 @@
 // An opaque data type for the arena allocator.
 typedef struct arena_s arena_t;
 
+// Forward-declare the internal chunk struct. This is needed for the arena_pos_t
+// but keeps the full definition private to the .c file.
+struct arena_chunk;
+
+/**
+ * @brief A handle representing a specific position within the arena.
+ * Use this to save the arena's state and later reset back to it.
+ */
+typedef struct {
+    struct arena_chunk *chunk;
+    char *ptr;
+} arena_pos_t;
+
+
 /**
  * @brief Creates a new arena allocator.
  *
@@ -31,11 +45,27 @@ arena_t *arena_new(size_t initial_size);
 void *arena_alloc(arena_t *arena, size_t size);
 
 /**
- * @brief Resets the arena for reuse.
+ * @brief Captures the current allocation position in the arena.
  *
- * This function resets the allocation pointer back to the beginning of the
- * first chunk. It does not free any memory, allowing all previously allocated
- * chunks to be quickly and efficiently reused.
+ * @param arena A pointer to the arena.
+ * @return An arena_pos_t handle that can be used with arena_reset_to().
+ */
+arena_pos_t arena_get_pos(arena_t *arena);
+
+/**
+ * @brief Resets the arena's allocation pointer to a previously saved position.
+ *
+ * This invalidates all allocations made since the position was saved,
+ * making that memory available for new allocations.
+ *
+ * @param arena A pointer to the arena.
+ * @param pos The saved position to restore.
+ */
+void arena_reset_to(arena_t *arena, arena_pos_t pos);
+
+/**
+ * @brief Resets the arena completely, making all its memory available for reuse.
+ * This is equivalent to resetting to the very beginning of the arena.
  *
  * @param arena A pointer to the arena.
  */
