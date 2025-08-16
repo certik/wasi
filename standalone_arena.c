@@ -15,7 +15,7 @@
 int main(void) {
     printf("## Creating a new arena with an initial size of 4KB...\n");
     // Create the arena. The new API returns a pointer to the arena structure.
-    arena_t *main_arena = arena_new(4096);
+    Arena *main_arena = arena_new(4096);
     if (!main_arena) {
         printf("Error: Failed to create the arena.\n");
         return 1;
