@@ -2,7 +2,6 @@
 #include <wasi.h>
 #include <stdint.h> // Required for uintptr_t
 #include <stddef.h> // Required for NULL
-#include <stdlib.h> // Required for NULL
 
 #define MIN_PAGE_SIZE 4096UL
 #define MAX_ORDER 20 // 2^20 * 4KB = 4GB
