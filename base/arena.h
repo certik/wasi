@@ -3,7 +3,7 @@
 #include <stddef.h>
 
 // An opaque data type for the arena allocator.
-typedef struct arena_s arena_t;
+typedef struct arena_s Arena;
 
 // Forward-declare the internal chunk struct. This is needed for the arena_pos_t
 // but keeps the full definition private to the .c file.
@@ -28,7 +28,7 @@ typedef struct {
  * may be larger to meet alignment and minimum size requirements.
  * @return A pointer to the newly created arena, or NULL on failure.
  */
-arena_t *arena_new(size_t initial_size);
+Arena *arena_new(size_t initial_size);
 
 /**
  * @brief Allocates a block of memory from the arena.
@@ -42,7 +42,7 @@ arena_t *arena_new(size_t initial_size);
  * @return A pointer to the allocated memory, aligned to 16 bytes.
  * Returns NULL if the arena is invalid or allocation fails.
  */
-void *arena_alloc(arena_t *arena, size_t size);
+void *arena_alloc(Arena *arena, size_t size);
 
 /**
  * @brief Captures the current allocation position in the arena.
@@ -50,7 +50,7 @@ void *arena_alloc(arena_t *arena, size_t size);
  * @param arena A pointer to the arena.
  * @return An arena_pos_t handle that can be used with arena_reset_to().
  */
-arena_pos_t arena_get_pos(arena_t *arena);
+arena_pos_t arena_get_pos(Arena *arena);
 
 /**
  * @brief Resets the arena's allocation pointer to a previously saved position.
@@ -61,7 +61,7 @@ arena_pos_t arena_get_pos(arena_t *arena);
  * @param arena A pointer to the arena.
  * @param pos The saved position to restore.
  */
-void arena_reset(arena_t *arena, arena_pos_t pos);
+void arena_reset(Arena *arena, arena_pos_t pos);
 
 /**
  * @brief Deallocates all memory used by the arena.
@@ -72,4 +72,4 @@ void arena_reset(arena_t *arena, arena_pos_t pos);
  *
  * @param arena A pointer to the arena.
  */
-void arena_free(arena_t *arena);
+void arena_free(Arena *arena);

@@ -29,9 +29,9 @@ static inline uintptr_t align_up(uintptr_t val) {
     return (val + ARENA_ALIGNMENT - 1) & ~(uintptr_t)(ARENA_ALIGNMENT - 1);
 }
 
-arena_t *arena_new(size_t initial_size) {
+Arena *arena_new(size_t initial_size) {
     // Allocate the arena controller struct itself.
-    arena_t *arena = buddy_alloc(sizeof(arena_t));
+    Arena *arena = buddy_alloc(sizeof(Arena));
     if (!arena) {
         return NULL;
     }
@@ -65,7 +65,7 @@ arena_t *arena_new(size_t initial_size) {
     return arena;
 }
 
-void *arena_alloc(arena_t *arena, size_t size) {
+void *arena_alloc(Arena *arena, size_t size) {
     if (!arena || size == 0) {
         return NULL;
     }
@@ -128,7 +128,7 @@ try_alloc:
     goto try_alloc;
 }
 
-void arena_free(arena_t *arena) {
+void arena_free(Arena *arena) {
     if (!arena) return;
     struct arena_chunk *current = arena->first_chunk;
     while (current) {
@@ -139,7 +139,7 @@ void arena_free(arena_t *arena) {
     buddy_free(arena);
 }
 
-arena_pos_t arena_get_pos(arena_t *arena) {
+arena_pos_t arena_get_pos(Arena *arena) {
     arena_pos_t pos;
     if (arena) {
         pos.chunk = arena->current_chunk;
@@ -151,7 +151,7 @@ arena_pos_t arena_get_pos(arena_t *arena) {
     return pos;
 }
 
-void arena_reset(arena_t *arena, arena_pos_t pos) {
+void arena_reset(Arena *arena, arena_pos_t pos) {
     if (!arena || !pos.chunk || !pos.ptr) {
         return;
     }
