@@ -113,7 +113,12 @@ static void test_printf_formats(void) {
     printf("Test %%s NULL: %s\n", null_str);
 
     // Multiple format specifiers in one call
-    printf("Multiple: %d %s %c %u\n", 123, "test", 'A', 456u);
+    printf("Test multiple formats...\n");
+    int num = 123;
+    char *str = "test";
+    char ch = 'A';
+    unsigned int unum = 456u;
+    printf("Multiple: %d %s %c %u\n", num, str, ch, unum);
 
     // Edge cases
     printf("Empty format test\n");
