@@ -9,17 +9,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <buddy.h>
-
-// stdlib tests
-void test_stdlib(void) {
-    printf("=== stdlib tests ===\n");
-
-    printf("Hello World!\n");
-    int i = 10;
-    printf("i = %d\n\n", i);
-
-    printf("stdlib tests passed\n\n");
-}
+#include <test_stdlib.h>
 
 // base tests
 void test_base(void) {
