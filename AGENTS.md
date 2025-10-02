@@ -80,7 +80,9 @@ pixi run all_platforms          # All four platforms
 
 ### Single-Source Compilation
 
-`standalone_arena.c` is the main entry point that compiles for all platforms using conditional compilation (`#ifdef __wasi__`, etc.). The build system includes the appropriate `native/wasi_*.c` file for each platform.
+`tests.c` is the main entry point that compiles for all platforms using conditional compilation (`#ifdef __wasi__`, etc.). The build system includes the appropriate `native/wasi_*.c` file for each platform. Tests are organized into:
+- `test_stdlib()`: Tests for standard library functions
+- `test_base()`: Tests for WASI heap operations, buddy allocator, and arena allocator
 
 ## Platform-Specific Notes
 
@@ -95,7 +97,7 @@ pixi run all_platforms          # All four platforms
 - `native/`: Platform-specific WASI implementations
 - `stdlib/`: Minimal C standard library implementations
 - `old/`: Legacy code (not part of current build)
-- `standalone_arena.c`: Main demo program
+- `tests.c`: Main test program
 
 ## CI
 
