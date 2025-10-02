@@ -1,7 +1,5 @@
 #include <wasi.h>
-
-#include <stdlib.h>
-
+#include <base_types.h>
 #include <buddy.h>
 
 // =============================================================================

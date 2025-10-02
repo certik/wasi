@@ -1,6 +1,6 @@
 #pragma once
 
-#include <stddef.h>
+#include <base_types.h>
 
 void buddy_init(void);
 void *buddy_alloc(size_t size);
