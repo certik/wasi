@@ -118,7 +118,12 @@ static void test_printf_formats(void) {
     char *str = "test";
     char ch = 'A';
     unsigned int unum = 456u;
-    printf("Multiple: %d %s %c %u\n", num, str, ch, unum);
+
+    // Test combinations to isolate the issue
+    printf("Test: %d %s\n", num, str);
+    printf("Test: %s %c\n", str, (int)ch);
+    printf("Test: %c %u\n", (int)ch, unum);
+    printf("Multiple: %d %s %c %u\n", num, str, (int)ch, unum);
 
     // Edge cases
     printf("Empty format test\n");
