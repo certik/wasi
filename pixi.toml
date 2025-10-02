@@ -16,12 +16,14 @@ clang \
     -I base \
     -I stdlib \
     -I native \
+    -I . \
     -Wl,--no-entry \
     -Wl,--export=__heap_base \
     -Wl,--export=_start \
     -Wl,--initial-memory=131072 \
     -o arena.wasm \
     tests.c \
+    test_stdlib.c \
     stdlib/assert.c \
     stdlib/stdio.c \
     stdlib/stdlib.c \
@@ -47,8 +49,10 @@ clang \
     -I base \
     -I stdlib \
     -I native \
+    -I . \
     -o arena_linux \
     tests.c \
+    test_stdlib.c \
     stdlib/assert.c \
     stdlib/stdio.c \
     stdlib/stdlib.c \
@@ -74,8 +78,10 @@ clang \
     -I base \
     -I stdlib \
     -I native \
+    -I . \
     -o arena_macos \
     tests.c \
+    test_stdlib.c \
     stdlib/assert.c \
     stdlib/stdio.c \
     stdlib/stdlib.c \
@@ -102,11 +108,13 @@ cl \
     /I"base" \
     /I"stdlib" \
     /I"native" \
+    /I"." \
     /GS- \
     /Gs0 \
     /kernel \
     /c \
     tests.c \
+    test_stdlib.c \
     stdlib/assert.c \
     stdlib/stdio.c \
     stdlib/stdlib.c \
@@ -123,6 +131,7 @@ link \
     /entry:_start \
     kernel32.lib \
     tests.obj \
+    test_stdlib.obj \
     assert.obj \
     stdio.obj \
     stdlib.obj \

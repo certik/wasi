@@ -3,21 +3,26 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#if defined(_MSC_VER)
+// MSVC varargs implementation
+// x86: 4-byte alignment, x64/ARM64: 8-byte alignment
+typedef char* va_list;
 
-#if defined(_WIN32) || defined(_WIN64)
+#if defined(_M_X64) || defined(_M_ARM64)
+#define _VA_ALIGN 8
+#else
+#define _VA_ALIGN 4
+#endif
 
-typedef char * va_list;
+#define _VA_ROUNDED_SIZE(t) ((sizeof(t) + _VA_ALIGN - 1) & ~(_VA_ALIGN - 1))
 
-#define _INTSIZEOF(n) ((sizeof(n) + sizeof(int) - 1) & ~(sizeof(int) - 1))
-#define _ADDRESSOF(v) (&(v))
-
-#define va_start(ap, v) ((void)((ap) = (va_list)_ADDRESSOF(v) + _INTSIZEOF(v)))
-#define va_arg(ap, t) (*(t *)((ap += _INTSIZEOF(t)) - _INTSIZEOF(t)))
+#define va_start(ap, v) ((void)((ap) = (va_list)((char*)(&(v)) + _VA_ROUNDED_SIZE(v))))
+#define va_arg(ap, t) (*(t*)((ap += _VA_ROUNDED_SIZE(t)) - _VA_ROUNDED_SIZE(t)))
 #define va_end(ap) ((void)((ap) = (va_list)0))
-#define va_copy(dest, src) ((void)((dest) = (src)))
+#define va_copy(dest, src) ((dest) = (src))
 
 #else
-
+// Use compiler builtins for Clang/GCC
 typedef __builtin_va_list va_list;
 
 #define va_start(ap, last) __builtin_va_start((ap), (last))
