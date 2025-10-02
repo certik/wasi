@@ -106,10 +106,11 @@ static void test_printf_formats(void) {
     int x = 10;
     printf("Test %%p non-null: %p\n", (void*)&x);
     printf("Test %%p null: %p\n", (void*)0);
-    printf("Test %%p value: %p\n", (void*)0xdeadbeef);
+    printf("Test %%p value: %p\n", (void*)(uintptr_t)0xdeadbeef);
 
     // NULL string handling
-    printf("Test %%s NULL: %s\n", (char*)0);
+    char *null_str = 0;
+    printf("Test %%s NULL: %s\n", null_str);
 
     // Multiple format specifiers in one call
     printf("Multiple: %d %s %c %u\n", 123, "test", 'A', 456u);
