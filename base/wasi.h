@@ -1,6 +1,6 @@
 #pragma once
 
-#include <stddef.h>
+#include <base_types.h>
 
 /*
  * The following functions provide a C interface to WASM / WASI.
