@@ -6,6 +6,7 @@
 #include <base_io.h>
 #include <wasi.h>
 #include <arena.h>
+#include <scratch.h>
 #include <string.h>
 #include <stdbool.h>
 #include <buddy.h>
@@ -135,6 +136,91 @@ void test_base(void) {
     arena_free(main_arena);
     printf("Arena has been completely deallocated and memory returned to the system.\n");
     printf("Arena allocator tests passed\n\n");
+
+    // Scratch arena tests
+    printf("## Testing scratch arena...\n");
+    printf("Creating a new arena for scratch tests...\n");
+    Arena *scratch_test_arena = arena_new(4096);
+    if (!scratch_test_arena) {
+        printf("Error: Failed to create the arena.\n");
+        exit(1);
+    }
+
+    printf("Test 1: Basic scratch allocation and cleanup\n");
+    char *persistent = arena_alloc(scratch_test_arena, 100);
+    strcpy(persistent, "This persists");
+
+    {
+        Scratch scratch = scratch_begin(scratch_test_arena);
+        char *temp1 = scratch_alloc(&scratch, 50);
+        strcpy(temp1, "Temporary 1");
+        char *temp2 = scratch_alloc(&scratch, 50);
+        strcpy(temp2, "Temporary 2");
+        printf("  Inside scratch: %s, %s, %s\n", persistent, temp1, temp2);
+        scratch_end(&scratch);
+    }
+
+    char *after_scratch = arena_alloc(scratch_test_arena, 100);
+    strcpy(after_scratch, "After scratch");
+    printf("  After scratch end: %s, %s\n", persistent, after_scratch);
+
+    printf("Test 2: Nested scratch scopes\n");
+    {
+        Scratch outer = scratch_begin(scratch_test_arena);
+        char *outer_temp = scratch_alloc(&outer, 50);
+        strcpy(outer_temp, "Outer temp");
+
+        {
+            Scratch inner = scratch_begin(scratch_test_arena);
+            char *inner_temp = scratch_alloc(&inner, 50);
+            strcpy(inner_temp, "Inner temp");
+            printf("  In inner scratch: %s\n", inner_temp);
+            scratch_end(&inner);
+        }
+
+        char *outer_temp2 = scratch_alloc(&outer, 50);
+        strcpy(outer_temp2, "Outer temp 2");
+        printf("  In outer scratch after inner: %s, %s\n", outer_temp, outer_temp2);
+        scratch_end(&outer);
+    }
+
+    printf("Test 3: Multiple sequential scratch scopes\n");
+    {
+        Scratch scratch = scratch_begin(scratch_test_arena);
+        char *temp = scratch_alloc(&scratch, 100);
+        strcpy(temp, "Iteration 0");
+        printf("  %s\n", temp);
+        scratch_end(&scratch);
+    }
+    {
+        Scratch scratch = scratch_begin(scratch_test_arena);
+        char *temp = scratch_alloc(&scratch, 100);
+        strcpy(temp, "Iteration 1");
+        printf("  %s\n", temp);
+        scratch_end(&scratch);
+    }
+    {
+        Scratch scratch = scratch_begin(scratch_test_arena);
+        char *temp = scratch_alloc(&scratch, 100);
+        strcpy(temp, "Iteration 2");
+        printf("  %s\n", temp);
+        scratch_end(&scratch);
+    }
+
+    printf("Test 4: Verify memory reuse after scratch_end\n");
+    arena_pos_t before_reuse = arena_get_pos(scratch_test_arena);
+    {
+        Scratch scratch = scratch_begin(scratch_test_arena);
+        scratch_alloc(&scratch, 1000);
+        scratch_end(&scratch);
+    }
+    arena_pos_t after_reuse = arena_get_pos(scratch_test_arena);
+    assert(before_reuse.ptr == after_reuse.ptr);
+    printf("  Memory position restored correctly\n");
+
+    printf("Freeing scratch test arena...\n");
+    arena_free(scratch_test_arena);
+    printf("Scratch arena tests passed\n\n");
 
     printf("base tests passed\n\n");
 }
