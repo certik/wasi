@@ -21,7 +21,7 @@ clang \
     -Wl,--export=_start \
     -Wl,--initial-memory=131072 \
     -o arena.wasm \
-    standalone_arena.c \
+    tests.c \
     stdlib/assert.c \
     stdlib/stdio.c \
     stdlib/stdlib.c \
@@ -48,7 +48,7 @@ clang \
     -I stdlib \
     -I native \
     -o arena_linux \
-    standalone_arena.c \
+    tests.c \
     stdlib/assert.c \
     stdlib/stdio.c \
     stdlib/stdlib.c \
@@ -75,7 +75,7 @@ clang \
     -I stdlib \
     -I native \
     -o arena_macos \
-    standalone_arena.c \
+    tests.c \
     stdlib/assert.c \
     stdlib/stdio.c \
     stdlib/stdlib.c \
@@ -106,7 +106,7 @@ cl \
     /Gs0 \
     /kernel \
     /c \
-    standalone_arena.c \
+    tests.c \
     stdlib/assert.c \
     stdlib/stdio.c \
     stdlib/stdlib.c \
@@ -122,7 +122,7 @@ link \
     /nodefaultlib \
     /entry:_start \
     kernel32.lib \
-    standalone_arena.obj \
+    tests.obj \
     assert.obj \
     stdio.obj \
     stdlib.obj \
