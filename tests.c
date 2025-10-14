@@ -167,20 +167,24 @@ void test_base(void) {
     printf("Test 2: Nested scratch scopes\n");
     {
         Scratch outer = scratch_begin();
-        char *outer_temp = arena_alloc(outer.arena, 50);
-        strcpy(outer_temp, "Outer temp");
+        char *outer_temp = NULL;
 
         {
             Scratch inner = scratch_begin();
             char *inner_temp = arena_alloc(inner.arena, 50);
             strcpy(inner_temp, "Inner temp");
             printf("  In inner scratch: %s\n", inner_temp);
+            outer_temp = arena_alloc(outer.arena, 50);
+            strcpy(outer_temp, "ABC");
             scratch_end(&inner);
         }
-
         char *outer_temp2 = arena_alloc(outer.arena, 50);
-        strcpy(outer_temp2, "Outer temp 2");
-        printf("  In outer scratch after inner: %s, %s\n", outer_temp, outer_temp2);
+        //strcpy(outer_temp, "XXX");
+
+        printf("  In outer scratch after inner: %s\n", outer_temp);
+        assert(outer_temp[0] == 'A');
+        assert(outer_temp[1] == 'B');
+        assert(outer_temp[2] == 'C');
         scratch_end(&outer);
     }
 
