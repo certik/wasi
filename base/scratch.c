@@ -1,6 +1,6 @@
 #include "scratch.h"
 
-Scratch scratch_begin(Arena *arena) {
+Scratch scratch_begin_from_arena(Arena *arena) {
     Scratch scratch;
     scratch.arena = arena;
     scratch.saved_pos = arena_get_pos(arena);

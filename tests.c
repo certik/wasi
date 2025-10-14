@@ -151,7 +151,7 @@ void test_base(void) {
     strcpy(persistent, "This persists");
 
     {
-        Scratch scratch = scratch_begin(scratch_test_arena);
+        Scratch scratch = scratch_begin_from_arena(scratch_test_arena);
         char *temp1 = arena_alloc(scratch.arena, 50);
         strcpy(temp1, "Temporary 1");
         char *temp2 = arena_alloc(scratch.arena, 50);
@@ -166,12 +166,12 @@ void test_base(void) {
 
     printf("Test 2: Nested scratch scopes\n");
     {
-        Scratch outer = scratch_begin(scratch_test_arena);
+        Scratch outer = scratch_begin_from_arena(scratch_test_arena);
         char *outer_temp = arena_alloc(outer.arena, 50);
         strcpy(outer_temp, "Outer temp");
 
         {
-            Scratch inner = scratch_begin(scratch_test_arena);
+            Scratch inner = scratch_begin_from_arena(scratch_test_arena);
             char *inner_temp = arena_alloc(inner.arena, 50);
             strcpy(inner_temp, "Inner temp");
             printf("  In inner scratch: %s\n", inner_temp);
@@ -186,21 +186,21 @@ void test_base(void) {
 
     printf("Test 3: Multiple sequential scratch scopes\n");
     {
-        Scratch scratch = scratch_begin(scratch_test_arena);
+        Scratch scratch = scratch_begin_from_arena(scratch_test_arena);
         char *temp = arena_alloc(scratch.arena, 100);
         strcpy(temp, "Iteration 0");
         printf("  %s\n", temp);
         scratch_end(&scratch);
     }
     {
-        Scratch scratch = scratch_begin(scratch_test_arena);
+        Scratch scratch = scratch_begin_from_arena(scratch_test_arena);
         char *temp = arena_alloc(scratch.arena, 100);
         strcpy(temp, "Iteration 1");
         printf("  %s\n", temp);
         scratch_end(&scratch);
     }
     {
-        Scratch scratch = scratch_begin(scratch_test_arena);
+        Scratch scratch = scratch_begin_from_arena(scratch_test_arena);
         char *temp = arena_alloc(scratch.arena, 100);
         strcpy(temp, "Iteration 2");
         printf("  %s\n", temp);
@@ -210,7 +210,7 @@ void test_base(void) {
     printf("Test 4: Verify memory reuse after scratch_end\n");
     arena_pos_t before_reuse = arena_get_pos(scratch_test_arena);
     {
-        Scratch scratch = scratch_begin(scratch_test_arena);
+        Scratch scratch = scratch_begin_from_arena(scratch_test_arena);
         arena_alloc(scratch.arena, 1000);
         scratch_end(&scratch);
     }
