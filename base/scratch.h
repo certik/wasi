@@ -8,7 +8,7 @@ typedef struct {
     arena_pos_t saved_pos;
 } Scratch;
 
-Scratch scratch_begin(Arena **arena);
-Scratch scratch_begin_avoid_conflict(Arena **arena);
+Scratch scratch_begin();
+Scratch scratch_begin_avoid_conflict(Arena *conflict);
 Scratch scratch_begin_from_arena(Arena *arena);
 void scratch_end(Scratch *scratch);
