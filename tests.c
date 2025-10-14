@@ -170,16 +170,18 @@ void test_base(void) {
         char *outer_temp = NULL;
 
         {
-            Scratch inner = scratch_begin();
+            Scratch inner = scratch_begin_avoid_conflict(outer.arena);
             char *inner_temp = arena_alloc(inner.arena, 50);
             strcpy(inner_temp, "Inner temp");
             printf("  In inner scratch: %s\n", inner_temp);
             outer_temp = arena_alloc(outer.arena, 50);
             strcpy(outer_temp, "ABC");
+            printf("ARENAS: %p, %p\n", inner.arena, outer.arena);
+            assert(inner.arena != outer.arena);
             scratch_end(&inner);
         }
         char *outer_temp2 = arena_alloc(outer.arena, 50);
-        //strcpy(outer_temp, "XXX");
+        strcpy(outer_temp2, "XXX");
 
         printf("  In outer scratch after inner: %s\n", outer_temp);
         assert(outer_temp[0] == 'A');
