@@ -152,9 +152,9 @@ void test_base(void) {
 
     {
         Scratch scratch = scratch_begin(scratch_test_arena);
-        char *temp1 = scratch_alloc(&scratch, 50);
+        char *temp1 = arena_alloc(scratch.arena, 50);
         strcpy(temp1, "Temporary 1");
-        char *temp2 = scratch_alloc(&scratch, 50);
+        char *temp2 = arena_alloc(scratch.arena, 50);
         strcpy(temp2, "Temporary 2");
         printf("  Inside scratch: %s, %s, %s\n", persistent, temp1, temp2);
         scratch_end(&scratch);
@@ -167,18 +167,18 @@ void test_base(void) {
     printf("Test 2: Nested scratch scopes\n");
     {
         Scratch outer = scratch_begin(scratch_test_arena);
-        char *outer_temp = scratch_alloc(&outer, 50);
+        char *outer_temp = arena_alloc(outer.arena, 50);
         strcpy(outer_temp, "Outer temp");
 
         {
             Scratch inner = scratch_begin(scratch_test_arena);
-            char *inner_temp = scratch_alloc(&inner, 50);
+            char *inner_temp = arena_alloc(inner.arena, 50);
             strcpy(inner_temp, "Inner temp");
             printf("  In inner scratch: %s\n", inner_temp);
             scratch_end(&inner);
         }
 
-        char *outer_temp2 = scratch_alloc(&outer, 50);
+        char *outer_temp2 = arena_alloc(outer.arena, 50);
         strcpy(outer_temp2, "Outer temp 2");
         printf("  In outer scratch after inner: %s, %s\n", outer_temp, outer_temp2);
         scratch_end(&outer);
@@ -187,21 +187,21 @@ void test_base(void) {
     printf("Test 3: Multiple sequential scratch scopes\n");
     {
         Scratch scratch = scratch_begin(scratch_test_arena);
-        char *temp = scratch_alloc(&scratch, 100);
+        char *temp = arena_alloc(scratch.arena, 100);
         strcpy(temp, "Iteration 0");
         printf("  %s\n", temp);
         scratch_end(&scratch);
     }
     {
         Scratch scratch = scratch_begin(scratch_test_arena);
-        char *temp = scratch_alloc(&scratch, 100);
+        char *temp = arena_alloc(scratch.arena, 100);
         strcpy(temp, "Iteration 1");
         printf("  %s\n", temp);
         scratch_end(&scratch);
     }
     {
         Scratch scratch = scratch_begin(scratch_test_arena);
-        char *temp = scratch_alloc(&scratch, 100);
+        char *temp = arena_alloc(scratch.arena, 100);
         strcpy(temp, "Iteration 2");
         printf("  %s\n", temp);
         scratch_end(&scratch);
@@ -211,7 +211,7 @@ void test_base(void) {
     arena_pos_t before_reuse = arena_get_pos(scratch_test_arena);
     {
         Scratch scratch = scratch_begin(scratch_test_arena);
-        scratch_alloc(&scratch, 1000);
+        arena_alloc(scratch.arena, 1000);
         scratch_end(&scratch);
     }
     arena_pos_t after_reuse = arena_get_pos(scratch_test_arena);
