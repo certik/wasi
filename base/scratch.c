@@ -34,6 +34,6 @@ Scratch scratch_begin_avoid_conflict(Arena *conflict) {
     return scratch;
 }
 
-void scratch_end(Scratch *scratch) {
-    arena_reset(scratch->arena, scratch->saved_pos);
+void scratch_end(Scratch scratch) {
+    arena_reset(scratch.arena, scratch.saved_pos);
 }

@@ -11,4 +11,4 @@ typedef struct {
 Scratch scratch_begin();
 Scratch scratch_begin_avoid_conflict(Arena *conflict);
 Scratch scratch_begin_from_arena(Arena *arena);
-void scratch_end(Scratch *scratch);
+void scratch_end(Scratch scratch);

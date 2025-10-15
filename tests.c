@@ -34,7 +34,7 @@ char* test_nested_scratch_inner(Arena *outer_arena, bool avoid_conflict) {
     } else {
         assert(inner.arena == outer_arena);
     }
-    scratch_end(&inner);
+    scratch_end(inner);
 
     return result;
 }
@@ -63,7 +63,7 @@ void test_nested_scratch_outer(bool avoid_conflict) {
     } else {
         printf("  In outer scratch after inner: %s (corrupted!)\n", outer_temp);
         // This demonstrates the bug: scratch_begin() without conflict avoidance allows
-        // both scopes to share the same arena, and scratch_end(&inner) invalidates outer_temp
+        // both scopes to share the same arena, and scratch_end(inner) invalidates outer_temp
         // The values are the same (bug)
         assert(outer_temp[0] == 'X');
         assert(outer_temp[1] == 'X');
@@ -76,7 +76,7 @@ void test_nested_scratch_outer(bool avoid_conflict) {
         // and the pointers are the same (bug)
         assert(outer_temp == outer_temp2);
     }
-    scratch_end(&outer);
+    scratch_end(outer);
 }
 
 // base tests
@@ -225,7 +225,7 @@ void test_base(void) {
         strcpy(temp2, "Temporary 2");
         printf("  Inside scratch: %s, %s, %s\n", persistent, temp1, temp2);
         assert(temp1 != temp2);
-        scratch_end(&scratch);
+        scratch_end(scratch);
     }
 
     char *after_scratch = arena_alloc(scratch_test_arena, 100);
@@ -244,21 +244,21 @@ void test_base(void) {
         char *temp = arena_alloc(scratch.arena, 100);
         strcpy(temp, "Iteration 0");
         printf("  %s\n", temp);
-        scratch_end(&scratch);
+        scratch_end(scratch);
     }
     {
         Scratch scratch = scratch_begin();
         char *temp = arena_alloc(scratch.arena, 100);
         strcpy(temp, "Iteration 1");
         printf("  %s\n", temp);
-        scratch_end(&scratch);
+        scratch_end(scratch);
     }
     {
         Scratch scratch = scratch_begin();
         char *temp = arena_alloc(scratch.arena, 100);
         strcpy(temp, "Iteration 2");
         printf("  %s\n", temp);
-        scratch_end(&scratch);
+        scratch_end(scratch);
     }
 
     printf("Test 4: Verify memory reuse after scratch_end\n");
@@ -266,7 +266,7 @@ void test_base(void) {
     {
         Scratch scratch = scratch_begin();
         arena_alloc(scratch.arena, 1000);
-        scratch_end(&scratch);
+        scratch_end(scratch);
     }
     arena_pos_t after_reuse = arena_get_pos(scratch_test_arena);
     assert(before_reuse.ptr == after_reuse.ptr);
