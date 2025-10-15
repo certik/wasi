@@ -49,7 +49,7 @@ void test_nested_scratch_outer(bool avoid_conflict) {
     if (avoid_conflict) {
         printf("  In outer scratch after inner: %s\n", outer_temp);
 
-        // Correct results:
+        // Values are different (correct)
         assert(outer_temp[0] == 'A');
         assert(outer_temp[1] == 'B');
         assert(outer_temp[2] == 'C');
@@ -58,11 +58,13 @@ void test_nested_scratch_outer(bool avoid_conflict) {
         assert(outer_temp2[1] == 'X');
         assert(outer_temp2[2] == 'X');
 
+        // and the pointers are different (correct)
         assert(outer_temp != outer_temp2);
     } else {
         printf("  In outer scratch after inner: %s (corrupted!)\n", outer_temp);
         // This demonstrates the bug: scratch_begin() without conflict avoidance allows
         // both scopes to share the same arena, and scratch_end(&inner) invalidates outer_temp
+        // The values are the same (bug)
         assert(outer_temp[0] == 'X');
         assert(outer_temp[1] == 'X');
         assert(outer_temp[2] == 'X');
@@ -71,7 +73,7 @@ void test_nested_scratch_outer(bool avoid_conflict) {
         assert(outer_temp2[1] == 'X');
         assert(outer_temp2[2] == 'X');
 
-        // Even the pointers are the same (bug)
+        // and the pointers are the same (bug)
         assert(outer_temp == outer_temp2);
     }
     scratch_end(&outer);
@@ -222,6 +224,7 @@ void test_base(void) {
         char *temp2 = arena_alloc(scratch.arena, 50);
         strcpy(temp2, "Temporary 2");
         printf("  Inside scratch: %s, %s, %s\n", persistent, temp1, temp2);
+        assert(temp1 != temp2);
         scratch_end(&scratch);
     }
 
