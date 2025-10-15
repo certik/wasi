@@ -12,6 +12,57 @@
 #include <buddy.h>
 #include <test_stdlib.h>
 
+// Helper function for inner scratch scope
+void test_nested_scratch_inner(Arena *outer_arena, bool avoid_conflict, char **outer_temp) {
+    Scratch inner;
+    if (avoid_conflict) {
+        inner = scratch_begin_avoid_conflict(outer_arena);
+    } else {
+        inner = scratch_begin();
+    }
+
+    // Allocate outer_temp using outer_arena AFTER inner scratch begins
+    *outer_temp = arena_alloc(outer_arena, 50);
+    strcpy(*outer_temp, "ABC");
+    printf("  ARENAS: inner=%p, outer=%p\n", inner.arena, outer_arena);
+
+    char *inner_temp = arena_alloc(inner.arena, 50);
+    strcpy(inner_temp, "Inner temp");
+    printf("  In inner scratch: %s\n", inner_temp);
+    if (avoid_conflict) {
+        assert(inner.arena != outer_arena);
+    } else {
+        assert(inner.arena == outer_arena);
+    }
+    scratch_end(&inner);
+}
+
+// Helper function for outer scratch scope
+void test_nested_scratch_outer(bool avoid_conflict) {
+    Scratch outer = scratch_begin();
+    char *outer_temp = NULL;
+
+    test_nested_scratch_inner(outer.arena, avoid_conflict, &outer_temp);
+
+    char *outer_temp2 = arena_alloc(outer.arena, 50);
+    strcpy(outer_temp2, "XXX");
+
+    if (avoid_conflict) {
+        printf("  In outer scratch after inner: %s\n", outer_temp);
+        assert(outer_temp[0] == 'A');
+        assert(outer_temp[1] == 'B');
+        assert(outer_temp[2] == 'C');
+    } else {
+        printf("  In outer scratch after inner: %s (corrupted!)\n", outer_temp);
+        // This demonstrates the bug: scratch_begin() without conflict avoidance allows
+        // both scopes to share the same arena, and scratch_end(&inner) invalidates outer_temp
+        assert(outer_temp[0] == 'X');
+        assert(outer_temp[1] == 'X');
+        assert(outer_temp[2] == 'X');
+    }
+    scratch_end(&outer);
+}
+
 // base tests
 void test_base(void) {
     printf("=== base tests ===\n");
@@ -165,58 +216,10 @@ void test_base(void) {
     printf("  After scratch end: %s, %s\n", persistent, after_scratch);
 
     printf("Test 2: Nested scratch scopes with conflict avoidance\n");
-    {
-        Scratch outer = scratch_begin();
-        char *outer_temp = NULL;
-
-        {
-            Scratch inner = scratch_begin_avoid_conflict(outer.arena);
-            outer_temp = arena_alloc(outer.arena, 50);
-            strcpy(outer_temp, "ABC");
-            printf("  ARENAS: %p, %p\n", inner.arena, outer.arena);
-            char *inner_temp = arena_alloc(inner.arena, 50);
-            strcpy(inner_temp, "Inner temp");
-            printf("  In inner scratch: %s\n", inner_temp);
-            assert(inner.arena != outer.arena);
-            scratch_end(&inner);
-        }
-        char *outer_temp2 = arena_alloc(outer.arena, 50);
-        strcpy(outer_temp2, "XXX");
-
-        printf("  In outer scratch after inner: %s\n", outer_temp);
-        assert(outer_temp[0] == 'A');
-        assert(outer_temp[1] == 'B');
-        assert(outer_temp[2] == 'C');
-        scratch_end(&outer);
-    }
+    test_nested_scratch_outer(true);
 
     printf("Test 2b: Nested scratch scopes WITHOUT conflict avoidance\n");
-    {
-        Scratch outer = scratch_begin();
-        char *outer_temp = NULL;
-
-        {
-            Scratch inner = scratch_begin();
-            outer_temp = arena_alloc(outer.arena, 50);
-            strcpy(outer_temp, "ABC");
-            printf("  ARENAS: %p, %p\n", inner.arena, outer.arena);
-            char *inner_temp = arena_alloc(inner.arena, 50);
-            strcpy(inner_temp, "Inner temp");
-            printf("  In inner scratch: %s\n", inner_temp);
-            assert(inner.arena == outer.arena);
-            scratch_end(&inner);
-        }
-        char *outer_temp2 = arena_alloc(outer.arena, 50);
-        strcpy(outer_temp2, "XXX");
-
-        printf("  In outer scratch after inner: %s (corrupted!)\n", outer_temp);
-        // This demonstrates the bug: scratch_begin() without conflict avoidance allows
-        // both scopes to share the same arena, and scratch_end(&inner) invalidates outer_temp
-        assert(outer_temp[0] == 'X');
-        assert(outer_temp[1] == 'X');
-        assert(outer_temp[2] == 'X');
-        scratch_end(&outer);
-    }
+    test_nested_scratch_outer(false);
 
     printf("Test 3: Multiple sequential scratch scopes\n");
     {
