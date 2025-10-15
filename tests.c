@@ -51,6 +51,10 @@ void test_nested_scratch_outer(bool avoid_conflict) {
         assert(outer_temp[0] == 'A');
         assert(outer_temp[1] == 'B');
         assert(outer_temp[2] == 'C');
+
+        assert(outer_temp2[0] == 'X');
+        assert(outer_temp2[1] == 'X');
+        assert(outer_temp2[2] == 'X');
     } else {
         printf("  In outer scratch after inner: %s (corrupted!)\n", outer_temp);
         // This demonstrates the bug: scratch_begin() without conflict avoidance allows
@@ -58,6 +62,10 @@ void test_nested_scratch_outer(bool avoid_conflict) {
         assert(outer_temp[0] == 'X');
         assert(outer_temp[1] == 'X');
         assert(outer_temp[2] == 'X');
+
+        assert(outer_temp2[0] == 'X');
+        assert(outer_temp2[1] == 'X');
+        assert(outer_temp2[2] == 'X');
     }
     scratch_end(&outer);
 }
