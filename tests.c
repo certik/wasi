@@ -21,9 +21,9 @@ char* test_nested_scratch_inner(Arena *outer_arena, bool avoid_conflict) {
         inner = scratch_begin();
     }
 
-    // Allocate outer_temp using outer_arena AFTER inner scratch begins
-    char *outer_temp = arena_alloc(outer_arena, 50);
-    strcpy(outer_temp, "ABC");
+    // Fill result using outer_arena AFTER inner scratch begins
+    char *result = arena_alloc(outer_arena, 50);
+    strcpy(result, "ABC");
     printf("  ARENAS: inner=%p, outer=%p\n", inner.arena, outer_arena);
 
     char *inner_temp = arena_alloc(inner.arena, 50);
@@ -36,7 +36,7 @@ char* test_nested_scratch_inner(Arena *outer_arena, bool avoid_conflict) {
     }
     scratch_end(&inner);
 
-    return outer_temp;
+    return result;
 }
 
 // Helper function for outer scratch scope
