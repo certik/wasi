@@ -171,6 +171,7 @@ void test_base(void) {
 
         {
             Scratch inner = scratch_begin_avoid_conflict(outer.arena);
+            //Scratch inner = scratch_begin();
             char *inner_temp = arena_alloc(inner.arena, 50);
             strcpy(inner_temp, "Inner temp");
             printf("  In inner scratch: %s\n", inner_temp);
@@ -181,6 +182,9 @@ void test_base(void) {
             scratch_end(&inner);
         }
         char *outer_temp2 = arena_alloc(outer.arena, 50);
+        // TODO: doesn't trigger if we use scratch_begin() above
+        // TODO: add a test for scratch_begin where below it will be equal to
+        // 'XXX', to ensure it gets overridden
         strcpy(outer_temp2, "XXX");
 
         printf("  In outer scratch after inner: %s\n", outer_temp);
