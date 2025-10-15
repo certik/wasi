@@ -164,33 +164,57 @@ void test_base(void) {
     strcpy(after_scratch, "After scratch");
     printf("  After scratch end: %s, %s\n", persistent, after_scratch);
 
-    printf("Test 2: Nested scratch scopes\n");
+    printf("Test 2: Nested scratch scopes with conflict avoidance\n");
     {
         Scratch outer = scratch_begin();
         char *outer_temp = NULL;
 
         {
             Scratch inner = scratch_begin_avoid_conflict(outer.arena);
-            //Scratch inner = scratch_begin();
+            outer_temp = arena_alloc(outer.arena, 50);
+            strcpy(outer_temp, "ABC");
+            printf("  ARENAS: %p, %p\n", inner.arena, outer.arena);
             char *inner_temp = arena_alloc(inner.arena, 50);
             strcpy(inner_temp, "Inner temp");
             printf("  In inner scratch: %s\n", inner_temp);
-            outer_temp = arena_alloc(outer.arena, 50);
-            strcpy(outer_temp, "ABC");
-            printf("ARENAS: %p, %p\n", inner.arena, outer.arena);
             assert(inner.arena != outer.arena);
             scratch_end(&inner);
         }
         char *outer_temp2 = arena_alloc(outer.arena, 50);
-        // TODO: doesn't trigger if we use scratch_begin() above
-        // TODO: add a test for scratch_begin where below it will be equal to
-        // 'XXX', to ensure it gets overridden
         strcpy(outer_temp2, "XXX");
 
         printf("  In outer scratch after inner: %s\n", outer_temp);
         assert(outer_temp[0] == 'A');
         assert(outer_temp[1] == 'B');
         assert(outer_temp[2] == 'C');
+        scratch_end(&outer);
+    }
+
+    printf("Test 2b: Nested scratch scopes WITHOUT conflict avoidance\n");
+    {
+        Scratch outer = scratch_begin();
+        char *outer_temp = NULL;
+
+        {
+            Scratch inner = scratch_begin();
+            outer_temp = arena_alloc(outer.arena, 50);
+            strcpy(outer_temp, "ABC");
+            printf("  ARENAS: %p, %p\n", inner.arena, outer.arena);
+            char *inner_temp = arena_alloc(inner.arena, 50);
+            strcpy(inner_temp, "Inner temp");
+            printf("  In inner scratch: %s\n", inner_temp);
+            assert(inner.arena == outer.arena);
+            scratch_end(&inner);
+        }
+        char *outer_temp2 = arena_alloc(outer.arena, 50);
+        strcpy(outer_temp2, "XXX");
+
+        printf("  In outer scratch after inner: %s (corrupted!)\n", outer_temp);
+        // This demonstrates the bug: scratch_begin() without conflict avoidance allows
+        // both scopes to share the same arena, and scratch_end(&inner) invalidates outer_temp
+        assert(outer_temp[0] == 'X');
+        assert(outer_temp[1] == 'X');
+        assert(outer_temp[2] == 'X');
         scratch_end(&outer);
     }
 
