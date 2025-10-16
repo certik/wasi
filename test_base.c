@@ -344,8 +344,7 @@ void test_format(void) {
 
     // Example with one argument
     fmt = str_lit("Hello, {}!");
-    //result = format(arena, fmt, str_lit("world"));
-    result = str_lit("Hello, world!");
+    result = format(arena, fmt, str_lit("world"));
     assert(str_eq(result, str_lit("Hello, world!")));
     println(arena, str_lit("One arg: {}"), str_to_cstr_copy(arena, result));
 
@@ -356,9 +355,9 @@ void test_format(void) {
 
     // Example with formatted double
     fmt = str_lit("Value: {:10.5f}");
-    //result = format(arena, fmt, pi);
+    result = format(arena, fmt, pi);
     // Note: Double formatting may have slight differences, so we just print it
-    //println(arena, str_lit("Formatted double: {}"), str_to_cstr_copy(arena, result));
+    println(arena, str_lit("Formatted double: {}"), str_to_cstr_copy(arena, result));
 
     // Example with formatted char
     fmt = str_lit("Char: |{:^5}|");
@@ -368,8 +367,9 @@ void test_format(void) {
 
     // Example with multiple arguments
     fmt = str_lit("Hello, {}, {}, {}, {}!");
-    //result = format(arena, fmt, "world", 35.5, str_lit("XX"), 3);
-    //println(arena, str_lit("Multiple args: {}"), str_to_cstr_copy(arena, result));
+    result = format(arena, fmt, "world", 35.5, str_lit("XX"), 3);
+    println(arena, str_lit("Multiple args: {}"), str_to_cstr_copy(arena, result));
+    println(arena, str_lit("Multiple args: {}"), result);
 
     arena_free(arena);
     println(NULL, str_lit("Format tests passed"));
@@ -392,7 +392,7 @@ void test_io(void) {
     println(arena, str_lit("Initial text in README.md:\n{}"), str_substr(text, 0, 100));
     println(arena, str_lit("---"));
 
-    //println(arena, str_lit("Hello from io."));
+    println(arena, str_lit("Hello from io."));
 
     arena_free(arena);
     println(NULL, str_lit("I/O tests passed"));
