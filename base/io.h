@@ -1,17 +1,9 @@
 #pragma once
 
-#include <base/bool.h>
 #include <base/arena.h>
 #include <base/base_string.h>
 #include <base/format.h>
 
-// Returns the file contents as a null-terminated string in `text`.
-// Returns `true` on success, otherwise `false`.
-bool read_file(Arena *arena, const string filename, string *text);
-string read_file_ok(Arena *arena, const string filename);
-
-void println_explicit_varg(Arena *arena, string fmt, size_t arg_count,
-        va_list varg);
 void println_explicit(Arena *arena, string fmt, size_t arg_count, ...);
 
 #define println(arena, fmt, ...) \
