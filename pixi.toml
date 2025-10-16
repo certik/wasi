@@ -180,7 +180,6 @@ cl \
     test_base.c \
     stdlib/stdio.c \
     stdlib/stdlib.c \
-    stdlib/string.c \
     stdlib/printf.c \
     base/base_io.c \
     base/buddy.c \
@@ -217,9 +216,6 @@ link \
     mem.obj \
     numconv.obj \
     exit.obj \
-    base_string.obj \
-    mem.obj \
-    numconv.obj \
     assert.obj \
     wasi_windows.obj \
     /out:arena_windows.exe
