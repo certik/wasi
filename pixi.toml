@@ -120,6 +120,7 @@ build_windows = """
 cl \
     /nologo \
     /X \
+    /std:c11 \
     /Zc:preprocessor \
     /I"base" \
     /I"stdlib" \
