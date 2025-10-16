@@ -1,7 +1,7 @@
 #include <stddef.h>
 #include <stdint.h>
-#include <base/printf.h>
-#include <base/stdarg.h>
+#include <printf.h>
+#include <stdarg.h>
 #include <base/base_io.h>
 #include <base/numconv.h>
 

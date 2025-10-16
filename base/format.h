@@ -32,6 +32,9 @@ string format_explicit(Arena *arena, string fmt, size_t arg_count, ...);
     int:    ARG_INT,  \
     int64_t: ARG_INT64,  \
     uint64_t: ARG_UINT64,  \
+    size_t: ARG_UINT64,  \
+    void*:  ARG_UINT64,  \
+    Arena*: ARG_UINT64,  \
     vector_i64: ARG_VECTOR_INT64  \
     ), (x)
 

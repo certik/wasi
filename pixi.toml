@@ -29,6 +29,7 @@ clang \
     stdlib/stdio.c \
     stdlib/stdlib.c \
     stdlib/string.c \
+    stdlib/printf.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
@@ -39,7 +40,6 @@ clang \
     base/mem.c \
     base/numconv.c \
     base/assert.c \
-    base/printf.c \
     base/exit.c \
     native/wasi_wasm.c
 """
@@ -74,7 +74,6 @@ clang \
     base/mem.c \
     base/numconv.c \
     base/assert.c \
-    base/printf.c \
     base/exit.c \
     base/file_stub.c \
     native/wasi_wasm.c
@@ -104,6 +103,7 @@ clang \
     stdlib/stdio.c \
     stdlib/stdlib.c \
     stdlib/string.c \
+    stdlib/printf.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
@@ -114,7 +114,6 @@ clang \
     base/mem.c \
     base/numconv.c \
     base/assert.c \
-    base/printf.c \
     base/exit.c \
     native/wasi_linux.c
 """
@@ -143,6 +142,7 @@ clang \
     stdlib/stdio.c \
     stdlib/stdlib.c \
     stdlib/string.c \
+    stdlib/printf.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
@@ -153,7 +153,6 @@ clang \
     base/mem.c \
     base/numconv.c \
     base/assert.c \
-    base/printf.c \
     base/exit.c \
     native/wasi_macos.c \
     -lSystem \
@@ -187,6 +186,7 @@ cl \
     stdlib/stdio.c \
     stdlib/stdlib.c \
     stdlib/string.c \
+    stdlib/printf.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
@@ -197,7 +197,6 @@ cl \
     base/mem.c \
     base/numconv.c \
     base/assert.c \
-    base/printf.c \
     base/exit.c \
     native/wasi_windows.c \
     && \
@@ -223,7 +222,6 @@ link \
     base_string.obj \
     mem.obj \
     numconv.obj \
-    printf.obj \
     exit.obj \
     wasi_windows.obj \
     /out:arena_windows.exe

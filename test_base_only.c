@@ -4,7 +4,6 @@
 // Test runner that only depends on base/ - no stdlib/ dependencies
 // This proves that base/ is completely self-contained
 
-#include <base/printf.h>
 #include <base/assert.h>
 #include <base/exit.h>
 #include <base/mem.h>

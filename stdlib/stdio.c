@@ -48,7 +48,7 @@ long ftell(FILE *stream) { return -1; }
 size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) { return 0; }
 #endif
 
-// stdlib/stdio.c now reuses printf/vprintf from base/printf.c
+// stdlib/stdio.c now reuses printf/vprintf from stdlib/printf.c
 // This avoids code duplication and ensures consistent behavior
 
-#include <base/printf.h>
+#include <printf.h>
