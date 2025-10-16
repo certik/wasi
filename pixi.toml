@@ -193,7 +193,7 @@ link \
     arena.obj \
     scratch.obj \
     mem.obj \
-    assert_base.obj \
+    assert.obj \
     wasi_windows.obj \
     /out:arena_windows.exe
 """
