@@ -42,7 +42,7 @@ clang \
     native/wasi_wasm.c
 """
 
-test_wasm = { cmd="wasmtime arena.wasm", depends-on=["build_wasm"] }
+test_wasm = { cmd="wasmtime --dir . arena.wasm", depends-on=["build_wasm"] }
 
 build_base_wasm = """
 clang \
@@ -78,7 +78,7 @@ clang \
     native/wasi_wasm.c
 """
 
-test_base_wasm = { cmd="wasmtime arena_base.wasm", depends-on=["build_base_wasm"] }
+test_base_wasm = { cmd="wasmtime --dir . arena_base.wasm", depends-on=["build_base_wasm"] }
 
 [feature.wasm.dependencies]
 clang = ">=20.1.4,<21"

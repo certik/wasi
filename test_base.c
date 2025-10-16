@@ -386,13 +386,11 @@ void test_io(void) {
     text.size = 0;
     assert(text.size == 0);
     ok = read_file(arena, str_lit("README.md"), &text);
-    // README.md may not exist, so we don't assert on this
-    if (ok) {
-        assert(text.size > 10);
-        println(arena, str_lit("Read README.md: {} bytes"), text.size);
-    } else {
-        println(arena, str_lit("README.md not found (expected in some environments)"));
-    }
+    assert(ok);
+    assert(text.size > 100);
+    println(arena, str_lit("Read README.md: {} bytes"), text.size);
+    println(arena, str_lit("Initial text in README.md:\n{}"), str_substr(text, 0, 100));
+    println(arena, str_lit("---"));
 
     //println(arena, str_lit("Hello from io."));
 
