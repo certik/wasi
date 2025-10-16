@@ -1,9 +1,6 @@
 #pragma once
 
-#include <stddef.h>
-#include <assert.h>
-#include <string.h>
-
+#include <base/base_types.h>
 #include <arena.h>
 
 // Helper Macros (internal use)
