@@ -2,7 +2,7 @@
 
 #include <base/base_types.h>
 #include <base/assert.h>
-#include <arena.h>
+#include <base/arena.h>
 
 // Forward declare string.h functions to avoid implicit declaration errors
 extern void *memcpy(void *dest, const void *src, size_t n);

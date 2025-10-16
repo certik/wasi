@@ -10,16 +10,16 @@ extern void *memcpy(void *dest, const void *src, size_t n);
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
-#include <base_io.h>
-#include <wasi.h>
-#include <arena.h>
-#include <scratch.h>
-#include <buddy.h>
-#include <test_stdlib.h>
+#include <base/base_io.h>
+#include <base/wasi.h>
+#include <base/arena.h>
+#include <base/scratch.h>
+#include <base/buddy.h>
 #include <base/format.h>
 #include <base/io.h>
 #include <base/hashtable.h>
 #include <base/vector.h>
+#include <test_stdlib.h>
 
 // Define hashtable and vector types for tests
 #define MapIntString_HASH(key) ((size_t)(key))

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <base/base_types.h>
-#include <arena.h>
+#include <base/arena.h>
 
 // Helper Macros (internal use)
 #define _GV_CONCAT_IMPL(a, b) a##b
