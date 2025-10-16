@@ -30,7 +30,7 @@ Scratch scratch_begin_avoid_conflict(Arena *conflict) {
     }
     //assert(false);
     wasi_proc_exit(1);
-    Scratch scratch;
+    Scratch scratch = {0};
     return scratch;
 }
 
