@@ -1,11 +1,6 @@
 #include <stddef.h>
 #include <stdint.h>
-
-// Forward declare string functions
-extern size_t strlen(const char *str);
-extern char *strcpy(char *dest, const char *src);
-extern void *memcpy(void *dest, const void *src, size_t n);
-
+#include <string.h>
 #include <stdio.h>
 #include <assert.h>
 #include <test_stdlib.h>
