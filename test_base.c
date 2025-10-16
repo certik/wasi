@@ -358,7 +358,7 @@ void test_io(void) {
         printf("README.md not found (expected in some environments)\n");
     }
 
-    println(arena, str_lit("Hello from io."));
+    //println(arena, str_lit("Hello from io."));
 
     arena_free(arena);
     printf("I/O tests passed\n\n");
