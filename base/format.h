@@ -2,7 +2,7 @@
 
 #include <base/base_types.h>
 #include <base/stdarg.h>
-#include <base/string.h>
+#include <base/base_string.h>
 #include <base/vector.h>
 
 

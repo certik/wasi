@@ -2,7 +2,7 @@
 
 #include <base/bool.h>
 #include <base/arena.h>
-#include <base/string.h>
+#include <base/base_string.h>
 #include <base/format.h>
 
 // Returns the file contents as a null-terminated string in `text`.

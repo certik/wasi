@@ -1,6 +1,6 @@
 #include <base/bool.h>
 #include <base/base_types.h>
-#include <base/string.h>
+#include <base/base_string.h>
 
 // Forward declare string functions
 extern size_t strlen(const char *str);

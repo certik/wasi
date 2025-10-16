@@ -35,7 +35,7 @@ clang \
     base/scratch.c \
     base/format.c \
     base/io.c \
-    base/string.c \
+    base/base_string.c \
     native/wasi_wasm.c
 """
 
@@ -69,7 +69,7 @@ clang \
     base/scratch.c \
     base/format.c \
     base/io.c \
-    base/string.c \
+    base/base_string.c \
     native/wasi_linux.c
 """
 
@@ -103,7 +103,7 @@ clang \
     base/scratch.c \
     base/format.c \
     base/io.c \
-    base/string.c \
+    base/base_string.c \
     native/wasi_macos.c \
     -lSystem \
     -Wl,-e,__start
@@ -143,7 +143,7 @@ cl \
     base/scratch.c \
     base/format.c \
     base/io.c \
-    base/string.c \
+    base/base_string.c \
     native/wasi_windows.c \
     && \
 link \
@@ -165,7 +165,7 @@ link \
     scratch.obj \
     format.obj \
     io.obj \
-    string.obj \
+    base_string.obj \
     wasi_windows.obj \
     /out:arena_windows.exe
 """
