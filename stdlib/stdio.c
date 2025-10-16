@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <stddef.h>
 
-#include <base_io.h>
+#include <base/base_io.h>
 
 // FILE I/O implementation
 // We use system calls where available (macOS via libSystem)
