@@ -115,13 +115,19 @@ int snprintf(char *str, size_t size, const char *format, ...) {
             p++;
             int precision = -1;
 
-            // Check for precision specifier
+            // Check for precision specifier (. followed by * or digits)
             if (*p == '.') {
                 p++;
-                precision = 0;
-                while (*p >= '0' && *p <= '9') {
-                    precision = precision * 10 + (*p - '0');
+                if (*p == '*') {
+                    // Dynamic precision from va_args
+                    precision = va_arg(args, int);
                     p++;
+                } else {
+                    precision = 0;
+                    while (*p >= '0' && *p <= '9') {
+                        precision = precision * 10 + (*p - '0');
+                        p++;
+                    }
                 }
             }
 
