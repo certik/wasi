@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include <base/arena.h>
+#include <arena.h>
 
 #ifdef __cplusplus
 extern "C" {

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
-#include <base/arena.h>
+#include <arena.h>
 #include <base/string.h>
 #include <base/format.h>
 

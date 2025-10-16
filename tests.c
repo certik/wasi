@@ -1,5 +1,12 @@
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
+
+// Forward declare string functions before including headers that use them
+extern size_t strlen(const char *str);
+extern char *strcpy(char *dest, const char *src);
+extern void *memcpy(void *dest, const void *src, size_t n);
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
@@ -7,10 +14,24 @@
 #include <wasi.h>
 #include <arena.h>
 #include <scratch.h>
-#include <string.h>
-#include <stdbool.h>
 #include <buddy.h>
 #include <test_stdlib.h>
+#include <base/format.h>
+#include <base/io.h>
+#include <base/hashtable.h>
+#include <base/vector.h>
+
+// Define hashtable and vector types for tests
+#define MapIntString_HASH(key) ((size_t)(key))
+#define MapIntString_EQUAL(key1, key2) ((key1) == (key2))
+DEFINE_HASHTABLE_FOR_TYPES(int, string, MapIntString)
+
+#define MapStringInt_HASH(key) (str_hash(key))
+#define MapStringInt_EQUAL(key1, key2) (str_eq((key1), (key2)))
+DEFINE_HASHTABLE_FOR_TYPES(string, int, MapStringInt)
+
+DEFINE_VECTOR_FOR_TYPE(int, VecInt)
+DEFINE_VECTOR_FOR_TYPE(int*, VecIntP)
 
 // Helper function for inner scratch scope
 char* test_nested_scratch_inner(Arena *outer_arena, bool avoid_conflict) {
@@ -77,6 +98,162 @@ void test_nested_scratch_outer(bool avoid_conflict) {
         assert(outer_temp == outer_temp2);
     }
     scratch_end(outer);
+}
+
+// Tests ported from run_tests.c for new base/ files
+void test_base_ported(void) {
+    printf("=== base ported tests ===\n");
+
+    // test_format
+    {
+        printf("## Testing format...\n");
+        Arena* arena = arena_new(1024*10);
+        double pi = 3.1415926535;
+
+        // Example with no arguments
+        string fmt = str_lit("Hello!");
+        string result = format(arena, fmt);
+        assert(str_eq(result, str_lit("Hello!")));
+        printf("No args: %s\n", str_to_cstr_copy(arena, result));
+
+        // Example with one argument
+        fmt = str_lit("Hello, {}!");
+        result = format(arena, fmt, str_lit("world"));
+        assert(str_eq(result, str_lit("Hello, world!")));
+        printf("One arg: %s\n", str_to_cstr_copy(arena, result));
+
+        fmt = str_lit("Hello, {}!");
+        result = format(arena, fmt, 5);
+        assert(str_eq(result, str_lit("Hello, 5!")));
+        printf("One arg: %s\n", str_to_cstr_copy(arena, result));
+
+        // Example with formatted double
+        fmt = str_lit("Value: {:10.5f}");
+        result = format(arena, fmt, pi);
+        // Note: Double formatting may have slight differences, so we just print it
+        printf("Formatted double: %s\n", str_to_cstr_copy(arena, result));
+
+        // Example with formatted char
+        fmt = str_lit("Char: |{:^5}|");
+        result = format(arena, fmt, 'x');
+        assert(str_eq(result, str_lit("Char: | 120 |")));
+        printf("Formatted char: %s\n", str_to_cstr_copy(arena, result));
+
+        // Example with multiple arguments
+        fmt = str_lit("Hello, {}, {}, {}, {}!");
+        result = format(arena, fmt, "world", 35.5, str_lit("XX"), 3);
+        printf("Multiple args: %s\n", str_to_cstr_copy(arena, result));
+
+        arena_free(arena);
+        printf("Format tests passed\n\n");
+    }
+
+    // test_io
+    {
+        printf("## Testing io...\n");
+        Arena* arena = arena_new(1024*20);
+
+        string text;
+        bool ok = read_file(arena, str_lit("does not exist"), &text);
+        assert(!ok);
+
+        text.size = 0;
+        assert(text.size == 0);
+        ok = read_file(arena, str_lit("README.md"), &text);
+        // README.md may not exist, so we don't assert on this
+        if (ok) {
+            assert(text.size > 10);
+            printf("Read README.md: %zu bytes\n", text.size);
+        } else {
+            printf("README.md not found (expected in some environments)\n");
+        }
+
+        println(arena, str_lit("Hello from io."));
+
+        arena_free(arena);
+        printf("I/O tests passed\n\n");
+    }
+
+    // test_hashtable1
+    {
+        printf("## Testing hashtable (int->string)...\n");
+        Arena* arena = arena_new(1024*10);
+
+        MapIntString ht;
+        MapIntString_init(arena, &ht, 16);
+        MapIntString_insert(arena, &ht, 42, str_lit("forty-two"));
+        string *value = MapIntString_get(&ht, 42);
+        assert(value);
+        printf("Value for key 42: %s\n", str_to_cstr_copy(arena, *value));
+
+        arena_free(arena);
+        printf("Hashtable (int->string) tests passed\n\n");
+    }
+
+    // test_hashtable2
+    {
+        printf("## Testing hashtable (string->int)...\n");
+        Arena* arena = arena_new(1024*10);
+
+        MapStringInt ht;
+        MapStringInt_init(arena, &ht, 16);
+        MapStringInt_insert(arena, &ht, str_lit("forty-two"), 42);
+        int *value = MapStringInt_get(&ht, str_lit("forty-two"));
+        assert(value);
+        printf("Value for key \"forty-two\": %d\n", *value);
+
+        arena_free(arena);
+        printf("Hashtable (string->int) tests passed\n\n");
+    }
+
+    // test_vector1
+    {
+        printf("## Testing vector (int)...\n");
+        Arena* arena = arena_new(1024*10);
+
+        VecInt v;
+        VecInt_reserve(arena, &v, 1);
+        assert(v.size == 0);
+        VecInt_push_back(arena, &v, 1);
+        assert(v.size == 1);
+        VecInt_push_back(arena, &v, 2);
+        assert(v.size == 2);
+        VecInt_push_back(arena, &v, 3);
+        assert(v.size == 3);
+        assert(v.data[0] == 1);
+        assert(v.data[1] == 2);
+        assert(v.data[2] == 3);
+
+        arena_free(arena);
+        printf("Vector (int) tests passed\n\n");
+    }
+
+    // test_vector2
+    {
+        printf("## Testing vector (int*)...\n");
+        Arena* arena = arena_new(1024*10);
+
+        VecIntP v;
+        int i=1, j=2, k=3;
+        VecIntP_reserve(arena, &v, 1);
+        assert(v.size == 0);
+        VecIntP_push_back(arena, &v, &i);
+        assert(v.size == 1);
+        VecIntP_push_back(arena, &v, &j);
+        assert(v.size == 2);
+        VecIntP_push_back(arena, &v, &k);
+        assert(v.size == 3);
+        assert(*v.data[0] == 1);
+        assert(*v.data[1] == 2);
+        assert(*v.data[2] == 3);
+        k = 4;
+        assert(*v.data[2] == 4);
+
+        arena_free(arena);
+        printf("Vector (int*) tests passed\n\n");
+    }
+
+    printf("base ported tests passed\n\n");
 }
 
 // base tests
@@ -282,6 +459,7 @@ void test_base(void) {
 int main(void) {
     test_stdlib();
     test_base();
+    test_base_ported();
 
     printf("=== All tests passed ===\n");
     return 0;

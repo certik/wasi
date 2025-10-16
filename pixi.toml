@@ -32,6 +32,9 @@ clang \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
+    base/format.c \
+    base/io.c \
+    base/string.c \
     native/wasi_wasm.c
 """
 
@@ -62,6 +65,9 @@ clang \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
+    base/format.c \
+    base/io.c \
+    base/string.c \
     native/wasi_linux.c
 """
 
@@ -92,6 +98,9 @@ clang \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
+    base/format.c \
+    base/io.c \
+    base/string.c \
     native/wasi_macos.c \
     -lSystem \
     -Wl,-e,__start
@@ -126,6 +135,9 @@ cl \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
+    base/format.c \
+    base/io.c \
+    base/string.c \
     native/wasi_windows.c \
     && \
 link \
@@ -144,6 +156,9 @@ link \
     buddy.obj \
     arena.obj \
     scratch.obj \
+    format.obj \
+    io.obj \
+    string.obj \
     wasi_windows.obj \
     /out:arena_windows.exe
 """

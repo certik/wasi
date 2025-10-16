@@ -4,7 +4,7 @@
 #include <assert.h>
 #include <string.h>
 
-#include <base/arena.h>
+#include <arena.h>
 
 // Helper Macros (internal use)
 #define _GV_CONCAT_IMPL(a, b) a##b

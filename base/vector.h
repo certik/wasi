@@ -1,11 +1,12 @@
 #pragma once
 
-
 #include <stddef.h> // For size_t
 #include <assert.h> // For assert()
-#include <string.h> // For memcpy()
 
-#include <base/arena.h>
+#include <arena.h>
+
+// Forward declare string.h functions to avoid implicit declaration errors
+extern void *memcpy(void *dest, const void *src, size_t n);
 
 // --- Helper Macros (internal use) ---
 #define _GV_CONCAT_IMPL(a, b) a##b

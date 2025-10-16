@@ -73,3 +73,16 @@ void arena_reset(Arena *arena, arena_pos_t pos);
  * @param arena A pointer to the arena.
  */
 void arena_free(Arena *arena);
+
+/**
+ * @brief Convenience macro to allocate an array of elements from the arena.
+ *
+ * This macro allocates memory for 'count' elements of 'type' and returns
+ * a pointer to the first element, cast to the appropriate type.
+ *
+ * @param arena A pointer to the arena.
+ * @param type The type of elements to allocate.
+ * @param count The number of elements to allocate.
+ * @return A pointer to the allocated array, cast to 'type*'.
+ */
+#define arena_alloc_array(arena, type, count) ((type*)arena_alloc((arena), sizeof(type) * (count)))
