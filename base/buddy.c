@@ -1,6 +1,6 @@
-#include <buddy.h>
-#include <wasi.h>
-#include <base_types.h>
+#include <base/buddy.h>
+#include <base/wasi.h>
+#include <base/base_types.h>
 
 #define MIN_PAGE_SIZE 4096UL
 #define MAX_ORDER 20 // 2^20 * 4KB = 4GB

@@ -1,33 +1,55 @@
 #include <base/assert.h>
-#include <base/wasi.h>
 #include <base/base_io.h>
 #include <base/mem.h>
-#include <base/numconv.h>
+#include <base/wasi.h>
 
-// Simple string output helper
-static void write_str(const char *str) {
-    size_t len = strlen(str);
-    ciovec_t iov = {.buf = str, .buf_len = len};
-    write_all(1, &iov, 1);
+// After proper strings and formatting, this should just be:
+/*
+void __assert_fail(const char *assertion, const char *file, unsigned int line, const char *function) {
+    printf("Assertion failed: (%s) at '%s:%u' in function '%s'\n", assertion, file, line, function);
+    exit(1);
 }
-
-// Simple number output helper
-static void write_uint(unsigned int num) {
-    char buf[32];
-    size_t len = uint64_to_str(num, buf);
-    ciovec_t iov = {.buf = buf, .buf_len = len};
-    write_all(1, &iov, 1);
-}
+*/
 
 void __assert_fail(const char *assertion, const char *file, unsigned int line, const char *function) {
-    write_str("Assertion failed: (");
-    write_str(assertion);
-    write_str(") at '");
-    write_str(file);
-    write_str(":");
-    write_uint(line);
-    write_str("' in function '");
-    write_str(function);
-    write_str("'\n");
+    // Simple assertion failure handler using only base/ dependencies
+    const char *msg1 = "Assertion failed: (";
+    const char *msg2 = ") at '";
+    const char *msg3 = ":";
+    const char *msg4 = "' in function '";
+    const char *msg5 = "'\n";
+
+    ciovec_t iovs[9];
+    iovs[0].buf = msg1;
+    iovs[0].buf_len = strlen(msg1);
+    iovs[1].buf = assertion;
+    iovs[1].buf_len = strlen(assertion);
+    iovs[2].buf = msg2;
+    iovs[2].buf_len = strlen(msg2);
+    iovs[3].buf = file;
+    iovs[3].buf_len = strlen(file);
+    iovs[4].buf = msg3;
+    iovs[4].buf_len = strlen(msg3);
+
+    // Convert line number to string
+    char line_buf[32];
+    char *p = line_buf + sizeof(line_buf) - 1;
+    *p = '\0';
+    unsigned int n = line;
+    do {
+        *--p = '0' + (n % 10);
+        n /= 10;
+    } while (n > 0);
+
+    iovs[5].buf = p;
+    iovs[5].buf_len = strlen(p);
+    iovs[6].buf = msg4;
+    iovs[6].buf_len = strlen(msg4);
+    iovs[7].buf = function;
+    iovs[7].buf_len = strlen(function);
+    iovs[8].buf = msg5;
+    iovs[8].buf_len = strlen(msg5);
+
+    write_all(2, iovs, 9);
     wasi_proc_exit(1);
 }

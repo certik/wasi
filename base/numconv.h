@@ -1,7 +1,6 @@
 #pragma once
 
-#include <stddef.h>
-#include <stdint.h>
+#include <base/base_types.h>
 
 // Number to string conversion functions for base/
 // Self-contained implementations with no external dependencies

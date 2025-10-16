@@ -1,4 +1,3 @@
-#include <base/bool.h>
 #include <base/base_types.h>
 #include <base/base_string.h>
 #include <base/mem.h>

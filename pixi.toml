@@ -25,10 +25,8 @@ clang \
     tests.c \
     test_stdlib.c \
     test_base.c \
-    stdlib/assert.c \
     stdlib/stdio.c \
     stdlib/stdlib.c \
-    stdlib/string.c \
     stdlib/printf.c \
     base/base_io.c \
     base/buddy.c \
@@ -64,6 +62,8 @@ clang \
     -o arena_base.wasm \
     test_base_only.c \
     test_base.c \
+    stdlib/stdio.c \
+    stdlib/stdlib.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
@@ -99,10 +99,8 @@ clang \
     tests.c \
     test_stdlib.c \
     test_base.c \
-    stdlib/assert.c \
     stdlib/stdio.c \
     stdlib/stdlib.c \
-    stdlib/string.c \
     stdlib/printf.c \
     base/base_io.c \
     base/buddy.c \
@@ -138,10 +136,8 @@ clang \
     tests.c \
     test_stdlib.c \
     test_base.c \
-    stdlib/assert.c \
     stdlib/stdio.c \
     stdlib/stdlib.c \
-    stdlib/string.c \
     stdlib/printf.c \
     base/base_io.c \
     base/buddy.c \
@@ -208,10 +204,8 @@ link \
     tests.obj \
     test_stdlib.obj \
     test_base.obj \
-    assert.obj \
     stdio.obj \
     stdlib.obj \
-    string.obj \
     printf.obj \
     base_io.obj \
     buddy.obj \
@@ -223,6 +217,10 @@ link \
     mem.obj \
     numconv.obj \
     exit.obj \
+    base_string.obj \
+    mem.obj \
+    numconv.obj \
+    assert.obj \
     wasi_windows.obj \
     /out:arena_windows.exe
 """

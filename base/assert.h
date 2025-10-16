@@ -1,6 +1,8 @@
 #pragma once
 
-// Assert implementation for debugging
+// Base assertion facility - self-contained, no dependencies on stdio/stdlib
+// Used by base/ tests and re-exported by stdlib/assert.h
+
 void __assert_fail(const char *assertion, const char *file, unsigned int line, const char *function);
 
 #ifdef NDEBUG
