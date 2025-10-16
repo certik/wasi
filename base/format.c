@@ -103,18 +103,43 @@ string format_explicit_varg(Arena *arena, string fmt, size_t arg_count,
         ArgType type = (ArgType)va_arg(ap, int);
         string s;
         switch (type) {
-            case ARG_INT: {
-                int value = va_arg(ap, int);
+            case ARG_INT8: {
+                int8_t value = (int8_t)va_arg(ap, int);
                 s = int_to_string(arena, value);
                 break;
             }
-            case ARG_UINT64: {
-                uint64_t value = va_arg(ap, uint64_t);
+            case ARG_UINT8: {
+                uint8_t value = (uint8_t)va_arg(ap, int);
+                s = int_to_string(arena, value);
+                break;
+            }
+            case ARG_INT16: {
+                int16_t value = (int16_t)va_arg(ap, int);
+                s = int_to_string(arena, value);
+                break;
+            }
+            case ARG_UINT16: {
+                uint16_t value = (uint16_t)va_arg(ap, int);
+                s = int_to_string(arena, value);
+                break;
+            }
+            case ARG_INT32: {
+                int32_t value = va_arg(ap, int32_t);
+                s = int_to_string(arena, value);
+                break;
+            }
+            case ARG_UINT32: {
+                uint32_t value = va_arg(ap, uint32_t);
                 s = int_to_string(arena, value);
                 break;
             }
             case ARG_INT64: {
                 int64_t value = va_arg(ap, int64_t);
+                s = int_to_string(arena, value);
+                break;
+            }
+            case ARG_UINT64: {
+                uint64_t value = va_arg(ap, uint64_t);
                 s = int_to_string(arena, value);
                 break;
             }
@@ -144,9 +169,9 @@ string format_explicit_varg(Arena *arena, string fmt, size_t arg_count,
                 }
                 break;
             }
-            case ARG_CHAR: {
-                char value = (char)va_arg(ap, int);
-                s = char_to_string(arena, value);
+            case ARG_POINTER: {
+                void* value = va_arg(ap, void*);
+                s = int_to_string(arena, (uint64_t)value);
                 break;
             }
             case ARG_VECTOR_INT64: {
@@ -176,7 +201,12 @@ string format_explicit_varg(Arena *arena, string fmt, size_t arg_count,
         arg_index++;
         // Apply width and alignment
         if (spec.alignment == '\0') {
-            if (type == ARG_INT || type == ARG_DOUBLE) {
+            // Right-align numeric types, left-align everything else
+            if (type == ARG_INT8 || type == ARG_UINT8 || 
+                type == ARG_INT16 || type == ARG_UINT16 ||
+                type == ARG_INT32 || type == ARG_UINT32 ||
+                type == ARG_INT64 || type == ARG_UINT64 ||
+                type == ARG_DOUBLE) {
                 spec.alignment = '>';
             } else {
                 spec.alignment = '<';
