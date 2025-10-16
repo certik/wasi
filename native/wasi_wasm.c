@@ -6,6 +6,11 @@
 
 uint32_t WASI(fd_write)(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nwritten);
 void WASI(proc_exit)(int status);
+int WASI(path_open)(int dirfd, int dirflags, const char* path, size_t path_len, int oflags, uint64_t fs_rights_base, uint64_t fs_rights_inheriting, int fdflags, int* fd);
+int WASI(fd_close)(int fd);
+int WASI(fd_read)(int fd, const iovec_t* iovs, size_t iovs_len, size_t* nread);
+int WASI(fd_seek)(int fd, int64_t offset, int whence, uint64_t* newoffset);
+int WASI(fd_tell)(int fd, uint64_t* offset);
 
 #undef WASI
 
@@ -55,6 +60,53 @@ void wasi_proc_exit(int status) {
 
 uint32_t wasi_fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nwritten) {
     return fd_write(fd, iovs, iovs_len, nwritten);
+}
+
+// File I/O implementations
+wasi_fd_t wasi_path_open(const char* path, int flags) {
+    // WASI requires path_open to be called with a directory fd (use 3 for preopen)
+    // We simplify by using the preopen directory
+    int fd = -1;
+    size_t path_len = 0;
+    while (path[path_len]) path_len++;
+
+    // Map flags to WASI oflags
+    int oflags = 0;
+    if (flags & WASI_O_CREAT) oflags |= 0x1;  // __WASI_OFLAGS_CREAT
+    if (flags & WASI_O_TRUNC) oflags |= 0x4;  // __WASI_OFLAGS_TRUNC
+
+    // Default rights for reading
+    uint64_t rights_base = 0x1 | 0x2 | 0x40 | 0x80;  // READ, WRITE, SEEK, TELL
+
+    int ret = path_open(
+        3,           // dirfd (preopen)
+        0,           // dirflags
+        path,
+        path_len,
+        oflags,
+        rights_base,
+        0,           // inheriting rights
+        0,           // fdflags
+        &fd
+    );
+
+    return (ret == 0) ? fd : -1;
+}
+
+int wasi_fd_close(wasi_fd_t fd) {
+    return fd_close(fd);
+}
+
+int wasi_fd_read(wasi_fd_t fd, const iovec_t* iovs, size_t iovs_len, size_t* nread) {
+    return fd_read(fd, iovs, iovs_len, nread);
+}
+
+int wasi_fd_seek(wasi_fd_t fd, int64_t offset, int whence, uint64_t* newoffset) {
+    return fd_seek(fd, offset, whence, newoffset);
+}
+
+int wasi_fd_tell(wasi_fd_t fd, uint64_t* offset) {
+    return fd_tell(fd, offset);
 }
 
 // For WASI, the entry point is `_start`, which we define to call our `main` function.

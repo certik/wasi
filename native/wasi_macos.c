@@ -21,6 +21,10 @@ extern int mprotect(void *addr, size_t len, int prot);
 extern ssize_t writev(int fd, const struct iovec *iov, int iovcnt);
 extern void _exit(int status);
 extern int * __error(); // Returns pointer to errno
+extern int open(const char *path, int flags, ...);
+extern int close(int fd);
+extern ssize_t readv(int fd, const struct iovec *iov, int iovcnt);
+extern off_t lseek(int fd, off_t offset, int whence);
 
 // Protection and mapping flags (macOS-specific values)
 #define PROT_NONE  0x00
@@ -108,6 +112,67 @@ void* wasi_heap_grow(size_t num_bytes) {
 
 // Forward declaration for main
 int main();
+
+// macOS open() flags
+#define O_RDONLY   0x0000
+#define O_WRONLY   0x0001
+#define O_RDWR     0x0002
+#define O_CREAT    0x0200
+#define O_TRUNC    0x0400
+
+// File I/O implementations
+wasi_fd_t wasi_path_open(const char* path, int flags) {
+    // Map WASI flags to macOS flags
+    int os_flags = 0;
+    if ((flags & WASI_O_RDWR) == WASI_O_RDWR) {
+        os_flags |= O_RDWR;
+    } else if (flags & WASI_O_WRONLY) {
+        os_flags |= O_WRONLY;
+    } else {
+        os_flags |= O_RDONLY;
+    }
+
+    if (flags & WASI_O_CREAT) os_flags |= O_CREAT;
+    if (flags & WASI_O_TRUNC) os_flags |= O_TRUNC;
+
+    // Default mode for created files (0644)
+    return open(path, os_flags, 0644);
+}
+
+int wasi_fd_close(wasi_fd_t fd) {
+    int result = close(fd);
+    return (result < 0) ? *__error() : 0;
+}
+
+int wasi_fd_read(wasi_fd_t fd, const iovec_t* iovs, size_t iovs_len, size_t* nread) {
+    ssize_t result = readv(fd, (const struct iovec*)iovs, (int)iovs_len);
+    if (result < 0) {
+        *nread = 0;
+        return *__error();  // Return errno
+    }
+    *nread = (size_t)result;
+    return 0;  // Success
+}
+
+int wasi_fd_seek(wasi_fd_t fd, int64_t offset, int whence, uint64_t* newoffset) {
+    off_t result = lseek(fd, (off_t)offset, whence);
+    if (result < 0) {
+        *newoffset = 0;
+        return *__error();  // Return errno
+    }
+    *newoffset = (uint64_t)result;
+    return 0;  // Success
+}
+
+int wasi_fd_tell(wasi_fd_t fd, uint64_t* offset) {
+    off_t result = lseek(fd, 0, WASI_SEEK_CUR);
+    if (result < 0) {
+        *offset = 0;
+        return *__error();  // Return errno
+    }
+    *offset = (uint64_t)result;
+    return 0;  // Success
+}
 
 // Entry point for macOS.
 void _start() {

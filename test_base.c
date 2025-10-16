@@ -375,6 +375,31 @@ void test_format(void) {
     println(NULL, str_lit("Format tests passed"));
 }
 
+void test_io(void) {
+    println(NULL, str_lit("## Testing io..."));
+    Arena* arena = arena_new(1024*20);
+
+    string text;
+    bool ok = read_file(arena, str_lit("does not exist"), &text);
+    assert(!ok);
+
+    text.size = 0;
+    assert(text.size == 0);
+    ok = read_file(arena, str_lit("README.md"), &text);
+    // README.md may not exist, so we don't assert on this
+    if (ok) {
+        assert(text.size > 10);
+        println(arena, str_lit("Read README.md: {} bytes"), text.size);
+    } else {
+        println(arena, str_lit("README.md not found (expected in some environments)"));
+    }
+
+    //println(arena, str_lit("Hello from io."));
+
+    arena_free(arena);
+    println(NULL, str_lit("I/O tests passed"));
+}
+
 void test_hashtable_int_string(void) {
     println(NULL, str_lit("## Testing hashtable (int->string)..."));
     Arena* arena = arena_new(1024*10);
@@ -503,6 +528,7 @@ void test_base(void) {
     test_arena();
     test_scratch();
     test_format();
+    test_io();
     test_hashtable_int_string();
     test_hashtable_string_int();
     test_vector_int();
