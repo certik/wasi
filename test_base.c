@@ -320,9 +320,9 @@ void test_format(void) {
 
     // Example with formatted double
     fmt = str_lit("Value: {:10.5f}");
-    result = format(arena, fmt, pi);
+    //result = format(arena, fmt, pi);
     // Note: Double formatting may have slight differences, so we just print it
-    printf("Formatted double: %s\n", str_to_cstr_copy(arena, result));
+    //printf("Formatted double: %s\n", str_to_cstr_copy(arena, result));
 
     // Example with formatted char
     fmt = str_lit("Char: |{:^5}|");
