@@ -33,9 +33,7 @@ clang \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
-    base/base_string.c \
     base/mem.c \
-    base/numconv.c \
     native/wasi_wasm.c
 """
 
@@ -67,9 +65,7 @@ clang \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
-    base/base_string.c \
     base/mem.c \
-    base/numconv.c \
     native/wasi_wasm.c
 """
 
@@ -101,9 +97,7 @@ clang \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
-    base/base_string.c \
     base/mem.c \
-    base/numconv.c \
     native/wasi_linux.c
 """
 
@@ -135,9 +129,7 @@ clang \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
-    base/base_string.c \
     base/mem.c \
-    base/numconv.c \
     native/wasi_macos.c \
     -lSystem \
     -Wl,-e,__start
