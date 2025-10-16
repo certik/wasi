@@ -3,9 +3,7 @@
 #include <base/base_types.h>
 #include <base/assert.h>
 #include <base/arena.h>
-
-// Forward declare string.h functions to avoid implicit declaration errors
-extern void *memcpy(void *dest, const void *src, size_t n);
+#include <base/mem.h>
 
 // --- Helper Macros (internal use) ---
 #define _GV_CONCAT_IMPL(a, b) a##b

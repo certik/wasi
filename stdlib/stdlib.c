@@ -1,10 +1,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
-// Forward declare string functions
-extern void *memcpy(void *dest, const void *src, size_t n);
-
-#include <stdio.h>
+#include <base/mem.h>
+#include <base/exit.h>
 #include <wasi.h>
 #include <buddy.h>
 #include <stdlib.h>
@@ -17,14 +15,7 @@ void free(void* ptr) {
     buddy_free(ptr);
 }
 
-void exit(int status) {
-    wasi_proc_exit(status);
-}
-
-void abort(void) {
-    printf("abort() called\n");
-    exit(1);
-}
+// exit() and abort() now reuse implementations from base/exit.c
 
 // Linear Congruential Generator (LCG)
 // Parameters: a = 1103515245, c = 12345, m = 2^31

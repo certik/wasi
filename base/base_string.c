@@ -1,12 +1,8 @@
 #include <base/bool.h>
 #include <base/base_types.h>
 #include <base/base_string.h>
-
-// Forward declare string functions
-extern size_t strlen(const char *str);
-extern void *memcpy(void *dest, const void *src, size_t n);
-extern int memcmp(const void *s1, const void *s2, size_t n);
-extern int snprintf(char *str, size_t size, const char *format, ...);
+#include <base/mem.h>
+#include <base/numconv.h>
 
 string str_from_cstr_view(char *cstr) {
     string result = {cstr, strlen(cstr)};
@@ -40,23 +36,20 @@ string str_substr(string str, uint64_t min, uint64_t size) {
 
 string int_to_string(Arena *arena, int value) {
     char buf[32];
-    int len = snprintf(buf, sizeof(buf), "%d", value);
+    size_t len = int_to_str(value, buf);
     char *str = arena_alloc_array(arena, char, len + 1);
-    memcpy(str, buf, len + 1);
+    memcpy(str, buf, len);
+    str[len] = '\0';
     string result = {str, len};
     return result;
 }
 
 string double_to_string(Arena *arena, double value, int precision) {
     char buf[32];
-    int len;
-    if (precision >= 0) {
-        len = snprintf(buf, sizeof(buf), "%.*f", precision, value);
-    } else {
-        len = snprintf(buf, sizeof(buf), "%f", value);
-    }
+    size_t len = double_to_str(value, buf, precision);
     char *str = arena_alloc_array(arena, char, len + 1);
-    memcpy(str, buf, len + 1);
+    memcpy(str, buf, len);
+    str[len] = '\0';
     string result = {str, len};
     return result;
 }

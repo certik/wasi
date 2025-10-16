@@ -36,10 +36,51 @@ clang \
     base/format.c \
     base/io.c \
     base/base_string.c \
+    base/mem.c \
+    base/numconv.c \
+    base/assert.c \
+    base/printf.c \
+    base/exit.c \
     native/wasi_wasm.c
 """
 
 test_wasm = { cmd="wasmtime arena.wasm", depends-on=["build_wasm"] }
+
+build_base_wasm = """
+clang \
+    --target=wasm32-wasi \
+    -Os \
+    -nostdlib \
+    -nostdinc \
+    -fno-builtin \
+    -I base \
+    -I stdlib \
+    -I native \
+    -I . \
+    -Wl,--no-entry \
+    -Wl,--export=__heap_base \
+    -Wl,--export=_start \
+    -Wl,--initial-memory=131072 \
+    -o arena_base.wasm \
+    test_base_only.c \
+    test_base.c \
+    base/base_io.c \
+    base/buddy.c \
+    base/arena.c \
+    base/scratch.c \
+    base/format.c \
+    base/io.c \
+    base/base_string.c \
+    base/mem.c \
+    base/numconv.c \
+    base/assert.c \
+    base/printf.c \
+    base/exit.c \
+    base/file_stub.c \
+    native/wasi_wasm.c
+"""
+
+test_base_wasm = { cmd="wasmtime arena_base.wasm", depends-on=["build_base_wasm"] }
 
 [feature.wasm.dependencies]
 clang = ">=20.1.4,<21"
@@ -70,6 +111,11 @@ clang \
     base/format.c \
     base/io.c \
     base/base_string.c \
+    base/mem.c \
+    base/numconv.c \
+    base/assert.c \
+    base/printf.c \
+    base/exit.c \
     native/wasi_linux.c
 """
 
@@ -104,6 +150,11 @@ clang \
     base/format.c \
     base/io.c \
     base/base_string.c \
+    base/mem.c \
+    base/numconv.c \
+    base/assert.c \
+    base/printf.c \
+    base/exit.c \
     native/wasi_macos.c \
     -lSystem \
     -Wl,-e,__start
@@ -143,6 +194,11 @@ cl \
     base/format.c \
     base/io.c \
     base/base_string.c \
+    base/mem.c \
+    base/numconv.c \
+    base/assert.c \
+    base/printf.c \
+    base/exit.c \
     native/wasi_windows.c \
     && \
 link \
@@ -165,6 +221,10 @@ link \
     format.obj \
     io.obj \
     base_string.obj \
+    mem.obj \
+    numconv.obj \
+    printf.obj \
+    exit.obj \
     wasi_windows.obj \
     /out:arena_windows.exe
 """

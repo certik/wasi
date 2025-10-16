@@ -1,11 +1,6 @@
 #include <base/base_types.h>
 #include <base/stdarg.h>
-
-// Forward declare string functions
-extern void *memchr(const void *s, int c, size_t n);
-extern void *memset(void *s, int c, size_t n);
-extern void *memcpy(void *dest, const void *src, size_t n);
-
+#include <base/mem.h>
 #include <base/format.h>
 
 // Inline implementation of isdigit
