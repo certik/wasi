@@ -190,9 +190,27 @@ int wasi_fd_tell(wasi_fd_t fd, uint64_t* offset) {
 }
 
 // The entry point for a -nostdlib Linux program is `_start`.
+// The kernel enters with RSP % 16 == 0, but the ABI requires RSP % 16 == 8
+// before a call instruction (so after the call pushes return address, it's aligned).
+// We need to ensure proper 16-byte stack alignment for functions using SSE instructions.
+__attribute__((naked))
 void _start() {
+    __asm__ volatile (
+        "xor %%rbp, %%rbp\n"           // Clear frame pointer as per ABI
+        "andq $-16, %%rsp\n"            // Align stack to 16 bytes
+        "call _start_c\n"               // Call the C portion
+        "movq %%rax, %%rdi\n"          // Move return value to exit code
+        "movq $60, %%rax\n"            // SYS_EXIT
+        "syscall\n"                     // Exit
+        "hlt\n"                         // Should never reach here
+        ::: "memory"
+    );
+}
+
+// The actual C entry point
+int _start_c() {
     ensure_heap_initialized();
     buddy_init();
     int status = main();
-    wasi_proc_exit(status);
+    return status;
 }
