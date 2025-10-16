@@ -25,10 +25,8 @@ clang \
     tests.c \
     test_stdlib.c \
     test_base.c \
-    stdlib/assert.c \
     stdlib/stdio.c \
     stdlib/stdlib.c \
-    stdlib/string.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
@@ -36,6 +34,7 @@ clang \
     base/base_string.c \
     base/mem.c \
     base/numconv.c \
+    base/assert.c \
     native/wasi_wasm.c
 """
 
@@ -59,10 +58,8 @@ clang \
     -o arena_base.wasm \
     test_base_only.c \
     test_base.c \
-    stdlib/assert.c \
     stdlib/stdio.c \
     stdlib/stdlib.c \
-    stdlib/string.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
@@ -70,6 +67,7 @@ clang \
     base/base_string.c \
     base/mem.c \
     base/numconv.c \
+    base/assert.c \
     native/wasi_wasm.c
 """
 
@@ -93,10 +91,8 @@ clang \
     tests.c \
     test_stdlib.c \
     test_base.c \
-    stdlib/assert.c \
     stdlib/stdio.c \
     stdlib/stdlib.c \
-    stdlib/string.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
@@ -104,6 +100,7 @@ clang \
     base/base_string.c \
     base/mem.c \
     base/numconv.c \
+    base/assert.c \
     native/wasi_linux.c
 """
 
@@ -127,10 +124,8 @@ clang \
     tests.c \
     test_stdlib.c \
     test_base.c \
-    stdlib/assert.c \
     stdlib/stdio.c \
     stdlib/stdlib.c \
-    stdlib/string.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
@@ -138,6 +133,7 @@ clang \
     base/base_string.c \
     base/mem.c \
     base/numconv.c \
+    base/assert.c \
     native/wasi_macos.c \
     -lSystem \
     -Wl,-e,__start
@@ -167,10 +163,8 @@ cl \
     tests.c \
     test_stdlib.c \
     test_base.c \
-    stdlib/assert.c \
     stdlib/stdio.c \
     stdlib/stdlib.c \
-    stdlib/string.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
@@ -178,6 +172,7 @@ cl \
     base/base_string.c \
     base/mem.c \
     base/numconv.c \
+    base/assert.c \
     native/wasi_windows.c \
     && \
 link \
@@ -189,10 +184,8 @@ link \
     tests.obj \
     test_stdlib.obj \
     test_base.obj \
-    assert.obj \
     stdio.obj \
     stdlib.obj \
-    string.obj \
     base_io.obj \
     buddy.obj \
     arena.obj \
@@ -200,6 +193,7 @@ link \
     base_string.obj \
     mem.obj \
     numconv.obj \
+    assert.obj \
     wasi_windows.obj \
     /out:arena_windows.exe
 """

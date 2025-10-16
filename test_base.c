@@ -5,18 +5,8 @@
 #include <base/buddy.h>
 #include <base/base_string.h>
 #include <base/mem.h>
+#include <base/assert.h>
 #include <test_base.h>
-
-// Simple assert for base tests
-#define base_assert(expr) \
-    do { \
-        if (!(expr)) { \
-            const char *msg = "Assertion failed: " #expr "\n"; \
-            ciovec_t iov = {msg, strlen(msg)}; \
-            write_all(1, &iov, 1); \
-            wasi_proc_exit(1); \
-        } \
-    } while (0)
 
 // Simple print function for base tests
 static void print(const char *str) {
@@ -25,7 +15,7 @@ static void print(const char *str) {
 }
 
 // Helper function for inner scratch scope
-static char* test_nested_scratch_inner(Arena *outer_arena, int avoid_conflict) {
+static char* test_nested_scratch_inner(Arena *outer_arena, bool avoid_conflict) {
     Scratch inner;
     if (avoid_conflict) {
         inner = scratch_begin_avoid_conflict(outer_arena);
@@ -50,9 +40,9 @@ static char* test_nested_scratch_inner(Arena *outer_arena, int avoid_conflict) {
     print("\n");
 
     if (avoid_conflict) {
-        base_assert(inner.arena != outer_arena);
+        assert(inner.arena != outer_arena);
     } else {
-        base_assert(inner.arena == outer_arena);
+        assert(inner.arena == outer_arena);
     }
     scratch_end(inner);
 
@@ -60,7 +50,7 @@ static char* test_nested_scratch_inner(Arena *outer_arena, int avoid_conflict) {
 }
 
 // Helper function for outer scratch scope
-static void test_nested_scratch_outer(int avoid_conflict) {
+static void test_nested_scratch_outer(bool avoid_conflict) {
     Scratch outer = scratch_begin();
     char *outer_temp = test_nested_scratch_inner(outer.arena, avoid_conflict);
     char *outer_temp2 = arena_alloc(outer.arena, 50);
@@ -72,16 +62,16 @@ static void test_nested_scratch_outer(int avoid_conflict) {
         print("\n");
 
         // Values are different (correct)
-        base_assert(outer_temp[0] == 'A');
-        base_assert(outer_temp[1] == 'B');
-        base_assert(outer_temp[2] == 'C');
+        assert(outer_temp[0] == 'A');
+        assert(outer_temp[1] == 'B');
+        assert(outer_temp[2] == 'C');
 
-        base_assert(outer_temp2[0] == 'X');
-        base_assert(outer_temp2[1] == 'X');
-        base_assert(outer_temp2[2] == 'X');
+        assert(outer_temp2[0] == 'X');
+        assert(outer_temp2[1] == 'X');
+        assert(outer_temp2[2] == 'X');
 
         // and the pointers are different (correct)
-        base_assert(outer_temp != outer_temp2);
+        assert(outer_temp != outer_temp2);
     } else {
         print("  In outer scratch after inner: ");
         print(outer_temp);
@@ -90,16 +80,16 @@ static void test_nested_scratch_outer(int avoid_conflict) {
         // This demonstrates the bug: scratch_begin() without conflict avoidance allows
         // both scopes to share the same arena, and scratch_end(inner) invalidates outer_temp
         // The values are the same (bug)
-        base_assert(outer_temp[0] == 'X');
-        base_assert(outer_temp[1] == 'X');
-        base_assert(outer_temp[2] == 'X');
+        assert(outer_temp[0] == 'X');
+        assert(outer_temp[1] == 'X');
+        assert(outer_temp[2] == 'X');
 
-        base_assert(outer_temp2[0] == 'X');
-        base_assert(outer_temp2[1] == 'X');
-        base_assert(outer_temp2[2] == 'X');
+        assert(outer_temp2[0] == 'X');
+        assert(outer_temp2[1] == 'X');
+        assert(outer_temp2[2] == 'X');
 
         // and the pointers are the same (bug)
-        base_assert(outer_temp == outer_temp2);
+        assert(outer_temp == outer_temp2);
     }
     scratch_end(outer);
 }
@@ -113,16 +103,16 @@ void test_wasi_heap(void) {
     print("Initial heap size obtained\n");
 
     void* mg = wasi_heap_grow(4 * WASM_PAGE_SIZE);
-    base_assert((size_t)hb + ms1 == (size_t)mg);
+    assert((size_t)hb + ms1 == (size_t)mg);
 
     size_t ms2 = wasi_heap_size();
-    base_assert(ms1 + 4*WASM_PAGE_SIZE == ms2);
+    assert(ms1 + 4*WASM_PAGE_SIZE == ms2);
 
     mg = wasi_heap_grow(8 * WASM_PAGE_SIZE);
-    base_assert((size_t)hb + ms2 == (size_t)mg);
+    assert((size_t)hb + ms2 == (size_t)mg);
 
     ms2 = wasi_heap_size();
-    base_assert(ms1 + (4+8)*WASM_PAGE_SIZE == ms2);
+    assert(ms1 + (4+8)*WASM_PAGE_SIZE == ms2);
     print("WASI heap tests passed\n");
 }
 
@@ -261,7 +251,7 @@ void test_scratch(void) {
         print(", ");
         print(temp2);
         print("\n");
-        base_assert(temp1 != temp2);
+        assert(temp1 != temp2);
         scratch_end(scratch);
     }
 
@@ -274,10 +264,10 @@ void test_scratch(void) {
     print("\n");
 
     print("Test 2: Nested scratch scopes with conflict avoidance\n");
-    test_nested_scratch_outer(1);
+    test_nested_scratch_outer(true);
 
     print("Test 2b: Nested scratch scopes WITHOUT conflict avoidance\n");
-    test_nested_scratch_outer(0);
+    test_nested_scratch_outer(false);
 
     print("Test 3: Multiple sequential scratch scopes\n");
     {
@@ -316,7 +306,7 @@ void test_scratch(void) {
         scratch_end(scratch);
     }
     arena_pos_t after_reuse = arena_get_pos(scratch_test_arena);
-    base_assert(before_reuse.ptr == after_reuse.ptr);
+    assert(before_reuse.ptr == after_reuse.ptr);
     print("  Memory position restored correctly\n");
 
     print("Freeing scratch test arena...\n");
@@ -330,40 +320,40 @@ void test_string(void) {
 
     // Test str_from_cstr_view
     string s1 = str_from_cstr_view("hello");
-    base_assert(s1.size == 5);
-    base_assert(s1.str[0] == 'h');
+    assert(s1.size == 5);
+    assert(s1.str[0] == 'h');
 
     // Test str_lit macro
     string s2 = str_lit("world");
-    base_assert(s2.size == 5);
+    assert(s2.size == 5);
 
     // Test str_eq
     string s3 = str_lit("hello");
-    base_assert(str_eq(s1, s3));
-    base_assert(!str_eq(s1, s2));
+    assert(str_eq(s1, s3));
+    assert(!str_eq(s1, s2));
 
     // Test str_concat
     string s4 = str_concat(arena, s1, str_lit(" "));
     string s5 = str_concat(arena, s4, s2);
-    base_assert(s5.size == 11);
-    base_assert(str_eq(s5, str_lit("hello world")));
+    assert(s5.size == 11);
+    assert(str_eq(s5, str_lit("hello world")));
 
     // Test int_to_string
     string s6 = int_to_string(arena, 42);
-    base_assert(str_eq(s6, str_lit("42")));
+    assert(str_eq(s6, str_lit("42")));
 
     string s7 = int_to_string(arena, -123);
-    base_assert(str_eq(s7, str_lit("-123")));
+    assert(str_eq(s7, str_lit("-123")));
 
     // Test char_to_string
     string s8 = char_to_string(arena, 'X');
-    base_assert(s8.size == 1);
-    base_assert(s8.str[0] == 'X');
+    assert(s8.size == 1);
+    assert(s8.str[0] == 'X');
 
     // Test str_to_cstr_copy
     char *cstr = str_to_cstr_copy(arena, s5);
-    base_assert(cstr[11] == '\0');
-    base_assert(strlen(cstr) == 11);
+    assert(cstr[11] == '\0');
+    assert(strlen(cstr) == 11);
 
     print("String function tests passed\n");
     arena_free(arena);

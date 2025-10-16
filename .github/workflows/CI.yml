@@ -26,8 +26,8 @@ jobs:
           - platform: wasm
             os: ubuntu-latest
             pixi-command: |
-              pixi run -e wasm build_wasm
-              wasmtime arena.wasm
+              pixi run -e wasm test_wasm
+              pixi run -e wasm test_base_wasm
     
     runs-on: ${{ matrix.os }}
     name: Test ${{ matrix.platform }}
