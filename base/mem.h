@@ -1,6 +1,9 @@
 #pragma once
 
-#include <stddef.h>
+#include <base/base_types.h>
+
+// Memory and string manipulation functions for base/
+// Self-contained implementations with no external dependencies
 
 size_t strlen(const char *str);
 char *strcpy(char *dest, const char *src);

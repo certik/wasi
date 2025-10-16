@@ -1,6 +1,6 @@
-#include "arena.h"
-#include "buddy.h"
-#include <base_types.h>
+#include <base/arena.h>
+#include <base/buddy.h>
+#include <base/base_types.h>
 
 // All allocations will be aligned to this boundary (must be a power of two).
 #define ARENA_ALIGNMENT 16

@@ -123,6 +123,10 @@ void __chkstk() {
     // Do nothing - we're not using large stack allocations
 }
 
+// _fltused is required by MSVC when using floating-point operations
+// This symbol must be present when using floating-point without the CRT
+int _fltused = 1;
+
 // Process exit function
 void wasi_proc_exit(int status) {
     ExitProcess((unsigned int)status);

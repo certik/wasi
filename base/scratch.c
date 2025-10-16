@@ -1,5 +1,5 @@
-#include "scratch.h"
-#include "wasi.h"
+#include <base/scratch.h>
+#include <base/wasi.h>
 
 Scratch scratch_begin_from_arena(Arena *arena) {
     Scratch scratch;
@@ -30,7 +30,7 @@ Scratch scratch_begin_avoid_conflict(Arena *conflict) {
     }
     //assert(false);
     wasi_proc_exit(1);
-    Scratch scratch;
+    Scratch scratch = {0};
     return scratch;
 }
 

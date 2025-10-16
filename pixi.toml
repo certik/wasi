@@ -24,18 +24,50 @@ clang \
     -o arena.wasm \
     tests.c \
     test_stdlib.c \
-    stdlib/assert.c \
+    test_base.c \
     stdlib/stdio.c \
     stdlib/stdlib.c \
-    stdlib/string.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
+    base/mem.c \
+    base/assert.c \
     native/wasi_wasm.c
 """
 
 test_wasm = { cmd="wasmtime arena.wasm", depends-on=["build_wasm"] }
+
+build_base_wasm = """
+clang \
+    --target=wasm32-wasi \
+    -Os \
+    -nostdlib \
+    -nostdinc \
+    -fno-builtin \
+    -I base \
+    -I stdlib \
+    -I native \
+    -I . \
+    -Wl,--no-entry \
+    -Wl,--export=__heap_base \
+    -Wl,--export=_start \
+    -Wl,--initial-memory=131072 \
+    -o arena_base.wasm \
+    test_base_only.c \
+    test_base.c \
+    stdlib/stdio.c \
+    stdlib/stdlib.c \
+    base/base_io.c \
+    base/buddy.c \
+    base/arena.c \
+    base/scratch.c \
+    base/mem.c \
+    base/assert.c \
+    native/wasi_wasm.c
+"""
+
+test_base_wasm = { cmd="wasmtime arena_base.wasm", depends-on=["build_base_wasm"] }
 
 [feature.wasm.dependencies]
 clang = ">=20.1.4,<21"
@@ -54,14 +86,15 @@ clang \
     -o arena_linux \
     tests.c \
     test_stdlib.c \
-    stdlib/assert.c \
+    test_base.c \
     stdlib/stdio.c \
     stdlib/stdlib.c \
-    stdlib/string.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
+    base/mem.c \
+    base/assert.c \
     native/wasi_linux.c
 """
 
@@ -84,14 +117,15 @@ clang \
     -o arena_macos \
     tests.c \
     test_stdlib.c \
-    stdlib/assert.c \
+    test_base.c \
     stdlib/stdio.c \
     stdlib/stdlib.c \
-    stdlib/string.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
+    base/mem.c \
+    base/assert.c \
     native/wasi_macos.c \
     -lSystem \
     -Wl,-e,__start
@@ -108,6 +142,8 @@ build_windows = """
 cl \
     /nologo \
     /X \
+    /std:c11 \
+    /Zc:preprocessor \
     /I"base" \
     /I"stdlib" \
     /I"native" \
@@ -118,14 +154,15 @@ cl \
     /c \
     tests.c \
     test_stdlib.c \
-    stdlib/assert.c \
+    test_base.c \
     stdlib/stdio.c \
     stdlib/stdlib.c \
-    stdlib/string.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
+    base/mem.c \
+    base/assert.c \
     native/wasi_windows.c \
     && \
 link \
@@ -136,14 +173,15 @@ link \
     kernel32.lib \
     tests.obj \
     test_stdlib.obj \
-    assert.obj \
+    test_base.obj \
     stdio.obj \
     stdlib.obj \
-    string.obj \
     base_io.obj \
     buddy.obj \
     arena.obj \
     scratch.obj \
+    mem.obj \
+    assert.obj \
     wasi_windows.obj \
     /out:arena_windows.exe
 """
