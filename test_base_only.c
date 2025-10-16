@@ -1,5 +1,3 @@
-#include <stddef.h>
-#include <stdint.h>
 #include <test_base.h>
 
 // Test runner that only depends on base/ - no stdlib/ dependencies
