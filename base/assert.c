@@ -3,6 +3,14 @@
 #include <base/mem.h>
 #include <base/wasi.h>
 
+// After proper strings and formatting, this should just be:
+/*
+void __assert_fail(const char *assertion, const char *file, unsigned int line, const char *function) {
+    printf("Assertion failed: (%s) at '%s:%u' in function '%s'\n", assertion, file, line, function);
+    exit(1);
+}
+*/
+
 void __assert_fail(const char *assertion, const char *file, unsigned int line, const char *function) {
     // Simple assertion failure handler using only base/ dependencies
     const char *msg1 = "Assertion failed: (";
