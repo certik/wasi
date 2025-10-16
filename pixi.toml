@@ -27,14 +27,18 @@ clang \
     test_base.c \
     stdlib/stdio.c \
     stdlib/stdlib.c \
+    stdlib/printf.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
+    base/format.c \
+    base/io.c \
     base/base_string.c \
     base/mem.c \
     base/numconv.c \
     base/assert.c \
+    base/exit.c \
     native/wasi_wasm.c
 """
 
@@ -64,10 +68,13 @@ clang \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
+    base/format.c \
+    base/io.c \
     base/base_string.c \
     base/mem.c \
     base/numconv.c \
     base/assert.c \
+    base/exit.c \
     native/wasi_wasm.c
 """
 
@@ -93,14 +100,18 @@ clang \
     test_base.c \
     stdlib/stdio.c \
     stdlib/stdlib.c \
+    stdlib/printf.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
+    base/format.c \
+    base/io.c \
     base/base_string.c \
     base/mem.c \
     base/numconv.c \
     base/assert.c \
+    base/exit.c \
     native/wasi_linux.c
 """
 
@@ -126,14 +137,18 @@ clang \
     test_base.c \
     stdlib/stdio.c \
     stdlib/stdlib.c \
+    stdlib/printf.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
+    base/format.c \
+    base/io.c \
     base/base_string.c \
     base/mem.c \
     base/numconv.c \
     base/assert.c \
+    base/exit.c \
     native/wasi_macos.c \
     -lSystem \
     -Wl,-e,__start
@@ -165,14 +180,18 @@ cl \
     test_base.c \
     stdlib/stdio.c \
     stdlib/stdlib.c \
+    stdlib/printf.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
+    base/format.c \
+    base/io.c \
     base/base_string.c \
     base/mem.c \
     base/numconv.c \
     base/assert.c \
+    base/exit.c \
     native/wasi_windows.c \
     && \
 link \
@@ -186,13 +205,17 @@ link \
     test_base.obj \
     stdio.obj \
     stdlib.obj \
+    printf.obj \
     base_io.obj \
     buddy.obj \
     arena.obj \
     scratch.obj \
+    format.obj \
+    io.obj \
     base_string.obj \
     mem.obj \
     numconv.obj \
+    exit.obj \
     assert.obj \
     wasi_windows.obj \
     /out:arena_windows.exe

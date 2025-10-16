@@ -1,7 +1,9 @@
 #pragma once
 
 #include <stdarg.h>
-#include <stddef.h>
+
+// Printf implementation for stdlib
+// Only supports basic format specifiers
 
 int printf(const char* format, ...);
 int vprintf(const char* format, va_list ap);

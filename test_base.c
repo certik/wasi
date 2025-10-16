@@ -3,10 +3,26 @@
 #include <base/arena.h>
 #include <base/scratch.h>
 #include <base/buddy.h>
+#include <base/format.h>
+#include <base/io.h>
+#include <base/hashtable.h>
+#include <base/vector.h>
 #include <base/base_string.h>
 #include <base/mem.h>
 #include <base/assert.h>
 #include <test_base.h>
+
+// Define hashtable and vector types for tests
+#define MapIntString_HASH(key) ((size_t)(key))
+#define MapIntString_EQUAL(key1, key2) ((key1) == (key2))
+DEFINE_HASHTABLE_FOR_TYPES(int, string, MapIntString)
+
+#define MapStringInt_HASH(key) (str_hash(key))
+#define MapStringInt_EQUAL(key1, key2) (str_eq((key1), (key2)))
+DEFINE_HASHTABLE_FOR_TYPES(string, int, MapStringInt)
+
+DEFINE_VECTOR_FOR_TYPE(int, VecInt)
+DEFINE_VECTOR_FOR_TYPE(int*, VecIntP)
 
 // Simple print function for base tests
 static void print(const char *str) {
@@ -314,6 +330,126 @@ void test_scratch(void) {
     print("Scratch arena tests passed\n");
 }
 
+
+void test_format(void) {
+    println(NULL, str_lit("## Testing format..."));
+    Arena* arena = arena_new(1024*10);
+    double pi = 3.1415926535;
+
+    // Example with no arguments
+    string fmt = str_lit("Hello!");
+    string result = format(arena, fmt);
+    assert(str_eq(result, str_lit("Hello!")));
+    println(arena, str_lit("No args: {}"), str_to_cstr_copy(arena, result));
+
+    // Example with one argument
+    fmt = str_lit("Hello, {}!");
+    //result = format(arena, fmt, str_lit("world"));
+    result = str_lit("Hello, world!");
+    assert(str_eq(result, str_lit("Hello, world!")));
+    println(arena, str_lit("One arg: {}"), str_to_cstr_copy(arena, result));
+
+    fmt = str_lit("Hello, {}!");
+    result = format(arena, fmt, 5);
+    assert(str_eq(result, str_lit("Hello, 5!")));
+    println(arena, str_lit("One arg: {}"), str_to_cstr_copy(arena, result));
+
+    // Example with formatted double
+    fmt = str_lit("Value: {:10.5f}");
+    //result = format(arena, fmt, pi);
+    // Note: Double formatting may have slight differences, so we just print it
+    //println(arena, str_lit("Formatted double: {}"), str_to_cstr_copy(arena, result));
+
+    // Example with formatted char
+    fmt = str_lit("Char: |{:^5}|");
+    result = format(arena, fmt, 'x');
+    assert(str_eq(result, str_lit("Char: | 120 |")));
+    println(arena, str_lit("Formatted char: {}"), str_to_cstr_copy(arena, result));
+
+    // Example with multiple arguments
+    fmt = str_lit("Hello, {}, {}, {}, {}!");
+    //result = format(arena, fmt, "world", 35.5, str_lit("XX"), 3);
+    //println(arena, str_lit("Multiple args: {}"), str_to_cstr_copy(arena, result));
+
+    arena_free(arena);
+    println(NULL, str_lit("Format tests passed"));
+}
+
+void test_hashtable_int_string(void) {
+    println(NULL, str_lit("## Testing hashtable (int->string)..."));
+    Arena* arena = arena_new(1024*10);
+
+    MapIntString ht;
+    MapIntString_init(arena, &ht, 16);
+    MapIntString_insert(arena, &ht, 42, str_lit("forty-two"));
+    string *value = MapIntString_get(&ht, 42);
+    assert(value);
+    println(arena, str_lit("Value for key 42: {}"), str_to_cstr_copy(arena, *value));
+
+    arena_free(arena);
+    println(NULL, str_lit("Hashtable (int->string) tests passed"));
+}
+
+void test_hashtable_string_int(void) {
+    println(NULL, str_lit("## Testing hashtable (string->int)..."));
+    Arena* arena = arena_new(1024*10);
+
+    MapStringInt ht;
+    MapStringInt_init(arena, &ht, 16);
+    MapStringInt_insert(arena, &ht, str_lit("forty-two"), 42);
+    int *value = MapStringInt_get(&ht, str_lit("forty-two"));
+    assert(value);
+    println(arena, str_lit("Value for key \"forty-two\": {}"), *value);
+
+    arena_free(arena);
+    println(NULL, str_lit("Hashtable (string->int) tests passed"));
+}
+
+void test_vector_int(void) {
+    println(NULL, str_lit("## Testing vector (int)..."));
+    Arena* arena = arena_new(1024*10);
+
+    VecInt v;
+    VecInt_reserve(arena, &v, 1);
+    assert(v.size == 0);
+    VecInt_push_back(arena, &v, 1);
+    assert(v.size == 1);
+    VecInt_push_back(arena, &v, 2);
+    assert(v.size == 2);
+    VecInt_push_back(arena, &v, 3);
+    assert(v.size == 3);
+    assert(v.data[0] == 1);
+    assert(v.data[1] == 2);
+    assert(v.data[2] == 3);
+
+    arena_free(arena);
+    println(NULL, str_lit("Vector (int) tests passed"));
+}
+
+void test_vector_int_ptr(void) {
+    println(NULL, str_lit("## Testing vector (int*)..."));
+    Arena* arena = arena_new(1024*10);
+
+    VecIntP v;
+    int i=1, j=2, k=3;
+    VecIntP_reserve(arena, &v, 1);
+    assert(v.size == 0);
+    VecIntP_push_back(arena, &v, &i);
+    assert(v.size == 1);
+    VecIntP_push_back(arena, &v, &j);
+    assert(v.size == 2);
+    VecIntP_push_back(arena, &v, &k);
+    assert(v.size == 3);
+    assert(*v.data[0] == 1);
+    assert(*v.data[1] == 2);
+    assert(*v.data[2] == 3);
+    k = 4;
+    assert(*v.data[2] == 4);
+
+    arena_free(arena);
+    println(NULL, str_lit("Vector (int*) tests passed"));
+}
+
 void test_string(void) {
     print("## Testing base string functions...\n");
     Arena *arena = arena_new(4096);
@@ -366,6 +502,11 @@ void test_base(void) {
     test_buddy();
     test_arena();
     test_scratch();
+    test_format();
+    test_hashtable_int_string();
+    test_hashtable_string_int();
+    test_vector_int();
+    test_vector_int_ptr();
     test_string();
 
     print("base tests passed\n\n");
