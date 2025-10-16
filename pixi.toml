@@ -31,7 +31,9 @@ clang \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
+    base/base_string.c \
     base/mem.c \
+    base/numconv.c \
     base/assert.c \
     native/wasi_wasm.c
 """
@@ -62,7 +64,9 @@ clang \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
+    base/base_string.c \
     base/mem.c \
+    base/numconv.c \
     base/assert.c \
     native/wasi_wasm.c
 """
@@ -93,7 +97,9 @@ clang \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
+    base/base_string.c \
     base/mem.c \
+    base/numconv.c \
     base/assert.c \
     native/wasi_linux.c
 """
@@ -124,7 +130,9 @@ clang \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
+    base/base_string.c \
     base/mem.c \
+    base/numconv.c \
     base/assert.c \
     native/wasi_macos.c \
     -lSystem \
@@ -161,7 +169,9 @@ cl \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
+    base/base_string.c \
     base/mem.c \
+    base/numconv.c \
     base/assert.c \
     native/wasi_windows.c \
     && \
@@ -180,7 +190,9 @@ link \
     buddy.obj \
     arena.obj \
     scratch.obj \
+    base_string.obj \
     mem.obj \
+    numconv.obj \
     assert.obj \
     wasi_windows.obj \
     /out:arena_windows.exe

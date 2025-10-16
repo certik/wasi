@@ -3,6 +3,7 @@
 #include <base/arena.h>
 #include <base/scratch.h>
 #include <base/buddy.h>
+#include <base/base_string.h>
 #include <base/mem.h>
 #include <base/assert.h>
 #include <test_base.h>
@@ -313,6 +314,50 @@ void test_scratch(void) {
     print("Scratch arena tests passed\n");
 }
 
+void test_string(void) {
+    print("## Testing base string functions...\n");
+    Arena *arena = arena_new(4096);
+
+    // Test str_from_cstr_view
+    string s1 = str_from_cstr_view("hello");
+    assert(s1.size == 5);
+    assert(s1.str[0] == 'h');
+
+    // Test str_lit macro
+    string s2 = str_lit("world");
+    assert(s2.size == 5);
+
+    // Test str_eq
+    string s3 = str_lit("hello");
+    assert(str_eq(s1, s3));
+    assert(!str_eq(s1, s2));
+
+    // Test str_concat
+    string s4 = str_concat(arena, s1, str_lit(" "));
+    string s5 = str_concat(arena, s4, s2);
+    assert(s5.size == 11);
+    assert(str_eq(s5, str_lit("hello world")));
+
+    // Test int_to_string
+    string s6 = int_to_string(arena, 42);
+    assert(str_eq(s6, str_lit("42")));
+
+    string s7 = int_to_string(arena, -123);
+    assert(str_eq(s7, str_lit("-123")));
+
+    // Test char_to_string
+    string s8 = char_to_string(arena, 'X');
+    assert(s8.size == 1);
+    assert(s8.str[0] == 'X');
+
+    // Test str_to_cstr_copy
+    char *cstr = str_to_cstr_copy(arena, s5);
+    assert(cstr[11] == '\0');
+    assert(strlen(cstr) == 11);
+
+    print("String function tests passed\n");
+    arena_free(arena);
+}
 
 void test_base(void) {
     print("=== base tests ===\n");
@@ -321,6 +366,7 @@ void test_base(void) {
     test_buddy();
     test_arena();
     test_scratch();
+    test_string();
 
     print("base tests passed\n\n");
 }
