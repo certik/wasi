@@ -13,6 +13,14 @@ typedef DWORD* LPDWORD;
 typedef void* LPVOID;
 typedef const void* LPCVOID;
 typedef unsigned long long SIZE_T;
+typedef long long LONGLONG;
+typedef union {
+    struct {
+        DWORD LowPart;
+        DWORD HighPart;
+    };
+    LONGLONG QuadPart;
+} LARGE_INTEGER;
 
 // Windows constants
 #define STD_OUTPUT_HANDLE ((DWORD)-11)
@@ -20,12 +28,25 @@ typedef unsigned long long SIZE_T;
 #define MEM_RESERVE 0x2000
 #define PAGE_READWRITE 0x04
 #define INVALID_HANDLE_VALUE ((HANDLE)(long long)-1)
+#define GENERIC_READ 0x80000000
+#define GENERIC_WRITE 0x40000000
+#define CREATE_ALWAYS 2
+#define OPEN_EXISTING 3
+#define FILE_SHARE_READ 0x00000001
+#define FILE_SHARE_WRITE 0x00000002
+#define FILE_BEGIN 0
+#define FILE_CURRENT 1
+#define FILE_END 2
 
 // Windows API function declarations
 __declspec(dllimport) HANDLE __stdcall GetStdHandle(DWORD nStdHandle);
 __declspec(dllimport) int __stdcall WriteFile(HANDLE hFile, LPCVOID lpBuffer, DWORD nNumberOfBytesToWrite, LPDWORD lpNumberOfBytesWritten, void* lpOverlapped);
 __declspec(dllimport) LPVOID __stdcall VirtualAlloc(LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect);
 __declspec(dllimport) void __stdcall ExitProcess(unsigned int uExitCode);
+__declspec(dllimport) HANDLE __stdcall CreateFileA(const char* lpFileName, DWORD dwDesiredAccess, DWORD dwShareMode, void* lpSecurityAttributes, DWORD dwCreationDisposition, DWORD dwFlagsAndAttributes, HANDLE hTemplateFile);
+__declspec(dllimport) int __stdcall CloseHandle(HANDLE hObject);
+__declspec(dllimport) int __stdcall ReadFile(HANDLE hFile, LPVOID lpBuffer, DWORD nNumberOfBytesToRead, LPDWORD lpNumberOfBytesRead, void* lpOverlapped);
+__declspec(dllimport) int __stdcall SetFilePointerEx(HANDLE hFile, LARGE_INTEGER liDistanceToMove, LARGE_INTEGER* lpNewFilePointer, DWORD dwMoveMethod);
 
 // Our emulated heap state for Windows
 static uint8_t* windows_heap_base = NULL;
@@ -134,6 +155,78 @@ void wasi_proc_exit(int status) {
 
 // Forward declaration for main
 int main();
+
+// File I/O implementations
+wasi_fd_t wasi_path_open(const char* path, int flags) {
+    // Map WASI flags to Windows flags
+    DWORD access = 0;
+    DWORD creation = OPEN_EXISTING;
+
+    if ((flags & WASI_O_RDWR) == WASI_O_RDWR) {
+        access = GENERIC_READ | GENERIC_WRITE;
+    } else if (flags & WASI_O_WRONLY) {
+        access = GENERIC_WRITE;
+    } else {
+        access = GENERIC_READ;
+    }
+
+    if (flags & WASI_O_CREAT) {
+        creation = CREATE_ALWAYS;
+    }
+
+    HANDLE handle = CreateFileA(
+        path,
+        access,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
+        NULL,
+        creation,
+        0,
+        NULL
+    );
+
+    if (handle == INVALID_HANDLE_VALUE) {
+        return -1;
+    }
+
+    // Return handle cast to int (wasi_fd_t)
+    return (wasi_fd_t)(long long)handle;
+}
+
+int wasi_fd_close(wasi_fd_t fd) {
+    HANDLE handle = (HANDLE)(long long)fd;
+    return CloseHandle(handle) ? 0 : -1;
+}
+
+int64_t wasi_fd_read(wasi_fd_t fd, void* buf, size_t len) {
+    HANDLE handle = (HANDLE)(long long)fd;
+    DWORD bytes_read = 0;
+    int result = ReadFile(handle, buf, (DWORD)len, &bytes_read, NULL);
+    return result ? (int64_t)bytes_read : -1;
+}
+
+int64_t wasi_fd_seek(wasi_fd_t fd, int64_t offset, int whence) {
+    HANDLE handle = (HANDLE)(long long)fd;
+    LARGE_INTEGER distance;
+    LARGE_INTEGER new_position;
+    distance.QuadPart = offset;
+
+    DWORD method = FILE_BEGIN;
+    if (whence == WASI_SEEK_CUR) method = FILE_CURRENT;
+    else if (whence == WASI_SEEK_END) method = FILE_END;
+
+    int result = SetFilePointerEx(handle, distance, &new_position, method);
+    return result ? new_position.QuadPart : -1;
+}
+
+int64_t wasi_fd_tell(wasi_fd_t fd) {
+    HANDLE handle = (HANDLE)(long long)fd;
+    LARGE_INTEGER distance;
+    LARGE_INTEGER position;
+    distance.QuadPart = 0;
+
+    int result = SetFilePointerEx(handle, distance, &position, FILE_CURRENT);
+    return result ? position.QuadPart : -1;
+}
 
 // Entry point for Windows - MSVC uses _start but we need to set it up correctly
 void _start() {

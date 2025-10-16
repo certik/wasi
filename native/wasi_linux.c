@@ -7,9 +7,13 @@
 // =============================================================================
 
 // Syscall numbers for x86_64
-#define SYS_WRITEV 20
+#define SYS_READ 0
+#define SYS_OPEN 2
+#define SYS_CLOSE 3
+#define SYS_LSEEK 8
 #define SYS_MMAP 9
 #define SYS_MPROTECT 10
+#define SYS_WRITEV 20
 #define SYS_EXIT 60
 
 // mmap flags
@@ -121,6 +125,53 @@ void* wasi_heap_grow(size_t num_bytes) {
 
 // Forward declaration for main
 int main();
+
+// Linux open() flags
+#define O_RDONLY   0x0000
+#define O_WRONLY   0x0001
+#define O_RDWR     0x0002
+#define O_CREAT    0x0100
+#define O_TRUNC    0x0200
+
+// File I/O implementations
+wasi_fd_t wasi_path_open(const char* path, int flags) {
+    // Map WASI flags to Linux flags
+    int os_flags = 0;
+    if ((flags & WASI_O_RDWR) == WASI_O_RDWR) {
+        os_flags |= O_RDWR;
+    } else if (flags & WASI_O_WRONLY) {
+        os_flags |= O_WRONLY;
+    } else {
+        os_flags |= O_RDONLY;
+    }
+
+    if (flags & WASI_O_CREAT) os_flags |= O_CREAT;
+    if (flags & WASI_O_TRUNC) os_flags |= O_TRUNC;
+
+    // Default mode for created files (0644)
+    long result = syscall(SYS_OPEN, (long)path, (long)os_flags, (long)0644, 0, 0, 0);
+    return (wasi_fd_t)result;
+}
+
+int wasi_fd_close(wasi_fd_t fd) {
+    long result = syscall(SYS_CLOSE, (long)fd, 0, 0, 0, 0, 0);
+    return (int)result;
+}
+
+int64_t wasi_fd_read(wasi_fd_t fd, void* buf, size_t len) {
+    long result = syscall(SYS_READ, (long)fd, (long)buf, (long)len, 0, 0, 0);
+    return (int64_t)result;
+}
+
+int64_t wasi_fd_seek(wasi_fd_t fd, int64_t offset, int whence) {
+    long result = syscall(SYS_LSEEK, (long)fd, (long)offset, (long)whence, 0, 0, 0);
+    return (int64_t)result;
+}
+
+int64_t wasi_fd_tell(wasi_fd_t fd) {
+    long result = syscall(SYS_LSEEK, (long)fd, 0, (long)WASI_SEEK_CUR, 0, 0, 0);
+    return (int64_t)result;
+}
 
 // The entry point for a -nostdlib Linux program is `_start`.
 void _start() {

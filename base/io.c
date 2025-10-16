@@ -4,45 +4,46 @@
 #include <base/base_io.h>
 #include <base/mem.h>
 #include <base/scratch.h>
-
-// Forward declarations for stdio functions (FILE I/O)
-typedef struct FILE FILE;
-extern FILE *fopen(const char *filename, const char *mode);
-extern int fclose(FILE *stream);
-extern int fseek(FILE *stream, long offset, int whence);
-extern long ftell(FILE *stream);
-extern size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
-
-#define SEEK_SET 0
-#define SEEK_CUR 1
-#define SEEK_END 2
-
+#include <base/wasi.h>
 
 // Returns the file contents as a null-terminated string in `text`.
 // Returns `true` on success, otherwise `false`.
 bool read_file(Arena *arena, const string filename, string *text) {
     char *cfilename = str_to_cstr_copy(arena, filename);
     if (cfilename == NULL || *cfilename == '\0') return false;
-    FILE *file = fopen(cfilename, "rb");
-    if (file == NULL) return false;
-    fseek(file, 0, SEEK_END);
-    uint64_t filesize = ftell(file);
+
+    // Open file using WASI interface
+    wasi_fd_t fd = wasi_path_open(cfilename, WASI_O_RDONLY);
+    if (fd < 0) return false;
+
+    // Get file size by seeking to end
+    int64_t filesize = wasi_fd_seek(fd, 0, WASI_SEEK_END);
     if (filesize < 0) {
-        fclose(file);
+        wasi_fd_close(fd);
         return false;
     }
-    fseek(file, 0, SEEK_SET);
+
+    // Seek back to beginning
+    if (wasi_fd_seek(fd, 0, WASI_SEEK_SET) < 0) {
+        wasi_fd_close(fd);
+        return false;
+    }
+
+    // Allocate buffer
     char *bytes = arena_alloc_array(arena, char, filesize+1);
     if (bytes == NULL) {
-        fclose(file);
+        wasi_fd_close(fd);
         return false;
     }
-    size_t readsize = fread(bytes, 1, filesize, file);
-    fclose(file);
+
+    // Read file contents
+    int64_t readsize = wasi_fd_read(fd, bytes, (size_t)filesize);
+    wasi_fd_close(fd);
+
     if (readsize != filesize) return false;
     bytes[readsize] = '\0';
-    text->str=bytes;
-    text->size=filesize+1;
+    text->str = bytes;
+    text->size = filesize+1;
     return true;
 }
 
