@@ -24,6 +24,7 @@ clang \
     -o arena.wasm \
     tests.c \
     test_stdlib.c \
+    test_base.c \
     stdlib/assert.c \
     stdlib/stdio.c \
     stdlib/stdlib.c \
@@ -57,6 +58,7 @@ clang \
     -o arena_linux \
     tests.c \
     test_stdlib.c \
+    test_base.c \
     stdlib/assert.c \
     stdlib/stdio.c \
     stdlib/stdlib.c \
@@ -90,6 +92,7 @@ clang \
     -o arena_macos \
     tests.c \
     test_stdlib.c \
+    test_base.c \
     stdlib/assert.c \
     stdlib/stdio.c \
     stdlib/stdlib.c \
@@ -127,6 +130,7 @@ cl \
     /c \
     tests.c \
     test_stdlib.c \
+    test_base.c \
     stdlib/assert.c \
     stdlib/stdio.c \
     stdlib/stdlib.c \
@@ -148,6 +152,7 @@ link \
     kernel32.lib \
     tests.obj \
     test_stdlib.obj \
+    test_base.obj \
     assert.obj \
     stdio.obj \
     stdlib.obj \
