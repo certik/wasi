@@ -162,6 +162,7 @@ cl \
     /I"." \
     /GS- \
     /Gs0 \
+    /kernel \
     /c \
     tests.c \
     test_stdlib.c \
