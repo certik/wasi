@@ -24,6 +24,22 @@ string format_explicit(Arena *arena, string fmt, size_t arg_count, ...);
 #define GET_ARG_COUNT(_0, _1, _2, _3, _4, _5, _6, _7, _8, N, ...) N
 #define COUNT_ARGS(...) GET_ARG_COUNT(0 __VA_OPT__(,) __VA_ARGS__, 8, 7, 6, 5, 4, 3, 2, 1, 0)
 
+// On some platforms (Windows x64), size_t is the same as uint64_t
+// We need to avoid duplicate entries in _Generic
+#if defined(_WIN64) || (defined(__SIZEOF_SIZE_T__) && __SIZEOF_SIZE_T__ == 8 && defined(__SIZEOF_LONG__) && __SIZEOF_LONG__ == 4)
+#define A(x) _Generic((x), \
+    char*:  ARG_STRING, \
+    string: ARG_STRING2, \
+    double: ARG_DOUBLE, \
+    char:   ARG_CHAR, \
+    int:    ARG_INT,  \
+    int64_t: ARG_INT64,  \
+    uint64_t: ARG_UINT64,  \
+    void*:  ARG_UINT64,  \
+    Arena*: ARG_UINT64,  \
+    vector_i64: ARG_VECTOR_INT64  \
+    ), (x)
+#else
 #define A(x) _Generic((x), \
     char*:  ARG_STRING, \
     string: ARG_STRING2, \
@@ -37,6 +53,7 @@ string format_explicit(Arena *arena, string fmt, size_t arg_count, ...);
     Arena*: ARG_UINT64,  \
     vector_i64: ARG_VECTOR_INT64  \
     ), (x)
+#endif
 
 #define APPLY_A0()
 #define APPLY_A1(a) A(a)
