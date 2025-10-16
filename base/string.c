@@ -1,15 +1,12 @@
-#include <stdbool.h>
-#include <stddef.h>
+#include <base/bool.h>
+#include <base/base_types.h>
+#include <base/string.h>
 
 // Forward declare string functions
 extern size_t strlen(const char *str);
 extern void *memcpy(void *dest, const void *src, size_t n);
 extern int memcmp(const void *s1, const void *s2, size_t n);
-
-#include <stdio.h>
-#include <stdlib.h>
-
-#include <base/string.h>
+extern int snprintf(char *str, size_t size, const char *format, ...);
 
 string str_from_cstr_view(char *cstr) {
     string result = {cstr, strlen(cstr)};

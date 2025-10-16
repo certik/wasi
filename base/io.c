@@ -1,8 +1,20 @@
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-
+#include <base/bool.h>
+#include <base/base_types.h>
 #include <base/io.h>
+
+// Forward declarations for stdio/stdlib functions
+typedef struct FILE FILE;
+extern FILE *fopen(const char *filename, const char *mode);
+extern int fclose(FILE *stream);
+extern int fseek(FILE *stream, long offset, int whence);
+extern long ftell(FILE *stream);
+extern size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
+extern int printf(const char *format, ...);
+extern void abort(void);
+
+#define SEEK_SET 0
+#define SEEK_CUR 1
+#define SEEK_END 2
 
 
 // Returns the file contents as a null-terminated string in `text`.
