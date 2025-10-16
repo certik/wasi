@@ -1,14 +1,7 @@
 #pragma once
 
-#include <stdint.h>
-#include <stdarg.h>
-
-// Include string.h early to provide memcpy, etc for vector.h
-#include <string.h>
-
-#include <stdlib.h>
-#include <ctype.h>
-
+#include <base/base_types.h>
+#include <base/stdarg.h>
 #include <base/string.h>
 #include <base/vector.h>
 

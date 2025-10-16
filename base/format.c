@@ -1,17 +1,17 @@
-#include <stdint.h>
-#include <stddef.h>
-#include <ctype.h>
-#include <stdarg.h>
+#include <base/base_types.h>
+#include <base/stdarg.h>
 
 // Forward declare string functions
 extern void *memchr(const void *s, int c, size_t n);
 extern void *memset(void *s, int c, size_t n);
 extern void *memcpy(void *dest, const void *src, size_t n);
 
-#include <stdio.h>
-#include <stdlib.h>
-
 #include <base/format.h>
+
+// Inline implementation of isdigit
+static inline int isdigit(int c) {
+    return c >= '0' && c <= '9';
+}
 
 
 typedef struct {
