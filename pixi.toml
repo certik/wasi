@@ -213,6 +213,7 @@ link \
     stdio.obj \
     stdlib.obj \
     string.obj \
+    printf.obj \
     base_io.obj \
     buddy.obj \
     arena.obj \
