@@ -167,9 +167,7 @@ cl \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
-    base/base_string.c \
     base/mem.c \
-    base/numconv.c \
     native/wasi_windows.c \
     && \
 link \
@@ -189,9 +187,7 @@ link \
     buddy.obj \
     arena.obj \
     scratch.obj \
-    base_string.obj \
     mem.obj \
-    numconv.obj \
     wasi_windows.obj \
     /out:arena_windows.exe
 """
