@@ -1,6 +1,6 @@
 #pragma once
 
-#include <stdbool.h>
+#include <base/bool.h>
 #include <arena.h>
 #include <base/string.h>
 #include <base/format.h>

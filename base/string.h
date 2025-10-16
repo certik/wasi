@@ -1,8 +1,7 @@
 #pragma once
 
-#include <stdbool.h>
-#include <stdint.h>
-
+#include <base/bool.h>
+#include <base/base_types.h>
 #include <arena.h>
 
 #ifdef __cplusplus

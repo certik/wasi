@@ -1,8 +1,7 @@
 #pragma once
 
-#include <stddef.h> // For size_t
-#include <assert.h> // For assert()
-
+#include <base/base_types.h>
+#include <base/assert.h>
 #include <arena.h>
 
 // Forward declare string.h functions to avoid implicit declaration errors
