@@ -182,7 +182,6 @@ cl \
     tests.c \
     test_stdlib.c \
     test_base.c \
-    stdlib/assert.c \
     stdlib/stdio.c \
     stdlib/stdlib.c \
     stdlib/string.c \
