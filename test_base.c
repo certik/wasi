@@ -24,7 +24,7 @@ static void print(const char *str) {
 }
 
 // Helper function for inner scratch scope
-static char* test_nested_scratch_inner(Arena *outer_arena, int avoid_conflict) {
+static char* test_nested_scratch_inner(Arena *outer_arena, bool avoid_conflict) {
     Scratch inner;
     if (avoid_conflict) {
         inner = scratch_begin_avoid_conflict(outer_arena);
@@ -59,7 +59,7 @@ static char* test_nested_scratch_inner(Arena *outer_arena, int avoid_conflict) {
 }
 
 // Helper function for outer scratch scope
-static void test_nested_scratch_outer(int avoid_conflict) {
+static void test_nested_scratch_outer(bool avoid_conflict) {
     Scratch outer = scratch_begin();
     char *outer_temp = test_nested_scratch_inner(outer.arena, avoid_conflict);
     char *outer_temp2 = arena_alloc(outer.arena, 50);
@@ -273,10 +273,10 @@ void test_scratch(void) {
     print("\n");
 
     print("Test 2: Nested scratch scopes with conflict avoidance\n");
-    test_nested_scratch_outer(1);
+    test_nested_scratch_outer(true);
 
     print("Test 2b: Nested scratch scopes WITHOUT conflict avoidance\n");
-    test_nested_scratch_outer(0);
+    test_nested_scratch_outer(false);
 
     print("Test 3: Multiple sequential scratch scopes\n");
     {
