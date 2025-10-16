@@ -4,18 +4,8 @@
 #include <base/scratch.h>
 #include <base/buddy.h>
 #include <base/mem.h>
+#include <base/assert.h>
 #include <test_base.h>
-
-// Simple assert for base tests
-#define base_assert(expr) \
-    do { \
-        if (!(expr)) { \
-            const char *msg = "Assertion failed: " #expr "\n"; \
-            ciovec_t iov = {msg, strlen(msg)}; \
-            write_all(1, &iov, 1); \
-            wasi_proc_exit(1); \
-        } \
-    } while (0)
 
 // Simple print function for base tests
 static void print(const char *str) {
@@ -49,9 +39,9 @@ static char* test_nested_scratch_inner(Arena *outer_arena, bool avoid_conflict) 
     print("\n");
 
     if (avoid_conflict) {
-        base_assert(inner.arena != outer_arena);
+        assert(inner.arena != outer_arena);
     } else {
-        base_assert(inner.arena == outer_arena);
+        assert(inner.arena == outer_arena);
     }
     scratch_end(inner);
 
@@ -71,16 +61,16 @@ static void test_nested_scratch_outer(bool avoid_conflict) {
         print("\n");
 
         // Values are different (correct)
-        base_assert(outer_temp[0] == 'A');
-        base_assert(outer_temp[1] == 'B');
-        base_assert(outer_temp[2] == 'C');
+        assert(outer_temp[0] == 'A');
+        assert(outer_temp[1] == 'B');
+        assert(outer_temp[2] == 'C');
 
-        base_assert(outer_temp2[0] == 'X');
-        base_assert(outer_temp2[1] == 'X');
-        base_assert(outer_temp2[2] == 'X');
+        assert(outer_temp2[0] == 'X');
+        assert(outer_temp2[1] == 'X');
+        assert(outer_temp2[2] == 'X');
 
         // and the pointers are different (correct)
-        base_assert(outer_temp != outer_temp2);
+        assert(outer_temp != outer_temp2);
     } else {
         print("  In outer scratch after inner: ");
         print(outer_temp);
@@ -89,16 +79,16 @@ static void test_nested_scratch_outer(bool avoid_conflict) {
         // This demonstrates the bug: scratch_begin() without conflict avoidance allows
         // both scopes to share the same arena, and scratch_end(inner) invalidates outer_temp
         // The values are the same (bug)
-        base_assert(outer_temp[0] == 'X');
-        base_assert(outer_temp[1] == 'X');
-        base_assert(outer_temp[2] == 'X');
+        assert(outer_temp[0] == 'X');
+        assert(outer_temp[1] == 'X');
+        assert(outer_temp[2] == 'X');
 
-        base_assert(outer_temp2[0] == 'X');
-        base_assert(outer_temp2[1] == 'X');
-        base_assert(outer_temp2[2] == 'X');
+        assert(outer_temp2[0] == 'X');
+        assert(outer_temp2[1] == 'X');
+        assert(outer_temp2[2] == 'X');
 
         // and the pointers are the same (bug)
-        base_assert(outer_temp == outer_temp2);
+        assert(outer_temp == outer_temp2);
     }
     scratch_end(outer);
 }
@@ -112,16 +102,16 @@ void test_wasi_heap(void) {
     print("Initial heap size obtained\n");
 
     void* mg = wasi_heap_grow(4 * WASM_PAGE_SIZE);
-    base_assert((size_t)hb + ms1 == (size_t)mg);
+    assert((size_t)hb + ms1 == (size_t)mg);
 
     size_t ms2 = wasi_heap_size();
-    base_assert(ms1 + 4*WASM_PAGE_SIZE == ms2);
+    assert(ms1 + 4*WASM_PAGE_SIZE == ms2);
 
     mg = wasi_heap_grow(8 * WASM_PAGE_SIZE);
-    base_assert((size_t)hb + ms2 == (size_t)mg);
+    assert((size_t)hb + ms2 == (size_t)mg);
 
     ms2 = wasi_heap_size();
-    base_assert(ms1 + (4+8)*WASM_PAGE_SIZE == ms2);
+    assert(ms1 + (4+8)*WASM_PAGE_SIZE == ms2);
     print("WASI heap tests passed\n");
 }
 
@@ -260,7 +250,7 @@ void test_scratch(void) {
         print(", ");
         print(temp2);
         print("\n");
-        base_assert(temp1 != temp2);
+        assert(temp1 != temp2);
         scratch_end(scratch);
     }
 
@@ -315,7 +305,7 @@ void test_scratch(void) {
         scratch_end(scratch);
     }
     arena_pos_t after_reuse = arena_get_pos(scratch_test_arena);
-    base_assert(before_reuse.ptr == after_reuse.ptr);
+    assert(before_reuse.ptr == after_reuse.ptr);
     print("  Memory position restored correctly\n");
 
     print("Freeing scratch test arena...\n");

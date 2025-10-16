@@ -34,6 +34,7 @@ clang \
     base/arena.c \
     base/scratch.c \
     base/mem.c \
+    base/assert.c \
     native/wasi_wasm.c
 """
 
@@ -66,6 +67,7 @@ clang \
     base/arena.c \
     base/scratch.c \
     base/mem.c \
+    base/assert.c \
     native/wasi_wasm.c
 """
 
@@ -98,6 +100,7 @@ clang \
     base/arena.c \
     base/scratch.c \
     base/mem.c \
+    base/assert.c \
     native/wasi_linux.c
 """
 
@@ -130,6 +133,7 @@ clang \
     base/arena.c \
     base/scratch.c \
     base/mem.c \
+    base/assert.c \
     native/wasi_macos.c \
     -lSystem \
     -Wl,-e,__start
@@ -168,6 +172,7 @@ cl \
     base/arena.c \
     base/scratch.c \
     base/mem.c \
+    base/assert.c \
     native/wasi_windows.c \
     && \
 link \
@@ -188,6 +193,7 @@ link \
     arena.obj \
     scratch.obj \
     mem.obj \
+    assert_base.obj \
     wasi_windows.obj \
     /out:arena_windows.exe
 """
