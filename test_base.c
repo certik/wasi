@@ -354,12 +354,10 @@ void test_format(void) {
     println(arena, str_lit("One arg: {}"), str_to_cstr_copy(arena, result));
 
     // Example with formatted double
-    // TODO: Double formatting crashes on Linux (and possibly other platforms)
-    // This needs investigation - likely an ABI issue with passing doubles through varargs
     fmt = str_lit("Value: {:10.5f}");
-    //result = format(arena, fmt, pi);
+    result = format(arena, fmt, pi);
     // Note: Double formatting may have slight differences, so we just print it
-    //println(arena, str_lit("Formatted double: {}"), str_to_cstr_copy(arena, result));
+    println(arena, str_lit("Formatted double: {}"), str_to_cstr_copy(arena, result));
 
     // Example with formatted char
     fmt = str_lit("Char: |{:^5}|");
@@ -368,11 +366,10 @@ void test_format(void) {
     println(arena, str_lit("Formatted char: {}"), str_to_cstr_copy(arena, result));
 
     // Example with multiple arguments
-    // TODO: This also crashes on Linux because it includes a double (35.5)
     fmt = str_lit("Hello, {}, {}, {}, {}!");
-    //result = format(arena, fmt, "world", 35.5, str_lit("XX"), 3);
-    //println(arena, str_lit("Multiple args: {}"), str_to_cstr_copy(arena, result));
-    //println(arena, str_lit("Multiple args: {}"), result);
+    result = format(arena, fmt, "world", 35.5, str_lit("XX"), 3);
+    println(arena, str_lit("Multiple args: {}"), str_to_cstr_copy(arena, result));
+    println(arena, str_lit("Multiple args: {}"), result);
 
     arena_free(arena);
     println(NULL, str_lit("Format tests passed"));
