@@ -207,6 +207,7 @@ string format_explicit_varg(Arena *arena, string fmt, size_t arg_count,
 string format_explicit(Arena *arena, string fmt, size_t arg_count, ...) {
     va_list ap;
     va_start(ap, arg_count);
-    return format_explicit_varg(arena, fmt, arg_count, ap);
+    string result = format_explicit_varg(arena, fmt, arg_count, ap);
     va_end(ap);
+    return result;
 }
