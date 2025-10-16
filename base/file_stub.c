@@ -5,6 +5,8 @@
 
 typedef struct FILE_STUB FILE;
 
+/*
+
 FILE *fopen(const char *filename, const char *mode) {
     (void)filename;
     (void)mode;
@@ -35,3 +37,4 @@ size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) {
     (void)stream;
     return 0;
 }
+*/
