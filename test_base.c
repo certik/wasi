@@ -260,6 +260,13 @@ void test_scratch(void) {
         strcpy(temp1, "Temporary 1");
         char *temp2 = arena_alloc(scratch.arena, 50);
         strcpy(temp2, "Temporary 2");
+        print("  Inside scratch: ");
+        print(persistent);
+        print(", ");
+        print(temp1);
+        print(", ");
+        print(temp2);
+        print("\n");
         assert(temp1 != temp2);
         scratch_end(scratch);
     }
