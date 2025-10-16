@@ -1,6 +1,6 @@
 #pragma once
 
-#include <wasi.h>
+#include <base/wasi.h>
 
 /**
  * @brief Writes all data from the iovecs to the specified file descriptor.

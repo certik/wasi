@@ -1,7 +1,7 @@
 #pragma once
 
-#include <base_types.h>
-#include "arena.h"
+#include <base/base_types.h>
+#include <base/arena.h>
 
 typedef struct {
     Arena *arena;

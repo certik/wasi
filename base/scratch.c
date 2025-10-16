@@ -1,5 +1,5 @@
-#include "scratch.h"
-#include "wasi.h"
+#include <base/scratch.h>
+#include <base/wasi.h>
 
 Scratch scratch_begin_from_arena(Arena *arena) {
     Scratch scratch;
