@@ -98,8 +98,9 @@ int fseek(FILE *stream, long offset, int whence) {
         return -1;
     }
 
-    int64_t result = wasi_fd_seek(stream->fd, (int64_t)offset, whence);
-    if (result < 0) {
+    uint64_t newoffset;
+    int ret = wasi_fd_seek(stream->fd, (int64_t)offset, whence, &newoffset);
+    if (ret != 0) {
         stream->error = 1;
         return -1;
     }
@@ -113,8 +114,12 @@ long ftell(FILE *stream) {
         return -1;
     }
 
-    int64_t result = wasi_fd_tell(stream->fd);
-    return (long)result;
+    uint64_t offset;
+    int ret = wasi_fd_tell(stream->fd, &offset);
+    if (ret != 0) {
+        return -1;
+    }
+    return (long)offset;
 }
 
 size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) {
@@ -123,18 +128,20 @@ size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) {
     }
 
     size_t total_bytes = size * nmemb;
-    int64_t bytes_read = wasi_fd_read(stream->fd, ptr, total_bytes);
+    iovec_t iov = { .iov_base = ptr, .iov_len = total_bytes };
+    size_t nread;
+    int ret = wasi_fd_read(stream->fd, &iov, 1, &nread);
 
-    if (bytes_read < 0) {
+    if (ret != 0) {
         stream->error = 1;
         return 0;
     }
 
-    if (bytes_read == 0) {
+    if (nread == 0) {
         stream->eof = 1;
     }
 
-    return (size_t)bytes_read / size;
+    return nread / size;
 }
 
 // stdlib/stdio.c now reuses printf/vprintf from stdlib/printf.c

@@ -90,6 +90,12 @@ void wasi_proc_exit(int status);
 // File descriptor type - opaque handle to an open file
 typedef int wasi_fd_t;
 
+// I/O vector for scatter-gather operations (read buffers)
+typedef struct iovec_s {
+    void* iov_base;
+    size_t iov_len;
+} iovec_t;
+
 // File open flags
 #define WASI_O_RDONLY  0x0
 #define WASI_O_WRONLY  0x1
@@ -112,17 +118,17 @@ typedef int wasi_fd_t;
 wasi_fd_t wasi_path_open(const char* path, int flags);
 
 // Close a file descriptor.
-// Returns 0 on success, or -1 on error.
+// Returns 0 on success, or errno on error.
 int wasi_fd_close(wasi_fd_t fd);
 
-// Read up to `len` bytes from file descriptor `fd` into `buf`.
-// Returns the number of bytes read on success, or -1 on error.
-int64_t wasi_fd_read(wasi_fd_t fd, void* buf, size_t len);
+// Read from a file descriptor using scatter-gather I/O.
+// Returns 0 on success with bytes read in *nread, or errno on error.
+int wasi_fd_read(wasi_fd_t fd, const iovec_t* iovs, size_t iovs_len, size_t* nread);
 
 // Seek to a position in the file.
-// Returns the new position on success, or -1 on error.
-int64_t wasi_fd_seek(wasi_fd_t fd, int64_t offset, int whence);
+// Returns 0 on success with new position in *newoffset, or errno on error.
+int wasi_fd_seek(wasi_fd_t fd, int64_t offset, int whence, uint64_t* newoffset);
 
 // Get the current position in the file.
-// Returns the current position on success, or -1 on error.
-int64_t wasi_fd_tell(wasi_fd_t fd);
+// Returns 0 on success with position in *offset, or errno on error.
+int wasi_fd_tell(wasi_fd_t fd, uint64_t* offset);

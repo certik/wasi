@@ -13,6 +13,7 @@
 #define SYS_LSEEK 8
 #define SYS_MMAP 9
 #define SYS_MPROTECT 10
+#define SYS_READV 19
 #define SYS_WRITEV 20
 #define SYS_EXIT 60
 
@@ -155,22 +156,37 @@ wasi_fd_t wasi_path_open(const char* path, int flags) {
 
 int wasi_fd_close(wasi_fd_t fd) {
     long result = syscall(SYS_CLOSE, (long)fd, 0, 0, 0, 0, 0);
-    return (int)result;
+    return (result < 0) ? (int)(-result) : 0;
 }
 
-int64_t wasi_fd_read(wasi_fd_t fd, void* buf, size_t len) {
-    long result = syscall(SYS_READ, (long)fd, (long)buf, (long)len, 0, 0, 0);
-    return (int64_t)result;
+int wasi_fd_read(wasi_fd_t fd, const iovec_t* iovs, size_t iovs_len, size_t* nread) {
+    long result = syscall(SYS_READV, (long)fd, (long)iovs, (long)iovs_len, 0, 0, 0);
+    if (result < 0) {
+        *nread = 0;
+        return (int)(-result);  // Return errno
+    }
+    *nread = (size_t)result;
+    return 0;  // Success
 }
 
-int64_t wasi_fd_seek(wasi_fd_t fd, int64_t offset, int whence) {
+int wasi_fd_seek(wasi_fd_t fd, int64_t offset, int whence, uint64_t* newoffset) {
     long result = syscall(SYS_LSEEK, (long)fd, (long)offset, (long)whence, 0, 0, 0);
-    return (int64_t)result;
+    if (result < 0) {
+        *newoffset = 0;
+        return (int)(-result);  // Return errno
+    }
+    *newoffset = (uint64_t)result;
+    return 0;  // Success
 }
 
-int64_t wasi_fd_tell(wasi_fd_t fd) {
+int wasi_fd_tell(wasi_fd_t fd, uint64_t* offset) {
     long result = syscall(SYS_LSEEK, (long)fd, 0, (long)WASI_SEEK_CUR, 0, 0, 0);
-    return (int64_t)result;
+    if (result < 0) {
+        *offset = 0;
+        return (int)(-result);  // Return errno
+    }
+    *offset = (uint64_t)result;
+    return 0;  // Success
 }
 
 // The entry point for a -nostdlib Linux program is `_start`.

@@ -23,7 +23,7 @@ extern void _exit(int status);
 extern int * __error(); // Returns pointer to errno
 extern int open(const char *path, int flags, ...);
 extern int close(int fd);
-extern ssize_t read(int fd, void *buf, size_t count);
+extern ssize_t readv(int fd, const struct iovec *iov, int iovcnt);
 extern off_t lseek(int fd, off_t offset, int whence);
 
 // Protection and mapping flags (macOS-specific values)
@@ -140,22 +140,38 @@ wasi_fd_t wasi_path_open(const char* path, int flags) {
 }
 
 int wasi_fd_close(wasi_fd_t fd) {
-    return close(fd);
+    int result = close(fd);
+    return (result < 0) ? *__error() : 0;
 }
 
-int64_t wasi_fd_read(wasi_fd_t fd, void* buf, size_t len) {
-    ssize_t result = read(fd, buf, len);
-    return (int64_t)result;
+int wasi_fd_read(wasi_fd_t fd, const iovec_t* iovs, size_t iovs_len, size_t* nread) {
+    ssize_t result = readv(fd, (const struct iovec*)iovs, (int)iovs_len);
+    if (result < 0) {
+        *nread = 0;
+        return *__error();  // Return errno
+    }
+    *nread = (size_t)result;
+    return 0;  // Success
 }
 
-int64_t wasi_fd_seek(wasi_fd_t fd, int64_t offset, int whence) {
+int wasi_fd_seek(wasi_fd_t fd, int64_t offset, int whence, uint64_t* newoffset) {
     off_t result = lseek(fd, (off_t)offset, whence);
-    return (int64_t)result;
+    if (result < 0) {
+        *newoffset = 0;
+        return *__error();  // Return errno
+    }
+    *newoffset = (uint64_t)result;
+    return 0;  // Success
 }
 
-int64_t wasi_fd_tell(wasi_fd_t fd) {
+int wasi_fd_tell(wasi_fd_t fd, uint64_t* offset) {
     off_t result = lseek(fd, 0, WASI_SEEK_CUR);
-    return (int64_t)result;
+    if (result < 0) {
+        *offset = 0;
+        return *__error();  // Return errno
+    }
+    *offset = (uint64_t)result;
+    return 0;  // Success
 }
 
 // Entry point for macOS.

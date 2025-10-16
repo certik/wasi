@@ -8,7 +8,7 @@ uint32_t WASI(fd_write)(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* n
 void WASI(proc_exit)(int status);
 int WASI(path_open)(int dirfd, int dirflags, const char* path, size_t path_len, int oflags, uint64_t fs_rights_base, uint64_t fs_rights_inheriting, int fdflags, int* fd);
 int WASI(fd_close)(int fd);
-int WASI(fd_read)(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nread);
+int WASI(fd_read)(int fd, const iovec_t* iovs, size_t iovs_len, size_t* nread);
 int WASI(fd_seek)(int fd, int64_t offset, int whence, uint64_t* newoffset);
 int WASI(fd_tell)(int fd, uint64_t* offset);
 
@@ -97,23 +97,16 @@ int wasi_fd_close(wasi_fd_t fd) {
     return fd_close(fd);
 }
 
-int64_t wasi_fd_read(wasi_fd_t fd, void* buf, size_t len) {
-    ciovec_t iov = { .buf = buf, .buf_len = len };
-    size_t nread = 0;
-    int ret = fd_read(fd, &iov, 1, &nread);
-    return (ret == 0) ? (int64_t)nread : -1;
+int wasi_fd_read(wasi_fd_t fd, const iovec_t* iovs, size_t iovs_len, size_t* nread) {
+    return fd_read(fd, iovs, iovs_len, nread);
 }
 
-int64_t wasi_fd_seek(wasi_fd_t fd, int64_t offset, int whence) {
-    uint64_t newoffset = 0;
-    int ret = fd_seek(fd, offset, whence, &newoffset);
-    return (ret == 0) ? (int64_t)newoffset : -1;
+int wasi_fd_seek(wasi_fd_t fd, int64_t offset, int whence, uint64_t* newoffset) {
+    return fd_seek(fd, offset, whence, newoffset);
 }
 
-int64_t wasi_fd_tell(wasi_fd_t fd) {
-    uint64_t offset = 0;
-    int ret = fd_tell(fd, &offset);
-    return (ret == 0) ? (int64_t)offset : -1;
+int wasi_fd_tell(wasi_fd_t fd, uint64_t* offset) {
+    return fd_tell(fd, offset);
 }
 
 // For WASI, the entry point is `_start`, which we define to call our `main` function.

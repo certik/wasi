@@ -17,17 +17,20 @@ bool read_file(Arena *arena, const string filename, string *text) {
     if (fd < 0) return false;
 
     // Get file size by seeking to end
-    int64_t filesize = wasi_fd_seek(fd, 0, WASI_SEEK_END);
-    if (filesize < 0) {
+    uint64_t filesize_u64;
+    if (wasi_fd_seek(fd, 0, WASI_SEEK_END, &filesize_u64) != 0) {
         wasi_fd_close(fd);
         return false;
     }
 
     // Seek back to beginning
-    if (wasi_fd_seek(fd, 0, WASI_SEEK_SET) < 0) {
+    uint64_t dummy;
+    if (wasi_fd_seek(fd, 0, WASI_SEEK_SET, &dummy) != 0) {
         wasi_fd_close(fd);
         return false;
     }
+
+    size_t filesize = (size_t)filesize_u64;
 
     // Allocate buffer
     char *bytes = arena_alloc_array(arena, char, filesize+1);
@@ -36,12 +39,14 @@ bool read_file(Arena *arena, const string filename, string *text) {
         return false;
     }
 
-    // Read file contents
-    int64_t readsize = wasi_fd_read(fd, bytes, (size_t)filesize);
+    // Read file contents using iovec
+    iovec_t iov = { .iov_base = bytes, .iov_len = filesize };
+    size_t nread;
+    int ret = wasi_fd_read(fd, &iov, 1, &nread);
     wasi_fd_close(fd);
 
-    if (readsize != filesize) return false;
-    bytes[readsize] = '\0';
+    if (ret != 0 || nread != filesize) return false;
+    bytes[nread] = '\0';
     text->str = bytes;
     text->size = filesize+1;
     return true;

@@ -194,17 +194,33 @@ wasi_fd_t wasi_path_open(const char* path, int flags) {
 
 int wasi_fd_close(wasi_fd_t fd) {
     HANDLE handle = (HANDLE)(long long)fd;
-    return CloseHandle(handle) ? 0 : -1;
+    return CloseHandle(handle) ? 0 : 1;  // Return 0 on success, non-zero on error
 }
 
-int64_t wasi_fd_read(wasi_fd_t fd, void* buf, size_t len) {
+int wasi_fd_read(wasi_fd_t fd, const iovec_t* iovs, size_t iovs_len, size_t* nread) {
     HANDLE handle = (HANDLE)(long long)fd;
-    DWORD bytes_read = 0;
-    int result = ReadFile(handle, buf, (DWORD)len, &bytes_read, NULL);
-    return result ? (int64_t)bytes_read : -1;
+    size_t total_read = 0;
+
+    // Windows doesn't have readv, so loop over iovecs
+    for (size_t i = 0; i < iovs_len; i++) {
+        DWORD bytes_read = 0;
+        int result = ReadFile(handle, iovs[i].iov_base, (DWORD)iovs[i].iov_len, &bytes_read, NULL);
+        if (!result) {
+            *nread = total_read;
+            return 1;  // Error
+        }
+        total_read += bytes_read;
+        if (bytes_read < iovs[i].iov_len) {
+            // Short read, stop here
+            break;
+        }
+    }
+
+    *nread = total_read;
+    return 0;  // Success
 }
 
-int64_t wasi_fd_seek(wasi_fd_t fd, int64_t offset, int whence) {
+int wasi_fd_seek(wasi_fd_t fd, int64_t offset, int whence, uint64_t* newoffset) {
     HANDLE handle = (HANDLE)(long long)fd;
     LARGE_INTEGER distance;
     LARGE_INTEGER new_position;
@@ -215,17 +231,27 @@ int64_t wasi_fd_seek(wasi_fd_t fd, int64_t offset, int whence) {
     else if (whence == WASI_SEEK_END) method = FILE_END;
 
     int result = SetFilePointerEx(handle, distance, &new_position, method);
-    return result ? new_position.QuadPart : -1;
+    if (!result) {
+        *newoffset = 0;
+        return 1;  // Error
+    }
+    *newoffset = (uint64_t)new_position.QuadPart;
+    return 0;  // Success
 }
 
-int64_t wasi_fd_tell(wasi_fd_t fd) {
+int wasi_fd_tell(wasi_fd_t fd, uint64_t* offset) {
     HANDLE handle = (HANDLE)(long long)fd;
     LARGE_INTEGER distance;
     LARGE_INTEGER position;
     distance.QuadPart = 0;
 
     int result = SetFilePointerEx(handle, distance, &position, FILE_CURRENT);
-    return result ? position.QuadPart : -1;
+    if (!result) {
+        *offset = 0;
+        return 1;  // Error
+    }
+    *offset = (uint64_t)position.QuadPart;
+    return 0;  // Success
 }
 
 // Entry point for Windows - MSVC uses _start but we need to set it up correctly
