@@ -41,6 +41,7 @@ string read_file_ok(Arena *arena, const string filename) {
         //std::cerr << "File '" + filename + "' cannot be opened." << std::endl;
         printf("File cannot be opened.\n");
         abort();
+        return text;
     }
 }
 
