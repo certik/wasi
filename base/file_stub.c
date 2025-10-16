@@ -1,7 +1,7 @@
 // Stub implementations of FILE I/O functions for base/ when building without stdlib
 // These allow base/io.c to compile but the functions will return errors at runtime
 
-#include <stddef.h>
+#include <base/base_types.h>
 
 typedef struct FILE_STUB FILE;
 
