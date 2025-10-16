@@ -110,11 +110,7 @@ void test_wasi_heap(void) {
     print("heap_base set\n");
 
     size_t ms1 = wasi_heap_size();
-    print("Initial heap size: ");
-    Arena *tmp = arena_new(1024);
-    string size_str = int_to_string(tmp, (int)ms1);
-    print(str_to_cstr_copy(tmp, size_str));
-    print("\n");
+    print("Initial heap size obtained\n");
 
     void* mg = wasi_heap_grow(4 * WASM_PAGE_SIZE);
     base_assert((size_t)hb + ms1 == (size_t)mg);
@@ -128,7 +124,6 @@ void test_wasi_heap(void) {
     ms2 = wasi_heap_size();
     base_assert(ms1 + (4+8)*WASM_PAGE_SIZE == ms2);
     print("WASI heap tests passed\n");
-    arena_free(tmp);
 }
 
 void test_buddy(void) {
