@@ -29,18 +29,13 @@ clang \
     stdlib/stdio.c \
     stdlib/stdlib.c \
     stdlib/string.c \
-    stdlib/printf.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
-    base/format.c \
-    base/io.c \
     base/base_string.c \
     base/mem.c \
     base/numconv.c \
-    base/assert.c \
-    base/exit.c \
     native/wasi_wasm.c
 """
 
@@ -64,18 +59,17 @@ clang \
     -o arena_base.wasm \
     test_base_only.c \
     test_base.c \
+    stdlib/assert.c \
+    stdlib/stdio.c \
+    stdlib/stdlib.c \
+    stdlib/string.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
-    base/format.c \
-    base/io.c \
     base/base_string.c \
     base/mem.c \
     base/numconv.c \
-    base/assert.c \
-    base/exit.c \
-    base/file_stub.c \
     native/wasi_wasm.c
 """
 
@@ -103,18 +97,13 @@ clang \
     stdlib/stdio.c \
     stdlib/stdlib.c \
     stdlib/string.c \
-    stdlib/printf.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
-    base/format.c \
-    base/io.c \
     base/base_string.c \
     base/mem.c \
     base/numconv.c \
-    base/assert.c \
-    base/exit.c \
     native/wasi_linux.c
 """
 
@@ -142,18 +131,13 @@ clang \
     stdlib/stdio.c \
     stdlib/stdlib.c \
     stdlib/string.c \
-    stdlib/printf.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
-    base/format.c \
-    base/io.c \
     base/base_string.c \
     base/mem.c \
     base/numconv.c \
-    base/assert.c \
-    base/exit.c \
     native/wasi_macos.c \
     -lSystem \
     -Wl,-e,__start
@@ -182,21 +166,17 @@ cl \
     tests.c \
     test_stdlib.c \
     test_base.c \
+    stdlib/assert.c \
     stdlib/stdio.c \
     stdlib/stdlib.c \
     stdlib/string.c \
-    stdlib/printf.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
-    base/format.c \
-    base/io.c \
     base/base_string.c \
     base/mem.c \
     base/numconv.c \
-    base/assert.c \
-    base/exit.c \
     native/wasi_windows.c \
     && \
 link \
@@ -212,17 +192,13 @@ link \
     stdio.obj \
     stdlib.obj \
     string.obj \
-    printf.obj \
     base_io.obj \
     buddy.obj \
     arena.obj \
     scratch.obj \
-    format.obj \
-    io.obj \
     base_string.obj \
     mem.obj \
     numconv.obj \
-    exit.obj \
     wasi_windows.obj \
     /out:arena_windows.exe
 """

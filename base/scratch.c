@@ -30,8 +30,7 @@ Scratch scratch_begin_avoid_conflict(Arena *conflict) {
     }
     //assert(false);
     wasi_proc_exit(1);
-    // unreachable, but MSVC doesn't know wasi_proc_exit never returns
-    Scratch scratch = {0};
+    Scratch scratch;
     return scratch;
 }
 

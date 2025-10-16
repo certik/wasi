@@ -14,26 +14,11 @@ extern void *memcpy(void *dest, const void *src, size_t n);
 #include <base/arena.h>
 #include <base/scratch.h>
 #include <base/buddy.h>
-#include <base/format.h>
-#include <base/io.h>
-#include <base/hashtable.h>
-#include <base/vector.h>
+#include <base/base_string.h>
 #include <test_base.h>
 
-// Define hashtable and vector types for tests
-#define MapIntString_HASH(key) ((size_t)(key))
-#define MapIntString_EQUAL(key1, key2) ((key1) == (key2))
-DEFINE_HASHTABLE_FOR_TYPES(int, string, MapIntString)
-
-#define MapStringInt_HASH(key) (str_hash(key))
-#define MapStringInt_EQUAL(key1, key2) (str_eq((key1), (key2)))
-DEFINE_HASHTABLE_FOR_TYPES(string, int, MapStringInt)
-
-DEFINE_VECTOR_FOR_TYPE(int, VecInt)
-DEFINE_VECTOR_FOR_TYPE(int*, VecIntP)
-
 // Helper function for inner scratch scope
-static char* test_nested_scratch_inner(Arena *outer_arena, bool avoid_conflict) {
+static char* test_nested_scratch_inner(Arena *outer_arena, int avoid_conflict) {
     Scratch inner;
     if (avoid_conflict) {
         inner = scratch_begin_avoid_conflict(outer_arena);
@@ -44,11 +29,11 @@ static char* test_nested_scratch_inner(Arena *outer_arena, bool avoid_conflict) 
     // Fill result using outer_arena AFTER inner scratch begins
     char *result = arena_alloc(outer_arena, 50);
     strcpy(result, "ABC");
-    println(outer_arena, str_lit("  ARENAS: inner={}, outer={}"), inner.arena, outer_arena);
+    printf("  ARENAS: inner=%p, outer=%p\n", inner.arena, outer_arena);
 
     char *inner_temp = arena_alloc(inner.arena, 50);
     strcpy(inner_temp, "Inner temp");
-    println(outer_arena, str_lit("  In inner scratch: {}"), inner_temp);
+    printf("  In inner scratch: %s\n", inner_temp);
     if (avoid_conflict) {
         assert(inner.arena != outer_arena);
     } else {
@@ -60,14 +45,14 @@ static char* test_nested_scratch_inner(Arena *outer_arena, bool avoid_conflict) 
 }
 
 // Helper function for outer scratch scope
-static void test_nested_scratch_outer(bool avoid_conflict) {
+static void test_nested_scratch_outer(int avoid_conflict) {
     Scratch outer = scratch_begin();
     char *outer_temp = test_nested_scratch_inner(outer.arena, avoid_conflict);
     char *outer_temp2 = arena_alloc(outer.arena, 50);
     strcpy(outer_temp2, "XXX");
 
     if (avoid_conflict) {
-        println(outer.arena, str_lit("  In outer scratch after inner: {}"), outer_temp);
+        printf("  In outer scratch after inner: %s\n", outer_temp);
 
         // Values are different (correct)
         assert(outer_temp[0] == 'A');
@@ -81,7 +66,7 @@ static void test_nested_scratch_outer(bool avoid_conflict) {
         // and the pointers are different (correct)
         assert(outer_temp != outer_temp2);
     } else {
-        println(outer.arena, str_lit("  In outer scratch after inner: {} (corrupted!)"), outer_temp);
+        printf("  In outer scratch after inner: %s (corrupted!)\n", outer_temp);
         // This demonstrates the bug: scratch_begin() without conflict avoidance allows
         // both scopes to share the same arena, and scratch_end(inner) invalidates outer_temp
         // The values are the same (bug)
@@ -100,85 +85,78 @@ static void test_nested_scratch_outer(bool avoid_conflict) {
 }
 
 void test_wasi_heap(void) {
-    Arena *arena = arena_new(4096);
-    println(arena, str_lit("## Testing WASI heap operations..."));
+    printf("## Testing WASI heap operations...\n");
     void* hb = wasi_heap_base();
-    println(arena, str_lit("heap_base = {} ({})"), hb, (size_t)hb);
+    printf("heap_base = %p (%zu)\n", hb, (size_t)hb);
     size_t ms1 = wasi_heap_size();
-    println(arena, str_lit("heap_size = {}"), ms1);
+    printf("heap_size = %zu\n", ms1);
     void* mg = wasi_heap_grow(4 * WASM_PAGE_SIZE);
-    println(arena, str_lit("heap_grow_return = {} ({})"), mg, (size_t)mg);
+    printf("heap_grow_return = %p (%zu)\n", mg, (size_t)mg);
     assert((size_t)hb + ms1 == (size_t)mg);
 
     size_t ms2 = wasi_heap_size();
-    println(arena, str_lit("heap_size = {}"), ms2);
+    printf("heap_size = %zu\n", ms2);
     assert(ms1 + 4*WASM_PAGE_SIZE == ms2);
 
     mg = wasi_heap_grow(8 * WASM_PAGE_SIZE);
-    println(arena, str_lit("heap_grow_return = {} ({})"), mg, (size_t)mg);
+    printf("heap_grow_return = %p (%zu)\n", mg, (size_t)mg);
     assert((size_t)hb + ms2 == (size_t)mg);
 
     ms2 = wasi_heap_size();
-    println(arena, str_lit("heap_size = {}"), ms2);
+    printf("heap_size = %zu\n", ms2);
     assert(ms1 + (4+8)*WASM_PAGE_SIZE == ms2);
-    println(arena, str_lit("WASI heap tests passed"));
-    arena_free(arena);
+    printf("WASI heap tests passed\n");
 }
 
 void test_buddy(void) {
-    Arena *arena = arena_new(4096);
-    println(arena, str_lit("## Testing buddy allocator..."));
+    printf("## Testing buddy allocator...\n");
     buddy_init();
 
     // Allocate a small block (will round up to MIN_PAGE_SIZE)
     void* p1 = buddy_alloc(100);
     if (!p1) {
-        println(arena, str_lit("Allocation failed"));
-        arena_free(arena);
+        printf("Allocation failed\n");
         exit(1);
     }
-    println(arena, str_lit("Allocated p1"));
+    printf("Allocated p1\n");
 
     // Allocate a larger block
     void* p2 = buddy_alloc(8192);
     if (!p2) {
-        println(arena, str_lit("Allocation failed"));
-        arena_free(arena);
+        printf("Allocation failed\n");
         exit(1);
     }
-    println(arena, str_lit("Allocated p2"));
+    printf("Allocated p2\n");
 
     // Free the first block
     buddy_free(p1);
-    println(arena, str_lit("Freed p1"));
+    printf("Freed p1\n");
 
     // Allocate again to demonstrate reuse
     void* p3 = buddy_alloc(200);
     if (!p3) {
-        println(arena, str_lit("Allocation failed"));
-        arena_free(arena);
+        printf("Allocation failed\n");
         exit(1);
     }
-    println(arena, str_lit("Allocated p3"));
+    printf("Allocated p3\n");
 
     // Free remaining
     buddy_free(p2);
     buddy_free(p3);
-    println(arena, str_lit("Buddy allocator tests passed"));
-    arena_free(arena);
+    printf("Buddy allocator tests passed\n");
 }
 
 void test_arena(void) {
-    println(NULL, str_lit("## Testing arena allocator..."));
-    println(NULL, str_lit("Creating a new arena with an initial size of 4KB..."));
+    printf("## Testing arena allocator...\n");
+    printf("Creating a new arena with an initial size of 4KB...\n");
     Arena *main_arena = arena_new(4096);
     if (!main_arena) {
-        println(NULL, str_lit("Error: Failed to create the arena."));
+        printf("Error: Failed to create the arena.\n");
         exit(1);
     }
     arena_pos_t saved_pos_0 = arena_get_pos(main_arena);
 
-    println(main_arena, str_lit("Allocating three strings in the arena..."));
+    printf("Allocating three strings in the arena...\n");
     char s1[] = "Hello from the Arena!\n";
     char *p_s1 = arena_alloc(main_arena, strlen(s1) + 1);
     strcpy(p_s1, s1);
@@ -191,55 +169,55 @@ void test_arena(void) {
     char *p_s3 = arena_alloc(main_arena, strlen(s3) + 1);
     strcpy(p_s3, s3);
 
-    println(main_arena, str_lit("Strings allocated. Printing from the arena:"));
-    println(main_arena, str_lit("{}{}{}"), p_s1, p_s2, p_s3);
+    printf("Strings allocated. Printing from the arena:\n");
+    printf("%s%s%s", p_s1, p_s2, p_s3);
 
-    println(main_arena, str_lit("Saving position and making temporary allocations..."));
+    printf("Saving position and making temporary allocations...\n");
     arena_pos_t saved_pos = arena_get_pos(main_arena);
 
     char s_temp[] = "[--THIS IS A TEMPORARY ALLOCATION THAT WILL BE ROLLED BACK--]";
     char *p_temp = arena_alloc(main_arena, strlen(s_temp) + 1);
     strcpy(p_temp, s_temp);
-    println(main_arena, str_lit("Allocated temporary string: {}"), p_temp);
+    printf("Allocated temporary string: %s\n", p_temp);
 
-    println(main_arena, str_lit("Resetting to saved position..."));
+    printf("Resetting to saved position...\n");
     arena_reset(main_arena, saved_pos);
 
-    println(main_arena, str_lit("Allocating again from the saved position..."));
+    printf("Allocating again from the saved position...\n");
     char s4[] = "String 3, allocated after reset.\n";
     char *p_s4 = arena_alloc(main_arena, strlen(s4) + 1);
     strcpy(p_s4, s4);
-    println(main_arena, str_lit("Allocated: {}"), p_s4);
+    printf("Allocated: %s", p_s4);
 
-    println(main_arena, str_lit("Final content of the arena (first two strings are still valid):"));
-    println(main_arena, str_lit("-> {}{}{}{}"), p_s1, p_s2, p_s3, p_s4);
+    printf("Final content of the arena (first two strings are still valid):\n");
+    printf("-> %s%s%s%s", p_s1, p_s2, p_s3, p_s4);
 
-    println(main_arena, str_lit("Resetting the arena..."));
+    printf("Resetting the arena...\n");
     arena_reset(main_arena, saved_pos_0);
-    println(main_arena, str_lit("Arena has been reset. Previous pointers are now invalid."));
-    println(main_arena, str_lit("Allocating a new string to show that memory is being reused:"));
+    printf("Arena has been reset. Previous pointers are now invalid.\n");
+    printf("Allocating a new string to show that memory is being reused:\n");
 
     char s5[] = "This new string overwrites the old data after the reset!\n";
     char *p_s5 = arena_alloc(main_arena, strlen(s5) + 1);
     strcpy(p_s5, s5);
-    println(main_arena, str_lit("{}"), p_s5);
+    printf("%s", p_s5);
 
-    println(main_arena, str_lit("Freeing the arena..."));
+    printf("Freeing the arena...\n");
     arena_free(main_arena);
-    println(NULL, str_lit("Arena has been completely deallocated and memory returned to the system."));
-    println(NULL, str_lit("Arena allocator tests passed"));
+    printf("Arena has been completely deallocated and memory returned to the system.\n");
+    printf("Arena allocator tests passed\n");
 }
 
 void test_scratch(void) {
-    println(NULL, str_lit("## Testing scratch arena..."));
-    println(NULL, str_lit("Creating a new arena for scratch tests..."));
+    printf("## Testing scratch arena...\n");
+    printf("Creating a new arena for scratch tests...\n");
     Arena *scratch_test_arena = arena_new(4096);
     if (!scratch_test_arena) {
-        println(NULL, str_lit("Error: Failed to create the arena."));
+        printf("Error: Failed to create the arena.\n");
         exit(1);
     }
 
-    println(scratch_test_arena, str_lit("Test 1: Basic scratch allocation and cleanup"));
+    printf("Test 1: Basic scratch allocation and cleanup\n");
     char *persistent = arena_alloc(scratch_test_arena, 100);
     strcpy(persistent, "This persists");
 
@@ -249,45 +227,45 @@ void test_scratch(void) {
         strcpy(temp1, "Temporary 1");
         char *temp2 = arena_alloc(scratch.arena, 50);
         strcpy(temp2, "Temporary 2");
-        println(scratch_test_arena, str_lit("  Inside scratch: {}, {}, {}"), persistent, temp1, temp2);
+        printf("  Inside scratch: %s, %s, %s\n", persistent, temp1, temp2);
         assert(temp1 != temp2);
         scratch_end(scratch);
     }
 
     char *after_scratch = arena_alloc(scratch_test_arena, 100);
     strcpy(after_scratch, "After scratch");
-    println(scratch_test_arena, str_lit("  After scratch end: {}, {}"), persistent, after_scratch);
+    printf("  After scratch end: %s, %s\n", persistent, after_scratch);
 
-    println(scratch_test_arena, str_lit("Test 2: Nested scratch scopes with conflict avoidance"));
-    test_nested_scratch_outer(true);
+    printf("Test 2: Nested scratch scopes with conflict avoidance\n");
+    test_nested_scratch_outer(1);
 
-    println(scratch_test_arena, str_lit("Test 2b: Nested scratch scopes WITHOUT conflict avoidance"));
-    test_nested_scratch_outer(false);
+    printf("Test 2b: Nested scratch scopes WITHOUT conflict avoidance\n");
+    test_nested_scratch_outer(0);
 
-    println(scratch_test_arena, str_lit("Test 3: Multiple sequential scratch scopes"));
+    printf("Test 3: Multiple sequential scratch scopes\n");
     {
         Scratch scratch = scratch_begin();
         char *temp = arena_alloc(scratch.arena, 100);
         strcpy(temp, "Iteration 0");
-        println(scratch_test_arena, str_lit("  {}"), temp);
+        printf("  %s\n", temp);
         scratch_end(scratch);
     }
     {
         Scratch scratch = scratch_begin();
         char *temp = arena_alloc(scratch.arena, 100);
         strcpy(temp, "Iteration 1");
-        println(scratch_test_arena, str_lit("  {}"), temp);
+        printf("  %s\n", temp);
         scratch_end(scratch);
     }
     {
         Scratch scratch = scratch_begin();
         char *temp = arena_alloc(scratch.arena, 100);
         strcpy(temp, "Iteration 2");
-        println(scratch_test_arena, str_lit("  {}"), temp);
+        printf("  %s\n", temp);
         scratch_end(scratch);
     }
 
-    println(scratch_test_arena, str_lit("Test 4: Verify memory reuse after scratch_end"));
+    printf("Test 4: Verify memory reuse after scratch_end\n");
     arena_pos_t before_reuse = arena_get_pos(scratch_test_arena);
     {
         Scratch scratch = scratch_begin();
@@ -296,172 +274,66 @@ void test_scratch(void) {
     }
     arena_pos_t after_reuse = arena_get_pos(scratch_test_arena);
     assert(before_reuse.ptr == after_reuse.ptr);
-    println(scratch_test_arena, str_lit("  Memory position restored correctly"));
+    printf("  Memory position restored correctly\n");
 
-    println(scratch_test_arena, str_lit("Freeing scratch test arena..."));
+    printf("Freeing scratch test arena...\n");
     arena_free(scratch_test_arena);
-    println(NULL, str_lit("Scratch arena tests passed"));
+    printf("Scratch arena tests passed\n");
 }
 
-void test_format(void) {
-    println(NULL, str_lit("## Testing format..."));
-    Arena* arena = arena_new(1024*10);
-    double pi = 3.1415926535;
+void test_string(void) {
+    printf("## Testing base string functions...\n");
+    Arena *arena = arena_new(4096);
 
-    // Example with no arguments
-    string fmt = str_lit("Hello!");
-    string result = format(arena, fmt);
-    assert(str_eq(result, str_lit("Hello!")));
-    println(arena, str_lit("No args: {}"), str_to_cstr_copy(arena, result));
+    // Test str_from_cstr_view
+    string s1 = str_from_cstr_view("hello");
+    assert(s1.size == 5);
+    assert(s1.str[0] == 'h');
 
-    // Example with one argument
-    fmt = str_lit("Hello, {}!");
-    //result = format(arena, fmt, str_lit("world"));
-    result = str_lit("Hello, world!");
-    assert(str_eq(result, str_lit("Hello, world!")));
-    println(arena, str_lit("One arg: {}"), str_to_cstr_copy(arena, result));
+    // Test str_lit macro
+    string s2 = str_lit("world");
+    assert(s2.size == 5);
 
-    fmt = str_lit("Hello, {}!");
-    result = format(arena, fmt, 5);
-    assert(str_eq(result, str_lit("Hello, 5!")));
-    println(arena, str_lit("One arg: {}"), str_to_cstr_copy(arena, result));
+    // Test str_eq
+    string s3 = str_lit("hello");
+    assert(str_eq(s1, s3));
+    assert(!str_eq(s1, s2));
 
-    // Example with formatted double
-    fmt = str_lit("Value: {:10.5f}");
-    //result = format(arena, fmt, pi);
-    // Note: Double formatting may have slight differences, so we just print it
-    //println(arena, str_lit("Formatted double: {}"), str_to_cstr_copy(arena, result));
+    // Test str_concat
+    string s4 = str_concat(arena, s1, str_lit(" "));
+    string s5 = str_concat(arena, s4, s2);
+    assert(s5.size == 11);
+    assert(str_eq(s5, str_lit("hello world")));
 
-    // Example with formatted char
-    fmt = str_lit("Char: |{:^5}|");
-    result = format(arena, fmt, 'x');
-    assert(str_eq(result, str_lit("Char: | 120 |")));
-    println(arena, str_lit("Formatted char: {}"), str_to_cstr_copy(arena, result));
+    // Test int_to_string
+    string s6 = int_to_string(arena, 42);
+    assert(str_eq(s6, str_lit("42")));
 
-    // Example with multiple arguments
-    fmt = str_lit("Hello, {}, {}, {}, {}!");
-    //result = format(arena, fmt, "world", 35.5, str_lit("XX"), 3);
-    //println(arena, str_lit("Multiple args: {}"), str_to_cstr_copy(arena, result));
+    string s7 = int_to_string(arena, -123);
+    assert(str_eq(s7, str_lit("-123")));
 
+    // Test char_to_string
+    string s8 = char_to_string(arena, 'X');
+    assert(s8.size == 1);
+    assert(s8.str[0] == 'X');
+
+    // Test str_to_cstr_copy
+    char *cstr = str_to_cstr_copy(arena, s5);
+    assert(cstr[11] == '\0');
+    assert(strlen(cstr) == 11);
+
+    printf("String function tests passed\n");
     arena_free(arena);
-    println(NULL, str_lit("Format tests passed"));
-}
-
-void test_io(void) {
-    println(NULL, str_lit("## Testing io..."));
-    Arena* arena = arena_new(1024*20);
-
-    string text;
-    bool ok = read_file(arena, str_lit("does not exist"), &text);
-    assert(!ok);
-
-    text.size = 0;
-    assert(text.size == 0);
-    ok = read_file(arena, str_lit("README.md"), &text);
-    // README.md may not exist, so we don't assert on this
-    if (ok) {
-        assert(text.size > 10);
-        println(arena, str_lit("Read README.md: {} bytes"), text.size);
-    } else {
-        println(arena, str_lit("README.md not found (expected in some environments)"));
-    }
-
-    //println(arena, str_lit("Hello from io."));
-
-    arena_free(arena);
-    println(NULL, str_lit("I/O tests passed"));
-}
-
-void test_hashtable_int_string(void) {
-    println(NULL, str_lit("## Testing hashtable (int->string)..."));
-    Arena* arena = arena_new(1024*10);
-
-    MapIntString ht;
-    MapIntString_init(arena, &ht, 16);
-    MapIntString_insert(arena, &ht, 42, str_lit("forty-two"));
-    string *value = MapIntString_get(&ht, 42);
-    assert(value);
-    println(arena, str_lit("Value for key 42: {}"), str_to_cstr_copy(arena, *value));
-
-    arena_free(arena);
-    println(NULL, str_lit("Hashtable (int->string) tests passed"));
-}
-
-void test_hashtable_string_int(void) {
-    println(NULL, str_lit("## Testing hashtable (string->int)..."));
-    Arena* arena = arena_new(1024*10);
-
-    MapStringInt ht;
-    MapStringInt_init(arena, &ht, 16);
-    MapStringInt_insert(arena, &ht, str_lit("forty-two"), 42);
-    int *value = MapStringInt_get(&ht, str_lit("forty-two"));
-    assert(value);
-    println(arena, str_lit("Value for key \"forty-two\": {}"), *value);
-
-    arena_free(arena);
-    println(NULL, str_lit("Hashtable (string->int) tests passed"));
-}
-
-void test_vector_int(void) {
-    println(NULL, str_lit("## Testing vector (int)..."));
-    Arena* arena = arena_new(1024*10);
-
-    VecInt v;
-    VecInt_reserve(arena, &v, 1);
-    assert(v.size == 0);
-    VecInt_push_back(arena, &v, 1);
-    assert(v.size == 1);
-    VecInt_push_back(arena, &v, 2);
-    assert(v.size == 2);
-    VecInt_push_back(arena, &v, 3);
-    assert(v.size == 3);
-    assert(v.data[0] == 1);
-    assert(v.data[1] == 2);
-    assert(v.data[2] == 3);
-
-    arena_free(arena);
-    println(NULL, str_lit("Vector (int) tests passed"));
-}
-
-void test_vector_int_ptr(void) {
-    println(NULL, str_lit("## Testing vector (int*)..."));
-    Arena* arena = arena_new(1024*10);
-
-    VecIntP v;
-    int i=1, j=2, k=3;
-    VecIntP_reserve(arena, &v, 1);
-    assert(v.size == 0);
-    VecIntP_push_back(arena, &v, &i);
-    assert(v.size == 1);
-    VecIntP_push_back(arena, &v, &j);
-    assert(v.size == 2);
-    VecIntP_push_back(arena, &v, &k);
-    assert(v.size == 3);
-    assert(*v.data[0] == 1);
-    assert(*v.data[1] == 2);
-    assert(*v.data[2] == 3);
-    k = 4;
-    assert(*v.data[2] == 4);
-
-    arena_free(arena);
-    println(NULL, str_lit("Vector (int*) tests passed"));
 }
 
 void test_base(void) {
-    Arena *arena = arena_new(4096);
-    println(arena, str_lit("=== base tests ==="));
+    printf("=== base tests ===\n");
 
     test_wasi_heap();
     test_buddy();
     test_arena();
     test_scratch();
-    test_format();
-    test_io();
-    test_hashtable_int_string();
-    test_hashtable_string_int();
-    test_vector_int();
-    test_vector_int_ptr();
+    test_string();
 
-    println(arena, str_lit("base tests passed"));
-    arena_free(arena);
+    printf("base tests passed\n\n");
 }

@@ -1,4 +1,8 @@
-// stdlib/assert.c now reuses implementation from base/assert.c
-// This avoids code duplication and ensures consistent behavior
+#include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
 
-#include <base/assert.h>
+void __assert_fail(const char *assertion, const char *file, unsigned int line, const char *function) {
+    printf("Assertion failed: (%s) at '%s:%u' in function '%s'\n", assertion, file, line, function);
+    exit(1);
+}
