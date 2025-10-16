@@ -132,7 +132,12 @@ string format_explicit_varg(Arena *arena, string fmt, size_t arg_count,
                 break;
             }
             case ARG_STRING2: {
+#if defined(_WIN64)
+                // On Windows x64, structs > 8 bytes are passed by reference in varargs
+                string value = *va_arg(ap, string*);
+#else
                 string value = va_arg(ap, string);
+#endif
                 s = value;
                 if (spec.precision >= 0 && spec.precision < s.size) {
                     s.size = spec.precision;
@@ -145,7 +150,12 @@ string format_explicit_varg(Arena *arena, string fmt, size_t arg_count,
                 break;
             }
             case ARG_VECTOR_INT64: {
+#if defined(_WIN64)
+                // On Windows x64, structs > 8 bytes are passed by reference in varargs
+                vector_i64 value = *va_arg(ap, vector_i64*);
+#else
                 vector_i64 value = va_arg(ap, vector_i64);
+#endif
                 s = str_lit("{");
                 for (int i=0; i<value.size; i++) {
                     s = str_concat(arena, s,
