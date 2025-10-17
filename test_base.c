@@ -767,14 +767,14 @@ void test_args(void) {
     // Print all arguments
     print("Arguments:\n");
     for (size_t i = 0; i < argc; i++) {
-        Arena *tmp_arena = arena_new(256);
-        string idx_str = int_to_string(tmp_arena, (int)i);
+        Scratch scratch = scratch_begin();
+        string idx_str = int_to_string(scratch.arena, (int)i);
         print("  argv[");
-        print(str_to_cstr_copy(tmp_arena, idx_str));
+        print(str_to_cstr_copy(scratch.arena, idx_str));
         print("] = \"");
         print(argv[i]);
         print("\"\n");
-        arena_free(tmp_arena);
+        scratch_end(scratch);
     }
 
     // Verify argc is at least 1 (program name)
