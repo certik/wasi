@@ -106,14 +106,9 @@ static void *buddy_alloc_order(int order) {
     writeln_int(WASI_STDERR_FD, "committed (MiB) =", committed_bytes >> 20);
     writeln_int(WASI_STDERR_FD, "free (MiB)      =", total_free_bytes >> 20);
 
-    // Show per-order counts for orders >= 8 (1 MiB and larger)
-    for (int o = 8; o <= MAX_ORDER; o++) {
-        if (free_counts[o] > 0) {
-            size_t block_size_mib = (MIN_PAGE_SIZE << o) >> 20;
-            writeln_int(WASI_STDERR_FD, "free_lists[", o);
-            writeln_int(WASI_STDERR_FD, "] (", block_size_mib);
-            writeln_int(WASI_STDERR_FD, " MiB) count =", free_counts[o]);
-        }
+    // Count large blocks (order >= 9, which is 2 MiB)
+    if (order >= 9 && free_counts[order] > 0) {
+        writeln_int(WASI_STDERR_FD, "free blocks at requested order =", free_counts[order]);
     }
 
     // Find the smallest available block that is large enough
