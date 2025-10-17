@@ -41,11 +41,6 @@ bool read_file(Arena *arena, const string filename, string *text) {
 
     // Allocate buffer
     char *bytes = arena_alloc_array(arena, char, filesize+1);
-    if (bytes == NULL) {
-        wasi_fd_close(fd);
-        scratch_end(scratch);
-        return false;
-    }
 
     // Read file contents using iovec
     iovec_t iov = { .iov_base = bytes, .iov_len = filesize };

@@ -40,7 +40,8 @@ Arena *arena_new(size_t initial_size);
  * @param arena A pointer to the arena.
  * @param size The number of bytes to allocate.
  * @return A pointer to the allocated memory, aligned to 16 bytes.
- * Returns NULL if the arena is invalid or allocation fails.
+ *
+ * The returned pointer is always valid. If the allocation fails it aborts.
  */
 void *arena_alloc(Arena *arena, size_t size);
 
