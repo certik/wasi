@@ -16,6 +16,10 @@
 #define SYS_READV 19
 #define SYS_WRITEV 20
 #define SYS_EXIT 60
+#define SYS_OPENAT 257
+
+// AT_FDCWD: special value meaning "current working directory" for openat
+#define AT_FDCWD -100
 
 // mmap flags
 #define PROT_READ  0x1
@@ -135,8 +139,8 @@ int main();
 #define O_RDONLY   0x0000
 #define O_WRONLY   0x0001
 #define O_RDWR     0x0002
-#define O_CREAT    0x0100
-#define O_TRUNC    0x0200
+#define O_CREAT    0x0040  // Octal 0100 = 0x40
+#define O_TRUNC    0x0200  // Octal 01000 = 0x200
 
 // File I/O implementations
 wasi_fd_t wasi_path_open(const char* path, size_t path_len, uint64_t rights, int oflags) {
@@ -157,8 +161,9 @@ wasi_fd_t wasi_path_open(const char* path, size_t path_len, uint64_t rights, int
     if (oflags & WASI_O_CREAT) os_flags |= O_CREAT;
     if (oflags & WASI_O_TRUNC) os_flags |= O_TRUNC;
 
+    // Use openat syscall with AT_FDCWD (current directory)
     // Default mode for created files (0644)
-    long result = syscall(SYS_OPEN, (long)path, (long)os_flags, (long)0644, 0, 0, 0);
+    long result = syscall(SYS_OPENAT, (long)AT_FDCWD, (long)path, (long)os_flags, (long)0644, 0, 0);
     return (wasi_fd_t)result;
 }
 
