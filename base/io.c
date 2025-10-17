@@ -67,7 +67,7 @@ string read_file_ok(Arena *arena, const string filename) {
     } else {
         const char *msg = "File cannot be opened.\n";
         ciovec_t iov = {.buf = msg, .buf_len = strlen(msg)};
-        write_all(1, &iov, 1);
+        write_all(WASI_STDOUT_FD, &iov, 1);
         abort();
         return text;
     }
@@ -82,7 +82,7 @@ void println_explicit(string fmt, size_t arg_count, ...) {
     va_end(varg);
     text = str_concat(scratch.arena, text, str_lit("\n"));
     ciovec_t iov = {.buf = text.str, .buf_len = text.size};
-    write_all(1, &iov, 1);
+    write_all(WASI_STDOUT_FD, &iov, 1);
 
     scratch_end(scratch);
 }

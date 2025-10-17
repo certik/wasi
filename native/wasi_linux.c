@@ -15,6 +15,7 @@
 #define SYS_MPROTECT 10
 #define SYS_READV 19
 #define SYS_WRITEV 20
+#define SYS_DUP 32
 #define SYS_EXIT 60
 #define SYS_OPENAT 257
 
@@ -164,6 +165,19 @@ wasi_fd_t wasi_path_open(const char* path, size_t path_len, uint64_t rights, int
     // Use openat syscall with AT_FDCWD (current directory)
     // Default mode for created files (0644)
     long result = syscall(SYS_OPENAT, (long)AT_FDCWD, (long)path, (long)os_flags, (long)0644, 0, 0);
+
+    // On Linux, open() can return 0, 1, or 2 if those file descriptors were closed.
+    // This would collide with stdin/stdout/stderr. To prevent this, we use dup()
+    // to get a higher file descriptor and close the low one.
+    // See: https://man7.org/linux/man-pages/man2/open.2.html
+    // "The file descriptor returned by a successful call will be the lowest-numbered
+    //  file descriptor not currently open for the process."
+    if (result >= 0 && result <= WASI_STDERR_FD) {
+        long new_fd = syscall(SYS_DUP, result, 0, 0, 0, 0, 0);
+        syscall(SYS_CLOSE, result, 0, 0, 0, 0, 0);
+        result = new_fd;
+    }
+
     return (wasi_fd_t)result;
 }
 

@@ -23,6 +23,7 @@ extern void _exit(int status);
 extern int * __error(); // Returns pointer to errno
 extern int open(const char *path, int flags, ...);
 extern int close(int fd);
+extern int dup(int fd);
 extern ssize_t readv(int fd, const struct iovec *iov, int iovcnt);
 extern off_t lseek(int fd, off_t offset, int whence);
 
@@ -144,7 +145,21 @@ wasi_fd_t wasi_path_open(const char* path, size_t path_len, uint64_t rights, int
     if (oflags & WASI_O_TRUNC) os_flags |= O_TRUNC;
 
     // Default mode for created files (0644)
-    return open(path, os_flags, 0644);
+    int fd = open(path, os_flags, 0644);
+
+    // On macOS, open() can return 0, 1, or 2 if those file descriptors were closed.
+    // This would collide with stdin/stdout/stderr. To prevent this, we use dup()
+    // to get a higher file descriptor and close the low one.
+    // See: https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/open.2.html
+    // "The file descriptor returned by a successful call will be the lowest-numbered
+    //  file descriptor not currently open for the process."
+    if (fd >= 0 && fd <= WASI_STDERR_FD) {
+        int new_fd = dup(fd);
+        close(fd);
+        fd = new_fd;
+    }
+
+    return fd;
 }
 
 int wasi_fd_close(wasi_fd_t fd) {

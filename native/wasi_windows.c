@@ -71,9 +71,9 @@ uint32_t wasi_fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nw
     HANDLE hOutput;
 
     // Handle standard streams specially
-    if (fd == 1) {
+    if (fd == WASI_STDOUT_FD) {
         hOutput = GetStdHandle(STD_OUTPUT_HANDLE);
-    } else if (fd == 2) {
+    } else if (fd == WASI_STDERR_FD) {
         hOutput = GetStdHandle(STD_ERROR_HANDLE);
     } else {
         // Treat as a file handle returned from wasi_path_open
@@ -217,6 +217,10 @@ wasi_fd_t wasi_path_open(const char* path, size_t path_len, uint64_t rights, int
     }
 
     // Return handle cast to int (wasi_fd_t)
+    // Note: Windows HANDLEs are pointers (typically large values) and will never
+    // collide with the special file descriptor values 0, 1, or 2 (stdin/stdout/stderr).
+    // See: https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilea
+    // HANDLEs are kernel object handles, not POSIX-style small integer file descriptors.
     return (wasi_fd_t)(long long)handle;
 }
 

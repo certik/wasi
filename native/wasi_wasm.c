@@ -83,6 +83,11 @@ wasi_fd_t wasi_path_open(const char* path, size_t path_len, uint64_t rights, int
         &fd
     );
 
+    // Note: The WASI specification reserves file descriptors 0, 1, and 2 for
+    // stdin, stdout, and stderr. The path_open function will never return these
+    // values, so there's no collision risk with standard streams.
+    // See: https://github.com/WebAssembly/WASI/blob/main/legacy/preview1/docs.md
+    // "File descriptors 0, 1, and 2 are always reserved for stdin, stdout, and stderr."
     return (ret == 0) ? fd : -1;
 }
 
