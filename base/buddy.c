@@ -90,6 +90,18 @@ void buddy_init(void) {
 static void *buddy_alloc_order(int order) {
     assert(order >= 0 && order <= MAX_ORDER);
 
+    size_t total_free_bytes = 0;
+    for (int o = 0; o <= MAX_ORDER; o++) {
+        struct buddy_block *block = free_lists[o].first;
+        while (block) {
+            total_free_bytes += (MIN_PAGE_SIZE << o);
+            block = block->next;
+        }
+    }
+    size_t committed_bytes = wasi_heap_size();
+    writeln_int(WASI_STDERR_FD, "committed (MiB) =", committed_bytes >> 20);
+    writeln_int(WASI_STDERR_FD, "free (MiB)      =", total_free_bytes >> 20);
+
     // Find the smallest available block that is large enough
     int current_order;
     for (current_order = order; current_order <= MAX_ORDER; current_order++) {
