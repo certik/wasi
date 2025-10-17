@@ -59,6 +59,12 @@ string str_concat(Arena *arena, string a, string b) {
     return (string){str, a.size + b.size};
 }
 
+string str_copy(Arena *arena, string a) {
+    char *str = arena_alloc_array(arena, char, a.size);
+    memcpy(str, a.str, a.size);
+    return (string){str, a.size};
+}
+
 uint32_t str_hash(string str) {
     // FNV-1a hash
     uint32_t hash = 2166136261u;

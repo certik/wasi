@@ -239,7 +239,7 @@ string format_explicit_varg(Arena *arena, string fmt, size_t arg_count,
     //}
 
     // Copy final result to the supplied arena
-    string final_result = str_concat(arena, str_lit(""), result);
+    string final_result = str_copy(arena, result);
     scratch_end(scratch);
     return final_result;
 }
