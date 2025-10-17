@@ -34,7 +34,8 @@ jobs:
               pixi run -e wasm test_wasm a1 b2 c3
               pixi run -e wasm test_base_wasm a1 b2 c3
               echo "test input data" | wasmtime --dir . arena.wasm --test-input
-    
+              echo "test input data" | wasmtime --dir . arena_base.wasm --test-input
+
     runs-on: ${{ matrix.os }}
     name: Test ${{ matrix.platform }}
     
