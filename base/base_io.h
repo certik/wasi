@@ -23,3 +23,8 @@ void writeln(int fd, char* text);
 
 // Prints: text + ' ' + int + '\n'
 void writeln_int(int fd, char* text, int n);
+
+// Prints text with location information, appends '\n'
+void writeln_loc(const char *text, const char *file, unsigned int line, const char *function);
+
+#define array_size(a) (sizeof(a) / sizeof((a)[0]))
