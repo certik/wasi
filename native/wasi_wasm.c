@@ -72,11 +72,23 @@ wasi_fd_t wasi_path_open(const char* path, size_t path_len, int flags) {
 
     // Map flags to WASI oflags
     int oflags = 0;
-    if (flags & WASI_O_CREAT) oflags |= 0x1;  // __WASI_OFLAGS_CREAT
-    if (flags & WASI_O_TRUNC) oflags |= 0x4;  // __WASI_OFLAGS_TRUNC
+    if (flags & WASI_O_CREAT) oflags |= 0x1;  // __WASI_OFLAGS_CREAT (1 << 0)
+    if (flags & WASI_O_TRUNC) oflags |= 0x8;  // __WASI_OFLAGS_TRUNC (1 << 3)
 
-    // Default rights for reading
-    uint64_t rights_base = 0x1 | 0x2 | 0x40 | 0x80;  // READ, WRITE, SEEK, TELL
+    // Determine rights based on access mode
+    // __WASI_RIGHTS_FD_READ = (1 << 1) = 0x2
+    // __WASI_RIGHTS_FD_SEEK = (1 << 2) = 0x4
+    // __WASI_RIGHTS_FD_TELL = (1 << 5) = 0x20
+    // __WASI_RIGHTS_FD_WRITE = (1 << 6) = 0x40
+    uint64_t rights_base = 0x4 | 0x20;  // SEEK, TELL (always needed)
+
+    if ((flags & WASI_O_RDWR) == WASI_O_RDWR) {
+        rights_base |= 0x2 | 0x40;  // READ | WRITE
+    } else if (flags & WASI_O_WRONLY) {
+        rights_base |= 0x40;  // WRITE
+    } else {
+        rights_base |= 0x2;  // READ (default for RDONLY)
+    }
 
     int ret = path_open(
         3,           // dirfd (preopen)

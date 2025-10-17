@@ -620,6 +620,118 @@ void test_io(void) {
     println(str_lit("I/O tests passed"));
 }
 
+void test_file_flags(void) {
+    println(str_lit("## Testing file open flags..."));
+
+    const char* test_file = "test_flags.txt";
+    const char* test_content = "Hello, World!";
+    const char* new_content = "Updated!";
+
+    // Test 1: WRONLY | CREAT - Create new file and write
+    println(str_lit("Test 1: WASI_O_WRONLY | WASI_O_CREAT"));
+    wasi_fd_t fd = wasi_path_open(test_file, strlen(test_file), WASI_O_WRONLY | WASI_O_CREAT);
+    assert(fd >= 0);
+    ciovec_t iov = {.buf = test_content, .buf_len = strlen(test_content)};
+    size_t nwritten;
+    uint32_t ret = wasi_fd_write(fd, &iov, 1, &nwritten);
+    assert(ret == 0);
+    assert(nwritten == strlen(test_content));
+    assert(wasi_fd_close(fd) == 0);
+    println(str_lit("  Created and wrote to file"));
+
+    // Test 2: RDONLY - Read from existing file
+    println(str_lit("Test 2: WASI_O_RDONLY"));
+    fd = wasi_path_open(test_file, strlen(test_file), WASI_O_RDONLY);
+    assert(fd >= 0);
+    char read_buf[100] = {0};
+    iovec_t read_iov = {.iov_base = read_buf, .iov_len = 99};
+    size_t nread;
+    int read_ret = wasi_fd_read(fd, &read_iov, 1, &nread);
+    assert(read_ret == 0);
+    assert(nread == strlen(test_content));
+    assert(memcmp(read_buf, test_content, nread) == 0);
+    assert(wasi_fd_close(fd) == 0);
+    println(str_lit("  Read file successfully: {}"), read_buf);
+
+    // Test 3: WRONLY | TRUNC - Truncate and write new content
+    println(str_lit("Test 3: WASI_O_WRONLY | WASI_O_TRUNC"));
+    fd = wasi_path_open(test_file, strlen(test_file), WASI_O_WRONLY | WASI_O_TRUNC);
+    assert(fd >= 0);
+    ciovec_t trunc_iov = {.buf = new_content, .buf_len = strlen(new_content)};
+    ret = wasi_fd_write(fd, &trunc_iov, 1, &nwritten);
+    assert(ret == 0);
+    assert(nwritten == strlen(new_content));
+    assert(wasi_fd_close(fd) == 0);
+    println(str_lit("  Truncated and wrote new content"));
+
+    // Test 4: RDONLY - Verify truncation worked
+    println(str_lit("Test 4: Verify truncation"));
+    fd = wasi_path_open(test_file, strlen(test_file), WASI_O_RDONLY);
+    assert(fd >= 0);
+    memset(read_buf, 0, sizeof(read_buf));
+    read_iov.iov_base = read_buf;
+    read_iov.iov_len = 99;
+    read_ret = wasi_fd_read(fd, &read_iov, 1, &nread);
+    assert(read_ret == 0);
+    assert(nread == strlen(new_content));
+    assert(memcmp(read_buf, new_content, nread) == 0);
+    assert(wasi_fd_close(fd) == 0);
+    println(str_lit("  Verified truncated content: {}"), read_buf);
+
+    // Test 5: RDWR - Read and write with same fd
+    println(str_lit("Test 5: WASI_O_RDWR"));
+    fd = wasi_path_open(test_file, strlen(test_file), WASI_O_RDWR);
+    assert(fd >= 0);
+
+    // Read current content
+    memset(read_buf, 0, sizeof(read_buf));
+    read_iov.iov_base = read_buf;
+    read_iov.iov_len = 99;
+    read_ret = wasi_fd_read(fd, &read_iov, 1, &nread);
+    assert(read_ret == 0);
+    println(str_lit("  Read: {}"), read_buf);
+
+    // Seek back to start
+    uint64_t newoffset;
+    int seek_ret = wasi_fd_seek(fd, 0, WASI_SEEK_SET, &newoffset);
+    assert(seek_ret == 0);
+    assert(newoffset == 0);
+
+    // Write over it
+    const char* rdwr_content = "RDWR!";
+    ciovec_t rdwr_iov = {.buf = rdwr_content, .buf_len = strlen(rdwr_content)};
+    ret = wasi_fd_write(fd, &rdwr_iov, 1, &nwritten);
+    assert(ret == 0);
+    assert(nwritten == strlen(rdwr_content));
+    assert(wasi_fd_close(fd) == 0);
+    println(str_lit("  Wrote with RDWR"));
+
+    // Test 6: RDWR | CREAT - Create if doesn't exist
+    println(str_lit("Test 6: WASI_O_RDWR | WASI_O_CREAT"));
+    const char* new_file = "test_rdwr_creat.txt";
+    fd = wasi_path_open(new_file, strlen(new_file), WASI_O_RDWR | WASI_O_CREAT);
+    assert(fd >= 0);
+    const char* creat_content = "Created with RDWR|CREAT";
+    ciovec_t creat_iov = {.buf = creat_content, .buf_len = strlen(creat_content)};
+    ret = wasi_fd_write(fd, &creat_iov, 1, &nwritten);
+    assert(ret == 0);
+    assert(wasi_fd_close(fd) == 0);
+    println(str_lit("  Created new file with RDWR|CREAT"));
+
+    // Test 7: WRONLY | CREAT | TRUNC - All flags combined
+    println(str_lit("Test 7: WASI_O_WRONLY | WASI_O_CREAT | WASI_O_TRUNC"));
+    fd = wasi_path_open(test_file, strlen(test_file), WASI_O_WRONLY | WASI_O_CREAT | WASI_O_TRUNC);
+    assert(fd >= 0);
+    const char* final_content = "Final!";
+    ciovec_t final_iov = {.buf = final_content, .buf_len = strlen(final_content)};
+    ret = wasi_fd_write(fd, &final_iov, 1, &nwritten);
+    assert(ret == 0);
+    assert(wasi_fd_close(fd) == 0);
+    println(str_lit("  Combined flags work correctly"));
+
+    println(str_lit("File open flags tests passed"));
+}
+
 void test_hashtable_int_string(void) {
     println(str_lit("## Testing hashtable (int->string)..."));
     Arena* arena = arena_new(1024*10);
@@ -797,6 +909,7 @@ void test_base(void) {
     test_scratch();
     test_format();
     test_io();
+    test_file_flags();
     test_hashtable_int_string();
     test_hashtable_string_int();
     test_vector_int();
