@@ -18,6 +18,6 @@ anywhere in base.
 
 void __assert_fail(const char *assertion, const char *file, unsigned int line, const char *function) {
     // Simple assertion failure handler using only base/ dependencies
-    writeln_loc(assertion, file, line, function);
+    writeln_loc(WASI_STDERR_FD, assertion, file, line, function);
     wasi_proc_exit(1);
 }

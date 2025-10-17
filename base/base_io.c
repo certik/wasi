@@ -62,7 +62,7 @@ void writeln_int(int fd, char* text, int n) {
     write_all(WASI_STDERR_FD, iovs, 4);
 }
 
-void writeln_loc(const char *text, const char *file, unsigned int line, const char *function) {
+void writeln_loc(int fd, const char *text, const char *file, unsigned int line, const char *function) {
     char line_str[32]; size_t p_len = int_to_str(line, line_str);
     line_str[p_len] = '\0';
 
@@ -75,6 +75,5 @@ void writeln_loc(const char *text, const char *file, unsigned int line, const ch
         iovs[i].buf_len = strlen(msg[i]);
     }
 
-    write_all(WASI_STDERR_FD, iovs, array_size(msg));
-    wasi_proc_exit(1);
+    write_all(fd, iovs, array_size(msg));
 }

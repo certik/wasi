@@ -103,7 +103,8 @@ static void *buddy_alloc_order(int order) {
         size_t grow_by = ((required_size + WASM_PAGE_SIZE - 1) / WASM_PAGE_SIZE) * WASM_PAGE_SIZE;
         void *new_mem = wasi_heap_grow(grow_by);
         if (!new_mem) {
-            writeln(WASI_STDERR_FD, "buddy_alloc: wasi_heap_grow(grow_by) failed");
+            writeln_loc(WASI_STDERR_FD, "wasi_heap_grow(grow_by) failed",
+                    __FILE__, __LINE__, __func__);
             writeln_int(WASI_STDERR_FD, "grow_by =", grow_by);
 
             wasi_proc_exit(1); // Or return NULL on failure
