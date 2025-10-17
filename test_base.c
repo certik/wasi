@@ -960,6 +960,21 @@ void test_stdin(void) {
     // Verify we read the expected test data
     const char* expected = "test input data\n";
     size_t expected_len = strlen(expected);
+
+    // Debug output
+    print("Read from stdin (length ");
+    Arena *debug_arena = arena_new(1024);
+    println(str_lit("{}"), (int)nread);
+    print("): '");
+    print(buffer);
+    print("'\n");
+    print("Expected (length ");
+    println(str_lit("{}"), (int)expected_len);
+    print("): '");
+    print(expected);
+    print("'\n");
+    arena_free(debug_arena);
+
     assert(nread == expected_len);
     assert(memcmp(buffer, expected, expected_len) == 0);
 
