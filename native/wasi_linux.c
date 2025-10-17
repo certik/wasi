@@ -188,6 +188,13 @@ wasi_fd_t wasi_path_open(const char* path, size_t path_len, uint64_t rights, int
             syscall(SYS_CLOSE, result, 0, 0, 0, 0, 0);
             return -1;
         }
+        // Verify new_fd is not a reserved FD (should be > 2)
+        if (new_fd <= WASI_STDERR_FD) {
+            // This should never happen, but if it does, close both and fail
+            syscall(SYS_CLOSE, new_fd, 0, 0, 0, 0, 0);
+            syscall(SYS_CLOSE, result, 0, 0, 0, 0, 0);
+            return -1;
+        }
         syscall(SYS_CLOSE, result, 0, 0, 0, 0, 0);
         result = new_fd;
     }

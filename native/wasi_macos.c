@@ -169,6 +169,13 @@ wasi_fd_t wasi_path_open(const char* path, size_t path_len, uint64_t rights, int
             close(fd);
             return -1;
         }
+        // Verify new_fd is not a reserved FD (should be > 2)
+        if (new_fd <= WASI_STDERR_FD) {
+            // This should never happen, but if it does, close both and fail
+            close(new_fd);
+            close(fd);
+            return -1;
+        }
         close(fd);
         fd = new_fd;
     }
