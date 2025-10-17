@@ -554,7 +554,7 @@ void test_scratch(void) {
 
 
 void test_format(void) {
-    println(NULL, str_lit("## Testing format..."));
+    println(str_lit("## Testing format..."));
     Arena* arena = arena_new(1024*10);
     double pi = 3.1415926535;
 
@@ -562,43 +562,43 @@ void test_format(void) {
     string fmt = str_lit("Hello!");
     string result = format(arena, fmt);
     assert(str_eq(result, str_lit("Hello!")));
-    println(arena, str_lit("No args: {}"), str_to_cstr_copy(arena, result));
+    println(str_lit("No args: {}"), str_to_cstr_copy(arena, result));
 
     // Example with one argument
     fmt = str_lit("Hello, {}!");
     result = format(arena, fmt, str_lit("world"));
     assert(str_eq(result, str_lit("Hello, world!")));
-    println(arena, str_lit("One arg: {}"), str_to_cstr_copy(arena, result));
+    println(str_lit("One arg: {}"), str_to_cstr_copy(arena, result));
 
     fmt = str_lit("Hello, {}!");
     result = format(arena, fmt, 5);
     assert(str_eq(result, str_lit("Hello, 5!")));
-    println(arena, str_lit("One arg: {}"), str_to_cstr_copy(arena, result));
+    println(str_lit("One arg: {}"), str_to_cstr_copy(arena, result));
 
     // Example with formatted double
     fmt = str_lit("Value: {:10.5f}");
     result = format(arena, fmt, pi);
     // Note: Double formatting may have slight differences, so we just print it
-    println(arena, str_lit("Formatted double: {}"), str_to_cstr_copy(arena, result));
+    println(str_lit("Formatted double: {}"), str_to_cstr_copy(arena, result));
 
     // Example with formatted char
     fmt = str_lit("Char: |{:^5}|");
     result = format(arena, fmt, 'x');
     assert(str_eq(result, str_lit("Char: | 120 |")));
-    println(arena, str_lit("Formatted char: {}"), str_to_cstr_copy(arena, result));
+    println(str_lit("Formatted char: {}"), str_to_cstr_copy(arena, result));
 
     // Example with multiple arguments
     fmt = str_lit("Hello, {}, {}, {}, {}!");
     result = format(arena, fmt, "world", 35.5, str_lit("XX"), 3);
-    println(arena, str_lit("Multiple args: {}"), str_to_cstr_copy(arena, result));
-    println(arena, str_lit("Multiple args: {}"), result);
+    println(str_lit("Multiple args: {}"), str_to_cstr_copy(arena, result));
+    println(str_lit("Multiple args: {}"), result);
 
     arena_free(arena);
-    println(NULL, str_lit("Format tests passed"));
+    println(str_lit("Format tests passed"));
 }
 
 void test_io(void) {
-    println(NULL, str_lit("## Testing io..."));
+    println(str_lit("## Testing io..."));
     Arena* arena = arena_new(1024*20);
 
     string text;
@@ -610,18 +610,18 @@ void test_io(void) {
     ok = read_file(arena, str_lit("README.md"), &text);
     assert(ok);
     assert(text.size > 100);
-    println(arena, str_lit("Read README.md: {} bytes"), text.size);
-    println(arena, str_lit("Initial text in README.md:\n{}"), str_substr(text, 0, 100));
-    println(arena, str_lit("---"));
+    println(str_lit("Read README.md: {} bytes"), text.size);
+    println(str_lit("Initial text in README.md:\n{}"), str_substr(text, 0, 100));
+    println(str_lit("---"));
 
-    println(arena, str_lit("Hello from io."));
+    println(str_lit("Hello from io."));
 
     arena_free(arena);
-    println(NULL, str_lit("I/O tests passed"));
+    println(str_lit("I/O tests passed"));
 }
 
 void test_hashtable_int_string(void) {
-    println(NULL, str_lit("## Testing hashtable (int->string)..."));
+    println(str_lit("## Testing hashtable (int->string)..."));
     Arena* arena = arena_new(1024*10);
 
     MapIntString ht;
@@ -629,14 +629,14 @@ void test_hashtable_int_string(void) {
     MapIntString_insert(arena, &ht, 42, str_lit("forty-two"));
     string *value = MapIntString_get(&ht, 42);
     assert(value);
-    println(arena, str_lit("Value for key 42: {}"), str_to_cstr_copy(arena, *value));
+    println(str_lit("Value for key 42: {}"), str_to_cstr_copy(arena, *value));
 
     arena_free(arena);
-    println(NULL, str_lit("Hashtable (int->string) tests passed"));
+    println(str_lit("Hashtable (int->string) tests passed"));
 }
 
 void test_hashtable_string_int(void) {
-    println(NULL, str_lit("## Testing hashtable (string->int)..."));
+    println(str_lit("## Testing hashtable (string->int)..."));
     Arena* arena = arena_new(1024*10);
 
     MapStringInt ht;
@@ -644,14 +644,14 @@ void test_hashtable_string_int(void) {
     MapStringInt_insert(arena, &ht, str_lit("forty-two"), 42);
     int *value = MapStringInt_get(&ht, str_lit("forty-two"));
     assert(value);
-    println(arena, str_lit("Value for key \"forty-two\": {}"), *value);
+    println(str_lit("Value for key \"forty-two\": {}"), *value);
 
     arena_free(arena);
-    println(NULL, str_lit("Hashtable (string->int) tests passed"));
+    println(str_lit("Hashtable (string->int) tests passed"));
 }
 
 void test_vector_int(void) {
-    println(NULL, str_lit("## Testing vector (int)..."));
+    println(str_lit("## Testing vector (int)..."));
     Arena* arena = arena_new(1024*10);
 
     VecInt v;
@@ -668,11 +668,11 @@ void test_vector_int(void) {
     assert(v.data[2] == 3);
 
     arena_free(arena);
-    println(NULL, str_lit("Vector (int) tests passed"));
+    println(str_lit("Vector (int) tests passed"));
 }
 
 void test_vector_int_ptr(void) {
-    println(NULL, str_lit("## Testing vector (int*)..."));
+    println(str_lit("## Testing vector (int*)..."));
     Arena* arena = arena_new(1024*10);
 
     VecIntP v;
@@ -692,7 +692,7 @@ void test_vector_int_ptr(void) {
     assert(*v.data[2] == 4);
 
     arena_free(arena);
-    println(NULL, str_lit("Vector (int*) tests passed"));
+    println(str_lit("Vector (int*) tests passed"));
 }
 
 void test_string(void) {
@@ -750,9 +750,9 @@ void test_args(void) {
 
     print("argc=");
     Arena *arena = arena_new(4096);
-    println(arena, str_lit("{}"), (int)argc);
+    println(str_lit("{}"), (int)argc);
     print("argv_buf_size=");
-    println(arena, str_lit("{}"), (int)argv_buf_size);
+    println(str_lit("{}"), (int)argv_buf_size);
 
     // Allocate buffers
     char** argv = (char**)buddy_alloc(argc * sizeof(char*));
