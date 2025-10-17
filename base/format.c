@@ -48,8 +48,7 @@ FormatSpec parse_format_spec(string spec) {
 string format_explicit_varg(Arena *arena, string fmt, size_t arg_count,
         va_list ap) {
     Scratch scratch = scratch_begin_avoid_conflict(arena);
-    string result = {arena_alloc_array(scratch.arena, char, 1), 0};
-    result.str[0] = '\0';
+    string result = str_lit("");
     const char *p = fmt.str;
     const char *end = fmt.str + fmt.size;
     size_t arg_index = 0;
@@ -204,7 +203,7 @@ string format_explicit_varg(Arena *arena, string fmt, size_t arg_count,
         // Apply width and alignment
         if (spec.alignment == '\0') {
             // Right-align numeric types, left-align everything else
-            if (type == ARG_INT8 || type == ARG_UINT8 || 
+            if (type == ARG_INT8 || type == ARG_UINT8 ||
                 type == ARG_INT16 || type == ARG_UINT16 ||
                 type == ARG_INT32 || type == ARG_UINT32 ||
                 type == ARG_INT64 || type == ARG_UINT64 ||
