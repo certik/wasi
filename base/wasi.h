@@ -115,7 +115,7 @@ typedef struct iovec_s {
 
 // Open a file at the given path with the specified flags.
 // Returns a file descriptor on success, or -1 on error.
-wasi_fd_t wasi_path_open(const char* path, int flags);
+wasi_fd_t wasi_path_open(const char* path, size_t path_len, int flags);
 
 // Close a file descriptor.
 // Returns 0 on success, or errno on error.

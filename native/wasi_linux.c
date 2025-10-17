@@ -139,7 +139,7 @@ int main();
 #define O_TRUNC    0x0200
 
 // File I/O implementations
-wasi_fd_t wasi_path_open(const char* path, int flags) {
+wasi_fd_t wasi_path_open(const char* path, size_t path_len, int flags) {
     // Map WASI flags to Linux flags
     int os_flags = 0;
     if ((flags & WASI_O_RDWR) == WASI_O_RDWR) {

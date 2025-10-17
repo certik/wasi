@@ -14,13 +14,8 @@
 bool read_file(Arena *arena, const string filename, string *text) {
     Scratch scratch = scratch_begin_avoid_conflict(arena);
     char *cfilename = str_to_cstr_copy(scratch.arena, filename);
-    if (cfilename == NULL || *cfilename == '\0') {
-        scratch_end(scratch);
-        return false;
-    }
-
     // Open file using WASI interface
-    wasi_fd_t fd = wasi_path_open(cfilename, WASI_O_RDONLY);
+    wasi_fd_t fd = wasi_path_open(cfilename, filename.size+1, WASI_O_RDONLY);
     if (fd < 0) {
         scratch_end(scratch);
         return false;

@@ -166,7 +166,7 @@ void wasi_proc_exit(int status) {
 int main();
 
 // File I/O implementations
-wasi_fd_t wasi_path_open(const char* path, int flags) {
+wasi_fd_t wasi_path_open(const char* path, size_t path_len, int flags) {
     // Map WASI flags to Windows flags
     DWORD access = 0;
     DWORD creation = OPEN_EXISTING;
