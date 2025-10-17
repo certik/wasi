@@ -233,15 +233,15 @@ int wasi_args_get(char** argv, char* argv_buf) {
 __attribute__((naked))
 void _start() {
     __asm__ volatile (
-        "xor %%rbp, %%rbp\n"           // Clear frame pointer as per ABI
-        "mov (%%rsp), %%rdi\n"         // argc from stack to first argument (rdi)
-        "lea 8(%%rsp), %%rsi\n"        // argv from stack+8 to second argument (rsi)
-        "andq $-16, %%rsp\n"           // Align stack to 16 bytes
-        "call _start_c\n"              // Call the C portion
-        "mov %%eax, %%edi\n"           // Move return value to exit code
-        "mov $60, %%eax\n"             // SYS_EXIT
-        "syscall\n"                    // Exit
-        "hlt\n"                        // Should never reach here
+        "xor %rbp, %rbp\n"           // Clear frame pointer as per ABI
+        "mov (%rsp), %rdi\n"         // argc from stack to first argument (rdi)
+        "lea 8(%rsp), %rsi\n"        // argv from stack+8 to second argument (rsi)
+        "andq $-16, %rsp\n"          // Align stack to 16 bytes
+        "call _start_c\n"            // Call the C portion
+        "mov %eax, %edi\n"           // Move return value to exit code
+        "mov $60, %eax\n"            // SYS_EXIT
+        "syscall\n"                  // Exit
+        "hlt\n"                      // Should never reach here
     );
 }
 
