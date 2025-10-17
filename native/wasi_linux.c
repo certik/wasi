@@ -116,7 +116,7 @@ void* wasi_heap_grow(size_t num_bytes) {
     }
 
     size_t new_total_pages = committed_pages + num_pages;
-    if ((new_total_pages * WASM_PAGE_SIZE) > RESERVED_SIZE) {
+    if ((new_total_pages * WASM_PAGE_SIZE) >= RESERVED_SIZE) {
         return NULL; // Cannot grow beyond reserved size
     }
 
