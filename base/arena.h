@@ -75,6 +75,30 @@ void arena_reset(Arena *arena, arena_pos_t pos);
 void arena_free(Arena *arena);
 
 /**
+ * @brief Returns the total number of chunks in the arena.
+ *
+ * This function walks the chunk linked list to count all chunks.
+ * Useful for testing and debugging to verify arena expansion.
+ *
+ * @param arena A pointer to the arena.
+ * @return The total number of chunks, or 0 if arena is NULL.
+ */
+size_t arena_chunk_count(Arena *arena);
+
+/**
+ * @brief Returns the index of the current chunk (0-based).
+ *
+ * This function walks from the first chunk to the current chunk,
+ * counting the number of steps. The first chunk has index 0,
+ * the second chunk has index 1, and so on.
+ * Useful for testing to verify which chunk allocations are in.
+ *
+ * @param arena A pointer to the arena.
+ * @return The index of the current chunk (0-based), or 0 if arena is NULL.
+ */
+size_t arena_current_chunk_index(Arena *arena);
+
+/**
  * @brief Convenience macro to allocate an array of elements from the arena.
  *
  * This macro allocates memory for 'count' elements of 'type' and returns

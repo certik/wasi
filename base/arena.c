@@ -166,3 +166,31 @@ void arena_reset(Arena *arena, arena_pos_t pos) {
 
     arena->remaining_in_chunk = (current_pos < chunk_end) ? (chunk_end - current_pos) : 0;
 }
+
+size_t arena_chunk_count(Arena *arena) {
+    if (!arena) {
+        return 0;
+    }
+
+    size_t count = 0;
+    struct arena_chunk *chunk = arena->first_chunk;
+    while (chunk) {
+        count++;
+        chunk = chunk->next;
+    }
+    return count;
+}
+
+size_t arena_current_chunk_index(Arena *arena) {
+    if (!arena || !arena->current_chunk) {
+        return 0;
+    }
+
+    size_t index = 0;
+    struct arena_chunk *chunk = arena->first_chunk;
+    while (chunk && chunk != arena->current_chunk) {
+        index++;
+        chunk = chunk->next;
+    }
+    return index;
+}

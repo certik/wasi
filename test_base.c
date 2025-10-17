@@ -238,6 +238,136 @@ void test_arena(void) {
     print("Freeing the arena...\n");
     arena_free(main_arena);
     print("Arena has been completely deallocated and memory returned to the system.\n");
+
+    // Test arena expansion
+    print("Testing arena expansion...\n");
+    Arena *expand_arena = arena_new(1024); // Small initial size (will be rounded to MIN_CHUNK_SIZE=4096)
+    if (!expand_arena) {
+        print("Error: Failed to create the arena.\n");
+        wasi_proc_exit(1);
+    }
+
+    // Verify initial state: 1 chunk, at index 0
+    assert(arena_chunk_count(expand_arena) == 1);
+    assert(arena_current_chunk_index(expand_arena) == 0);
+    print("Initial state: 1 chunk, current index 0\n");
+
+    // Allocate data that fits in first chunk
+    char *block1 = arena_alloc(expand_arena, 2048);
+    strcpy(block1, "Block 1 in first chunk");
+    print("Allocated block 1: ");
+    print(block1);
+    print("\n");
+
+    // Still in first chunk
+    assert(arena_chunk_count(expand_arena) == 1);
+    assert(arena_current_chunk_index(expand_arena) == 0);
+
+    // Force expansion by allocating more than remaining space in first chunk
+    // First chunk has MIN_CHUNK_SIZE=4096 bytes (plus chunk header), we used 2048
+    // so allocating 3072 bytes should trigger expansion to a second chunk
+    char *block2 = arena_alloc(expand_arena, 3072);
+    if (!block2) {
+        print("Error: Failed to expand arena.\n");
+        wasi_proc_exit(1);
+    }
+    strcpy(block2, "Block 2 forces expansion to second chunk");
+    print("Allocated block 2 (forces expansion): ");
+    print(block2);
+    print("\n");
+
+    // Verify expansion: now 2 chunks, at index 1
+    assert(arena_chunk_count(expand_arena) == 2);
+    assert(arena_current_chunk_index(expand_arena) == 1);
+    print("After expansion: 2 chunks, current index 1\n");
+
+    // Verify both blocks are still valid (proves expansion worked)
+    print("Verifying block 1 is still valid: ");
+    print(block1);
+    print("\n");
+
+    // Allocate another block to confirm arena still works after expansion
+    char *block3 = arena_alloc(expand_arena, 256);
+    strcpy(block3, "Block 3 after expansion");
+    print("Allocated block 3: ");
+    print(block3);
+    print("\n");
+
+    // Still in second chunk
+    assert(arena_chunk_count(expand_arena) == 2);
+    assert(arena_current_chunk_index(expand_arena) == 1);
+
+    // Verify all blocks are still valid
+    assert(block1[0] == 'B');
+    assert(block2[0] == 'B');
+    assert(block3[0] == 'B');
+    print("Arena expansion verified - 2 chunks created, currently at chunk index 1\n");
+
+    // Test reset of expanded arena (multiple chunks)
+    print("Testing reset of expanded arena with multiple chunks...\n");
+    arena_pos_t pos_after_block1 = arena_get_pos(expand_arena);
+    // Note: we need to save position after block1, before expansion
+
+    Arena *reset_test_arena = arena_new(512); // Will be rounded to MIN_CHUNK_SIZE=4096
+    char *r1 = arena_alloc(reset_test_arena, 2048);
+    strcpy(r1, "R1");
+    arena_pos_t pos_after_r1 = arena_get_pos(reset_test_arena);
+
+    // Verify we're in chunk 0 with 1 total chunk
+    assert(arena_chunk_count(reset_test_arena) == 1);
+    assert(arena_current_chunk_index(reset_test_arena) == 0);
+
+    // Force expansion - allocate more than remaining space in first chunk
+    char *r2 = arena_alloc(reset_test_arena, 3072);
+    strcpy(r2, "R2 in second chunk");
+
+    // Verify expansion occurred: 2 chunks, at index 1
+    assert(arena_chunk_count(reset_test_arena) == 2);
+    assert(arena_current_chunk_index(reset_test_arena) == 1);
+
+    // Allocate more in expanded chunk
+    char *r3 = arena_alloc(reset_test_arena, 512);
+    strcpy(r3, "R3 also in second chunk");
+
+    // Still in chunk 1
+    assert(arena_chunk_count(reset_test_arena) == 2);
+    assert(arena_current_chunk_index(reset_test_arena) == 1);
+
+    print("Before reset: r1=");
+    print(r1);
+    print(", r2=");
+    print(r2);
+    print(", r3=");
+    print(r3);
+    print(" (2 chunks, at index 1)\n");
+
+    // Reset to position after r1 (back to first chunk)
+    arena_reset(reset_test_arena, pos_after_r1);
+
+    // Verify reset: still 2 chunks total, but back at index 0
+    assert(arena_chunk_count(reset_test_arena) == 2);
+    assert(arena_current_chunk_index(reset_test_arena) == 0);
+    print("After reset: 2 chunks still exist, back at chunk index 0\n");
+
+    // Allocate again - should reuse the space from r2/r3
+    char *r4 = arena_alloc(reset_test_arena, 256);
+    strcpy(r4, "R4 after reset");
+
+    // Still in chunk 0
+    assert(arena_current_chunk_index(reset_test_arena) == 0);
+
+    print("After reset and new allocation: r1=");
+    print(r1);
+    print(", r4=");
+    print(r4);
+    print("\n");
+
+    assert(r1[0] == 'R' && r1[1] == '1');
+    assert(r4[0] == 'R' && r4[1] == '4');
+    print("Reset of expanded arena verified - correctly returned to chunk 0\n");
+
+    arena_free(expand_arena);
+    arena_free(reset_test_arena);
     print("Arena allocator tests passed\n");
 }
 
@@ -327,6 +457,98 @@ void test_scratch(void) {
 
     print("Freeing scratch test arena...\n");
     arena_free(scratch_test_arena);
+
+    // Test scratch arena expansion
+    print("Test 5: Scratch arena expansion\n");
+    {
+        Scratch scratch = scratch_begin();
+
+        // Verify we're at the beginning (previous tests may have expanded the arena but we should be reset)
+        size_t initial_chunks = arena_chunk_count(scratch.arena);
+        assert(arena_current_chunk_index(scratch.arena) == 0);
+
+        // Scratch arenas start with 1024 bytes which gets rounded to MIN_CHUNK_SIZE=4096
+        // After alignment, we have slightly less than 4096 usable bytes
+        // Allocate multiple smaller blocks to fill the first chunk, then force expansion
+        char *fill1 = arena_alloc(scratch.arena, 2000);
+        char *fill2 = arena_alloc(scratch.arena, 2000);
+
+        // Now allocate more to force expansion
+        char *large1 = arena_alloc(scratch.arena, 1000);
+        if (!large1) {
+            print("Error: Failed to expand scratch arena.\n");
+            wasi_proc_exit(1);
+        }
+        large1[0] = 'L';
+        large1[1] = '1';
+        large1[2] = '\0';
+
+        // Verify expansion: should have more chunks than before
+        size_t after_chunks = arena_chunk_count(scratch.arena);
+        assert(after_chunks > initial_chunks);
+        assert(arena_current_chunk_index(scratch.arena) > 0);
+
+        // Allocate more to confirm expanded scratch still works
+        char *large2 = arena_alloc(scratch.arena, 500);
+        large2[0] = 'L';
+        large2[1] = '2';
+        large2[2] = '\0';
+
+        // Verify both allocations are valid
+        assert(large1[0] == 'L' && large1[1] == '1');
+        assert(large2[0] == 'L' && large2[1] == '2');
+        print("  Scratch arena expansion verified\n");
+
+        scratch_end(scratch);
+    }
+
+    // Test reset of expanded scratch arena
+    print("Test 6: Reset of expanded scratch arena\n");
+    {
+        Scratch scratch = scratch_begin();
+
+        // After Test 5, the scratch arena may already be expanded
+        // We're at index 0 but may have multiple chunks already
+        size_t initial_chunks = arena_chunk_count(scratch.arena);
+        size_t initial_index = arena_current_chunk_index(scratch.arena);
+        assert(initial_index == 0);
+        print("  Starting state: ");
+        print(initial_chunks == 1 ? "1 chunk" : "2+ chunks");
+        print(", at index 0\n");
+
+        // Allocate enough to move through chunks (if multi-chunk) or expand (if single-chunk)
+        // Fill chunks to ensure we're at a later chunk
+        for (int i = 0; i < 3; i++) {
+            arena_alloc(scratch.arena, 2000);
+        }
+
+        // Verify we moved forward in chunks
+        size_t current_index = arena_current_chunk_index(scratch.arena);
+        assert(current_index > initial_index);
+        print("  After allocations: moved to chunk index > 0\n");
+
+        // scratch_end should reset back to the initial saved position (chunk 0)
+        scratch_end(scratch);
+    }
+
+    // Use scratch again - should start fresh at chunk 0
+    {
+        Scratch scratch = scratch_begin();
+
+        // Back at chunk 0 (chunks still exist but we're at the start)
+        assert(arena_current_chunk_index(scratch.arena) == 0);
+        print("  After scratch_end: back at chunk index 0\n");
+
+        char *new_alloc = arena_alloc(scratch.arena, 100);
+        new_alloc[0] = 'R';
+        new_alloc[1] = '\0';
+        assert(new_alloc[0] == 'R');
+        print("  New allocation after reset: verified\n");
+        scratch_end(scratch);
+    }
+
+    print("  Reset of expanded scratch arena verified - correctly resets to chunk 0\n");
+
     print("Scratch arena tests passed\n");
 }
 
