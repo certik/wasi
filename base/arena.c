@@ -1,6 +1,7 @@
 #include <base/arena.h>
 #include <base/buddy.h>
 #include <base/base_types.h>
+#include <base/assert.h>
 
 // All allocations will be aligned to this boundary (must be a power of two).
 #define ARENA_ALIGNMENT 16
@@ -66,9 +67,8 @@ Arena *arena_new(size_t initial_size) {
 }
 
 void *arena_alloc(Arena *arena, size_t size) {
-    if (!arena || size == 0) {
-        return NULL;
-    }
+    assert(arena);
+    assert(size > 0);
 
     size_t aligned_size = (size + ARENA_ALIGNMENT - 1) & ~(size_t)(ARENA_ALIGNMENT - 1);
 
@@ -129,7 +129,7 @@ try_alloc:
 }
 
 void arena_free(Arena *arena) {
-    if (!arena) return;
+    assert(arena);
     struct arena_chunk *current = arena->first_chunk;
     while (current) {
         struct arena_chunk *next = current->next;
@@ -140,21 +140,17 @@ void arena_free(Arena *arena) {
 }
 
 arena_pos_t arena_get_pos(Arena *arena) {
-    arena_pos_t pos;
-    if (arena) {
-        pos.chunk = arena->current_chunk;
-        pos.ptr = arena->current_ptr;
-    } else {
-        pos.chunk = NULL;
-        pos.ptr = NULL;
-    }
-    return pos;
+    assert(arena);
+    return (arena_pos_t){
+        .chunk = arena->current_chunk,
+        .ptr = arena->current_ptr
+    };
 }
 
 void arena_reset(Arena *arena, arena_pos_t pos) {
-    if (!arena || !pos.chunk || !pos.ptr) {
-        return;
-    }
+    assert(arena);
+    assert(pos.chunk);
+    assert(pos.ptr);
 
     // Restore the state from the saved position
     arena->current_chunk = pos.chunk;
@@ -168,9 +164,7 @@ void arena_reset(Arena *arena, arena_pos_t pos) {
 }
 
 size_t arena_chunk_count(Arena *arena) {
-    if (!arena) {
-        return 0;
-    }
+    assert(arena);
 
     size_t count = 0;
     struct arena_chunk *chunk = arena->first_chunk;
@@ -182,9 +176,8 @@ size_t arena_chunk_count(Arena *arena) {
 }
 
 size_t arena_current_chunk_index(Arena *arena) {
-    if (!arena || !arena->current_chunk) {
-        return 0;
-    }
+    assert(arena);
+    assert(arena->current_chunk);
 
     size_t index = 0;
     struct arena_chunk *chunk = arena->first_chunk;
