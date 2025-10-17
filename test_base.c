@@ -957,8 +957,16 @@ void test_stdin(void) {
     assert(nread > 0);
     buffer[nread] = '\0';
 
+    // Normalize: strip trailing whitespace (CR, LF, spaces, tabs)
+    // to handle platform differences (Windows CRLF vs Unix LF)
+    while (nread > 0 && (buffer[nread-1] == '\r' || buffer[nread-1] == '\n' ||
+                         buffer[nread-1] == ' ' || buffer[nread-1] == '\t')) {
+        nread--;
+    }
+    buffer[nread] = '\0';
+
     // Verify we read the expected test data
-    const char* expected = "test input data\n";
+    const char* expected = "test input data";
     size_t expected_len = strlen(expected);
 
     // Debug output
@@ -980,6 +988,7 @@ void test_stdin(void) {
 
     print("Read from stdin: ");
     print(buffer);
+    print("\n");
     print("stdin test passed\n");
 }
 
