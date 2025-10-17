@@ -54,3 +54,20 @@ jobs:
         if: matrix.platform == 'windows'
         run: ${{ matrix.pixi-command }}
         shell: cmd
+
+      - name: Test stdin (Linux)
+        if: matrix.platform == 'linux'
+        run: echo "test input data" | pixi run -e linux ./arena_linux --test-input
+
+      - name: Test stdin (macOS)
+        if: matrix.platform == 'macos'
+        run: echo "test input data" | pixi run -e macos ./arena_macos --test-input
+
+      - name: Test stdin (Windows)
+        if: matrix.platform == 'windows'
+        run: echo test input data | pixi run -e windows arena_windows.exe --test-input
+        shell: cmd
+
+      - name: Test stdin (WASM)
+        if: matrix.platform == 'wasm'
+        run: echo "test input data" | wasmtime --dir . arena.wasm --test-input

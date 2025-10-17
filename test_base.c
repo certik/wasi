@@ -904,6 +904,28 @@ void test_std_fds(void) {
     print("Standard file descriptors tests passed\n");
 }
 
+void test_stdin(void) {
+    print("## Testing stdin (WASI_STDIN_FD)...\n");
+
+    char buffer[256];
+    iovec_t iov = {.iov_base = buffer, .iov_len = sizeof(buffer) - 1};
+    size_t nread;
+    int ret = wasi_fd_read(WASI_STDIN_FD, &iov, 1, &nread);
+    assert(ret == 0);
+    assert(nread > 0);
+    buffer[nread] = '\0';
+
+    // Verify we read the expected test data
+    const char* expected = "test input data\n";
+    size_t expected_len = strlen(expected);
+    assert(nread == expected_len);
+    assert(memcmp(buffer, expected, expected_len) == 0);
+
+    print("Read from stdin: ");
+    print(buffer);
+    print("stdin test passed\n");
+}
+
 void test_args(void) {
     print("## Testing command line arguments...\n");
 
