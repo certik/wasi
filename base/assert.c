@@ -2,6 +2,7 @@
 #include <base/base_io.h>
 #include <base/mem.h>
 #include <base/wasi.h>
+#include <base/numconv.h>
 
 /* After proper strings and formatting, this should just be:
 
@@ -20,6 +21,7 @@ void __assert_fail(const char *assertion, const char *file, unsigned int line, c
     const char *msg1 = "Assertion failed: (";
     const char *msg2 = ") at '";
     const char *msg3 = ":";
+    char p[32]; size_t p_len = int_to_str(line, p); p[p_len] = '\0';
     const char *msg4 = "' in function '";
     const char *msg5 = "'\n";
 
@@ -34,17 +36,6 @@ void __assert_fail(const char *assertion, const char *file, unsigned int line, c
     iovs[3].buf_len = strlen(file);
     iovs[4].buf = msg3;
     iovs[4].buf_len = strlen(msg3);
-
-    // Convert line number to string
-    char line_buf[32];
-    char *p = line_buf + sizeof(line_buf) - 1;
-    *p = '\0';
-    unsigned int n = line;
-    do {
-        *--p = '0' + (n % 10);
-        n /= 10;
-    } while (n > 0);
-
     iovs[5].buf = p;
     iovs[5].buf_len = strlen(p);
     iovs[6].buf = msg4;
