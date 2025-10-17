@@ -65,12 +65,10 @@ uint32_t wasi_fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nw
 }
 
 // File I/O implementations
-wasi_fd_t wasi_path_open(const char* path, int flags) {
+wasi_fd_t wasi_path_open(const char* path, size_t path_len, int flags) {
     // WASI requires path_open to be called with a directory fd (use 3 for preopen)
     // We simplify by using the preopen directory
     int fd = -1;
-    size_t path_len = 0;
-    while (path[path_len]) path_len++;
 
     // Map flags to WASI oflags
     int oflags = 0;

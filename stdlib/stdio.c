@@ -69,7 +69,11 @@ FILE *fopen(const char *filename, const char *mode) {
         }
     }
 
-    wasi_fd_t fd = wasi_path_open(filename, flags);
+    // Calculate filename length
+    size_t filename_len = 0;
+    while (filename[filename_len]) filename_len++;
+
+    wasi_fd_t fd = wasi_path_open(filename, filename_len, flags);
     if (fd < 0) {
         return NULL;
     }
