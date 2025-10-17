@@ -2,10 +2,7 @@
 #include <base/wasi.h>
 
 Scratch scratch_begin_from_arena(Arena *arena) {
-    Scratch scratch;
-    scratch.arena = arena;
-    scratch.saved_pos = arena_get_pos(arena);
-    return scratch;
+    return (Scratch){.arena=arena, .saved_pos=arena_get_pos(arena)};
 }
 
 Scratch scratch_begin() {
@@ -30,8 +27,7 @@ Scratch scratch_begin_avoid_conflict(Arena *conflict) {
     }
     //assert(false);
     wasi_proc_exit(1);
-    Scratch scratch = {0};
-    return scratch;
+    return (Scratch){NULL,0};
 }
 
 void scratch_end(Scratch scratch) {
