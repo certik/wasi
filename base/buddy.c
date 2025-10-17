@@ -3,6 +3,8 @@
 #include <base/base_types.h>
 #include <base/assert.h>
 #include <base/base_io.h>
+#include <base/numconv.h>
+#include <base/mem.h>
 
 #define MIN_PAGE_SIZE 4096UL
 #define MAX_ORDER 20 // 2^20 * 4KB = 4GB
@@ -101,7 +103,22 @@ static void *buddy_alloc_order(int order) {
         size_t grow_by = ((required_size + WASM_PAGE_SIZE - 1) / WASM_PAGE_SIZE) * WASM_PAGE_SIZE;
         void *new_mem = wasi_heap_grow(grow_by);
         if (!new_mem) {
-            writeln(WASI_STDERR_FD, "buddy_alloc: exit 1");
+            writeln(WASI_STDERR_FD, "buddy_alloc: wasi_heap_grow(grow_by) failed");
+
+            const char *msg1 = "grow_by = ";
+            char p[32]; size_t p_len = int_to_str(grow_by, p); p[p_len] = '\0';
+            const char *msg2 = "\n";
+
+            ciovec_t iovs[3];
+            iovs[0].buf = msg1;
+            iovs[0].buf_len = strlen(msg1);
+            iovs[1].buf = p;
+            iovs[1].buf_len = strlen(p);
+            iovs[2].buf = msg2;
+            iovs[2].buf_len = strlen(msg2);
+
+            write_all(WASI_STDERR_FD, iovs, 3);
+
             wasi_proc_exit(1); // Or return NULL on failure
         }
         add_memory(new_mem, grow_by);
