@@ -47,11 +47,19 @@ __declspec(dllimport) HANDLE __stdcall CreateFileA(const char* lpFileName, DWORD
 __declspec(dllimport) int __stdcall CloseHandle(HANDLE hObject);
 __declspec(dllimport) int __stdcall ReadFile(HANDLE hFile, LPVOID lpBuffer, DWORD nNumberOfBytesToRead, LPDWORD lpNumberOfBytesRead, void* lpOverlapped);
 __declspec(dllimport) int __stdcall SetFilePointerEx(HANDLE hFile, LARGE_INTEGER liDistanceToMove, LARGE_INTEGER* lpNewFilePointer, DWORD dwMoveMethod);
+__declspec(dllimport) wchar_t* __stdcall GetCommandLineW(void);
+__declspec(dllimport) wchar_t** __stdcall CommandLineToArgvW(const wchar_t* lpCmdLine, int* pNumArgs);
+__declspec(dllimport) HANDLE __stdcall LocalFree(HANDLE hMem);
 
 // Our emulated heap state for Windows
 static uint8_t* windows_heap_base = NULL;
 static size_t committed_pages = 0;
 static const size_t RESERVED_SIZE = 1ULL << 32; // Reserve 4GB of virtual address space
+
+// Command line arguments storage (UTF-8 converted)
+static int stored_argc = 0;
+static char** stored_argv = NULL;
+static char* stored_argv_buf = NULL;
 
 // Emulation of `fd_write` using Windows WriteFile API
 uint32_t wasi_fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nwritten) {
@@ -254,8 +262,132 @@ int wasi_fd_tell(wasi_fd_t fd, uint64_t* offset) {
     return 0;  // Success
 }
 
+// Helper: Convert UTF-16 wide char to UTF-8
+// Returns number of bytes written (1-4), or 0 on error
+static int wchar_to_utf8(wchar_t wc, char* out) {
+    if (wc < 0x80) {
+        out[0] = (char)wc;
+        return 1;
+    } else if (wc < 0x800) {
+        out[0] = (char)(0xC0 | (wc >> 6));
+        out[1] = (char)(0x80 | (wc & 0x3F));
+        return 2;
+    } else if (wc < 0x10000) {
+        out[0] = (char)(0xE0 | (wc >> 12));
+        out[1] = (char)(0x80 | ((wc >> 6) & 0x3F));
+        out[2] = (char)(0x80 | (wc & 0x3F));
+        return 3;
+    } else if (wc < 0x110000) {
+        out[0] = (char)(0xF0 | (wc >> 18));
+        out[1] = (char)(0x80 | ((wc >> 12) & 0x3F));
+        out[2] = (char)(0x80 | ((wc >> 6) & 0x3F));
+        out[3] = (char)(0x80 | (wc & 0x3F));
+        return 4;
+    }
+    return 0;
+}
+
+// Helper: Get length of wide string
+static size_t wcslen(const wchar_t* str) {
+    size_t len = 0;
+    while (*str++) len++;
+    return len;
+}
+
+// Helper: Convert wide string to UTF-8
+// Returns number of bytes written (excluding null terminator)
+static size_t widestr_to_utf8(const wchar_t* wstr, char* out, size_t out_size) {
+    size_t written = 0;
+    while (*wstr && written + 4 < out_size) {
+        int bytes = wchar_to_utf8(*wstr, out + written);
+        if (bytes == 0) break;
+        written += bytes;
+        wstr++;
+    }
+    if (written < out_size) {
+        out[written] = '\0';
+    }
+    return written;
+}
+
+// Initialize command line arguments from Windows API
+static void init_args() {
+    if (stored_argv != NULL) return;  // Already initialized
+
+    wchar_t* cmd_line = GetCommandLineW();
+    int argc = 0;
+    wchar_t** wargv = CommandLineToArgvW(cmd_line, &argc);
+
+    if (wargv == NULL || argc == 0) {
+        stored_argc = 0;
+        stored_argv = NULL;
+        return;
+    }
+
+    // Calculate total buffer size needed for UTF-8 conversion
+    size_t total_size = 0;
+    for (int i = 0; i < argc; i++) {
+        // Worst case: each wide char becomes 4 UTF-8 bytes
+        total_size += wcslen(wargv[i]) * 4 + 1;
+    }
+
+    // Allocate storage using VirtualAlloc
+    stored_argv = (char**)VirtualAlloc(NULL, argc * sizeof(char*), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    stored_argv_buf = (char*)VirtualAlloc(NULL, total_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+
+    if (!stored_argv || !stored_argv_buf) {
+        stored_argc = 0;
+        LocalFree((HANDLE)wargv);
+        return;
+    }
+
+    // Convert each argument to UTF-8
+    char* buf_ptr = stored_argv_buf;
+    for (int i = 0; i < argc; i++) {
+        stored_argv[i] = buf_ptr;
+        size_t bytes = widestr_to_utf8(wargv[i], buf_ptr, total_size - (buf_ptr - stored_argv_buf));
+        buf_ptr += bytes + 1;  // +1 for null terminator
+    }
+
+    stored_argc = argc;
+    LocalFree((HANDLE)wargv);
+}
+
+// Command line arguments implementation
+int wasi_args_sizes_get(size_t* argc, size_t* argv_buf_size) {
+    init_args();
+
+    *argc = (size_t)stored_argc;
+
+    // Calculate total buffer size needed
+    size_t total_size = 0;
+    for (int i = 0; i < stored_argc; i++) {
+        const char* arg = stored_argv[i];
+        while (*arg++) total_size++;  // strlen
+        total_size++;  // null terminator
+    }
+    *argv_buf_size = total_size;
+    return 0;
+}
+
+int wasi_args_get(char** argv, char* argv_buf) {
+    init_args();
+
+    char* buf_ptr = argv_buf;
+    for (int i = 0; i < stored_argc; i++) {
+        argv[i] = buf_ptr;
+        const char* src = stored_argv[i];
+        while (*src) {
+            *buf_ptr++ = *src++;
+        }
+        *buf_ptr++ = '\0';
+    }
+    return 0;
+}
+
 // Entry point for Windows - MSVC uses _start but we need to set it up correctly
 void _start() {
+    init_args();
     ensure_heap_initialized();
     buddy_init();
     int status = main();
