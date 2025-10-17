@@ -65,8 +65,7 @@ string read_file_ok(Arena *arena, const string filename) {
     if (read_file(arena, filename, &text)) {
         return text;
     } else {
-        PRINT_ERR("File cannot be opened.");
-        abort();
+        FATAL_ERROR("File cannot be opened.");
         return text;
     }
 }

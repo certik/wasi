@@ -98,8 +98,7 @@ string format_explicit_varg(Arena *arena, string fmt, size_t arg_count,
             spec = (FormatSpec){.alignment = '\0', .width = -1, .precision = -1};
         }
         if (arg_index >= arg_count) {
-            PRINT_ERR("Missing argument");
-            abort();
+            FATAL_ERROR("Missing argument");
         }
         ArgType type = (ArgType)va_arg(ap, int);
         string s;
@@ -235,8 +234,7 @@ string format_explicit_varg(Arena *arena, string fmt, size_t arg_count,
         p = close_brace + 1;
     }
     if (arg_index != arg_count) {
-        PRINT_ERR("Arguments do not match the format string");
-        abort();
+        FATAL_ERROR("Arguments do not match the format string");
     }
 
     // Copy final result to the supplied arena
