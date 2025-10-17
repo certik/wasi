@@ -2,6 +2,7 @@
 #include <base/wasi.h>
 #include <base/base_types.h>
 #include <base/assert.h>
+#include <base/base_io.h>
 
 #define MIN_PAGE_SIZE 4096UL
 #define MAX_ORDER 20 // 2^20 * 4KB = 4GB
@@ -100,6 +101,7 @@ static void *buddy_alloc_order(int order) {
         size_t grow_by = ((required_size + WASM_PAGE_SIZE - 1) / WASM_PAGE_SIZE) * WASM_PAGE_SIZE;
         void *new_mem = wasi_heap_grow(grow_by);
         if (!new_mem) {
+            writeln(WASI_STDERR_FD, "buddy_alloc: exit 1");
             wasi_proc_exit(1); // Or return NULL on failure
         }
         add_memory(new_mem, grow_by);

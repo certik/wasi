@@ -14,3 +14,6 @@
  * @return 0 on success, or an error code if fd_write fails.
  */
 uint32_t write_all(int fd, ciovec_t* iovs, size_t iovs_len);
+
+// Prints a single line, appends `\n`
+void writeln(int fd, char* text);
