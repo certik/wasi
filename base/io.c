@@ -8,6 +8,9 @@
 
 // Returns the file contents as a null-terminated string in `text`.
 // Returns `true` on success, otherwise `false`.
+// The size of `text` includes the null character, which is inserted
+// to allow tokenizing the text and use a null character as a "file end"
+// condition.
 bool read_file(Arena *arena, const string filename, string *text) {
     Scratch scratch = scratch_begin_avoid_conflict(arena);
     char *cfilename = str_to_cstr_copy(scratch.arena, filename);
