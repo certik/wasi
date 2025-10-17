@@ -9,17 +9,25 @@
 // Returns the file contents as a null-terminated string in `text`.
 // Returns `true` on success, otherwise `false`.
 bool read_file(Arena *arena, const string filename, string *text) {
-    char *cfilename = str_to_cstr_copy(arena, filename);
-    if (cfilename == NULL || *cfilename == '\0') return false;
+    Scratch scratch = scratch_begin_avoid_conflict(arena);
+    char *cfilename = str_to_cstr_copy(scratch.arena, filename);
+    if (cfilename == NULL || *cfilename == '\0') {
+        scratch_end(scratch);
+        return false;
+    }
 
     // Open file using WASI interface
     wasi_fd_t fd = wasi_path_open(cfilename, WASI_O_RDONLY);
-    if (fd < 0) return false;
+    if (fd < 0) {
+        scratch_end(scratch);
+        return false;
+    }
 
     // Get file size by seeking to end
     uint64_t filesize_u64;
     if (wasi_fd_seek(fd, 0, WASI_SEEK_END, &filesize_u64) != 0) {
         wasi_fd_close(fd);
+        scratch_end(scratch);
         return false;
     }
 
@@ -27,6 +35,7 @@ bool read_file(Arena *arena, const string filename, string *text) {
     uint64_t dummy;
     if (wasi_fd_seek(fd, 0, WASI_SEEK_SET, &dummy) != 0) {
         wasi_fd_close(fd);
+        scratch_end(scratch);
         return false;
     }
 
@@ -36,6 +45,7 @@ bool read_file(Arena *arena, const string filename, string *text) {
     char *bytes = arena_alloc_array(arena, char, filesize+1);
     if (bytes == NULL) {
         wasi_fd_close(fd);
+        scratch_end(scratch);
         return false;
     }
 
@@ -45,10 +55,14 @@ bool read_file(Arena *arena, const string filename, string *text) {
     int ret = wasi_fd_read(fd, &iov, 1, &nread);
     wasi_fd_close(fd);
 
-    if (ret != 0 || nread != filesize) return false;
+    if (ret != 0 || nread != filesize) {
+        scratch_end(scratch);
+        return false;
+    }
     bytes[nread] = '\0';
     text->str = bytes;
     text->size = filesize+1;
+    scratch_end(scratch);
     return true;
 }
 
@@ -66,25 +80,16 @@ string read_file_ok(Arena *arena, const string filename) {
     }
 }
 
-void println_explicit(Arena *arena, string fmt, size_t arg_count, ...) {
+void println_explicit(string fmt, size_t arg_count, ...) {
+    Scratch scratch = scratch_begin();
     va_list varg;
     va_start(varg, arg_count);
 
-    // If NULL arena is passed, use a scratch arena
-    Scratch scratch;
-    bool use_scratch = (arena == NULL);
-    if (use_scratch) {
-        scratch = scratch_begin();
-        arena = scratch.arena;
-    }
-
-    string text = format_explicit_varg(arena, fmt, arg_count, varg);
+    string text = format_explicit_varg(scratch.arena, fmt, arg_count, varg);
     va_end(varg);
-    text = str_concat(arena, text, str_lit("\n"));
+    text = str_concat(scratch.arena, text, str_lit("\n"));
     ciovec_t iov = {.buf = text.str, .buf_len = text.size};
     write_all(1, &iov, 1);
 
-    if (use_scratch) {
-        scratch_end(scratch);
-    }
+    scratch_end(scratch);
 }

@@ -2,6 +2,7 @@
 #include <base/stdarg.h>
 #include <base/mem.h>
 #include <base/format.h>
+#include <base/scratch.h>
 
 // Inline implementation of isdigit
 static inline int isdigit(int c) {
@@ -46,7 +47,8 @@ FormatSpec parse_format_spec(string spec) {
 // Core formatting function with variadic arguments
 string format_explicit_varg(Arena *arena, string fmt, size_t arg_count,
         va_list ap) {
-    string result = {arena_alloc_array(arena, char, 1), 0};
+    Scratch scratch = scratch_begin_avoid_conflict(arena);
+    string result = {arena_alloc_array(scratch.arena, char, 1), 0};
     result.str[0] = '\0';
     const char *p = fmt.str;
     const char *end = fmt.str + fmt.size;
@@ -55,29 +57,29 @@ string format_explicit_varg(Arena *arena, string fmt, size_t arg_count,
         const char *open_brace = memchr(p, '{', end - p);
         if (open_brace == NULL) {
             string remaining = {.str = (char*)p, .size = end - p};
-            result = str_concat(arena, result, remaining);
+            result = str_concat(scratch.arena, result, remaining);
             break;
         }
         if (open_brace > p) {
             string part = {.str = (char*)p, .size = open_brace - p};
-            result = str_concat(arena, result, part);
+            result = str_concat(scratch.arena, result, part);
         }
         p = open_brace + 1;
         if (p >= end) {
             string lit = {.str = (char*)open_brace, .size = 1};
-            result = str_concat(arena, result, lit);
+            result = str_concat(scratch.arena, result, lit);
             break;
         }
         if (*p == '{') {
             string brace = {.str = (char*)open_brace, .size = 1};
-            result = str_concat(arena, result, brace);
+            result = str_concat(scratch.arena, result, brace);
             p++;
             continue;
         }
         const char *close_brace = memchr(p, '}', end - p);
         if (close_brace == NULL) {
             string error = str_from_cstr_view("Error: missing closing brace");
-            result = str_concat(arena, result, error);
+            result = str_concat(scratch.arena, result, error);
             break;
         }
         const char *colon = memchr(p, ':', close_brace - p);
@@ -88,7 +90,7 @@ string format_explicit_varg(Arena *arena, string fmt, size_t arg_count,
         } else {
             if (p != close_brace) {
                 string error = str_from_cstr_view("Error: invalid format specifier");
-                result = str_concat(arena, result, error);
+                result = str_concat(scratch.arena, result, error);
                 p = close_brace + 1;
                 continue;
             }
@@ -96,7 +98,7 @@ string format_explicit_varg(Arena *arena, string fmt, size_t arg_count,
         }
         if (arg_index >= arg_count) {
             string error = str_from_cstr_view("Error: missing argument");
-            result = str_concat(arena, result, error);
+            result = str_concat(scratch.arena, result, error);
             p = close_brace + 1;
             continue;
         }
@@ -105,47 +107,47 @@ string format_explicit_varg(Arena *arena, string fmt, size_t arg_count,
         switch (type) {
             case ARG_INT8: {
                 int8_t value = (int8_t)va_arg(ap, int);
-                s = int_to_string(arena, value);
+                s = int_to_string(scratch.arena, value);
                 break;
             }
             case ARG_UINT8: {
                 uint8_t value = (uint8_t)va_arg(ap, int);
-                s = int_to_string(arena, value);
+                s = int_to_string(scratch.arena, value);
                 break;
             }
             case ARG_INT16: {
                 int16_t value = (int16_t)va_arg(ap, int);
-                s = int_to_string(arena, value);
+                s = int_to_string(scratch.arena, value);
                 break;
             }
             case ARG_UINT16: {
                 uint16_t value = (uint16_t)va_arg(ap, int);
-                s = int_to_string(arena, value);
+                s = int_to_string(scratch.arena, value);
                 break;
             }
             case ARG_INT32: {
                 int32_t value = va_arg(ap, int32_t);
-                s = int_to_string(arena, value);
+                s = int_to_string(scratch.arena, value);
                 break;
             }
             case ARG_UINT32: {
                 uint32_t value = va_arg(ap, uint32_t);
-                s = int_to_string(arena, value);
+                s = int_to_string(scratch.arena, value);
                 break;
             }
             case ARG_INT64: {
                 int64_t value = va_arg(ap, int64_t);
-                s = int_to_string(arena, value);
+                s = int_to_string(scratch.arena, value);
                 break;
             }
             case ARG_UINT64: {
                 uint64_t value = va_arg(ap, uint64_t);
-                s = int_to_string(arena, value);
+                s = int_to_string(scratch.arena, value);
                 break;
             }
             case ARG_DOUBLE: {
                 double value = va_arg(ap, double);
-                s = double_to_string(arena, value, spec.precision);
+                s = double_to_string(scratch.arena, value, spec.precision);
                 break;
             }
             case ARG_STRING: {
@@ -171,7 +173,7 @@ string format_explicit_varg(Arena *arena, string fmt, size_t arg_count,
             }
             case ARG_POINTER: {
                 void* value = va_arg(ap, void*);
-                s = int_to_string(arena, (uint64_t)value);
+                s = int_to_string(scratch.arena, (uint64_t)value);
                 break;
             }
             case ARG_VECTOR_INT64: {
@@ -183,13 +185,13 @@ string format_explicit_varg(Arena *arena, string fmt, size_t arg_count,
 #endif
                 s = str_lit("{");
                 for (int i=0; i<value.size; i++) {
-                    s = str_concat(arena, s,
-                            int_to_string(arena, value.data[i]));
+                    s = str_concat(scratch.arena, s,
+                            int_to_string(scratch.arena, value.data[i]));
                     if (i < value.size-1) {
-                        s = str_concat(arena, s, str_lit(", "));
+                        s = str_concat(scratch.arena, s, str_lit(", "));
                     }
                 }
-                s = str_concat(arena, s, str_lit("}"));
+                s = str_concat(scratch.arena, s, str_lit("}"));
                 if (spec.precision >= 0 && spec.precision < s.size) {
                     s.size = spec.precision;
                 }
@@ -215,28 +217,32 @@ string format_explicit_varg(Arena *arena, string fmt, size_t arg_count,
         if (spec.width > 0 && s.size < spec.width) {
             size_t pad_size = spec.width - s.size;
             char pad_char = ' ';
-            string padding = {.str = arena_alloc_array(arena, char, pad_size), .size = pad_size};
+            string padding = {.str = arena_alloc_array(scratch.arena, char, pad_size), .size = pad_size};
             memset(padding.str, pad_char, pad_size);
             if (spec.alignment == '<') {
-                s = str_concat(arena, s, padding);
+                s = str_concat(scratch.arena, s, padding);
             } else if (spec.alignment == '^') {
                 size_t left_pad = pad_size / 2;
                 size_t right_pad = pad_size - left_pad;
                 string left = {.str = padding.str, .size = left_pad};
                 string right = {.str = padding.str + left_pad, .size = right_pad};
-                s = str_concat(arena, left, s);
-                s = str_concat(arena, s, right);
+                s = str_concat(scratch.arena, left, s);
+                s = str_concat(scratch.arena, s, right);
             } else {  // '>' or default
-                s = str_concat(arena, padding, s);
+                s = str_concat(scratch.arena, padding, s);
             }
         }
-        result = str_concat(arena, result, s);
+        result = str_concat(scratch.arena, result, s);
         p = close_brace + 1;
     }
     //if (arg_index < arg_count) {
     //    return str_from_cstr_view("Error: excess arguments");
     //}
-    return result;
+
+    // Copy final result to the supplied arena
+    string final_result = str_concat(arena, str_lit(""), result);
+    scratch_end(scratch);
+    return final_result;
 }
 
 string format_explicit(Arena *arena, string fmt, size_t arg_count, ...) {
