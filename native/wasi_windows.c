@@ -264,7 +264,8 @@ int wasi_fd_tell(wasi_fd_t fd, uint64_t* offset) {
 }
 
 // Helper: Convert UTF-16 wide char to UTF-8
-// Returns number of bytes written (1-4), or 0 on error
+// Returns number of bytes written (1-3 for BMP), or 0 on error
+// Note: This handles Basic Multilingual Plane only (wchar_t is 16-bit on Windows)
 static int wchar_to_utf8(wchar_t wc, char* out) {
     if (wc < 0x80) {
         out[0] = (char)wc;
@@ -273,19 +274,13 @@ static int wchar_to_utf8(wchar_t wc, char* out) {
         out[0] = (char)(0xC0 | (wc >> 6));
         out[1] = (char)(0x80 | (wc & 0x3F));
         return 2;
-    } else if (wc < 0x10000) {
+    } else {
+        // BMP character (up to 0xFFFF)
         out[0] = (char)(0xE0 | (wc >> 12));
         out[1] = (char)(0x80 | ((wc >> 6) & 0x3F));
         out[2] = (char)(0x80 | (wc & 0x3F));
         return 3;
-    } else if (wc < 0x110000) {
-        out[0] = (char)(0xF0 | (wc >> 18));
-        out[1] = (char)(0x80 | ((wc >> 12) & 0x3F));
-        out[2] = (char)(0x80 | ((wc >> 6) & 0x3F));
-        out[3] = (char)(0x80 | (wc & 0x3F));
-        return 4;
     }
-    return 0;
 }
 
 // Helper: Get length of wide string
@@ -328,8 +323,8 @@ static void init_args() {
     // Calculate total buffer size needed for UTF-8 conversion
     size_t total_size = 0;
     for (int i = 0; i < argc; i++) {
-        // Worst case: each wide char becomes 4 UTF-8 bytes
-        total_size += wcslen(wargv[i]) * 4 + 1;
+        // Worst case: each wide char becomes 3 UTF-8 bytes (BMP only)
+        total_size += wcslen(wargv[i]) * 3 + 1;
     }
 
     // Allocate storage using VirtualAlloc

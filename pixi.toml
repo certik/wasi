@@ -200,6 +200,7 @@ link \
     /nodefaultlib \
     /entry:_start \
     kernel32.lib \
+    shell32.lib \
     tests.obj \
     test_stdlib.obj \
     test_base.obj \
