@@ -70,7 +70,11 @@ Arena *arena_new(size_t initial_size) {
 
 void *arena_alloc(Arena *arena, size_t size) {
     assert(arena);
-    assert(size > 0);
+
+    // Allow 0-size allocations - just return the current pointer without advancing
+    if (size == 0) {
+        return arena->current_ptr;
+    }
 
     size_t aligned_size = (size + ARENA_ALIGNMENT - 1) & ~(size_t)(ARENA_ALIGNMENT - 1);
 

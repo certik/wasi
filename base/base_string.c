@@ -53,10 +53,18 @@ string char_to_string(Arena *arena, char c) {
 }
 
 string str_concat(Arena *arena, string a, string b) {
-    char *str = arena_alloc_array(arena, char, a.size + b.size);
-    memcpy(str, a.str, a.size);
-    memcpy(str + a.size, b.str, b.size);
-    return (string){str, a.size + b.size};
+    size_t total_size = a.size + b.size;
+    if (total_size == 0) {
+        return (string){NULL, 0};
+    }
+    char *str = arena_alloc_array(arena, char, total_size);
+    if (a.size > 0) {
+        memcpy(str, a.str, a.size);
+    }
+    if (b.size > 0) {
+        memcpy(str + a.size, b.str, b.size);
+    }
+    return (string){str, total_size};
 }
 
 string str_copy(Arena *arena, string a) {
