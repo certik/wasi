@@ -139,12 +139,15 @@ int main();
 #define O_TRUNC    0x0200
 
 // File I/O implementations
-wasi_fd_t wasi_path_open(const char* path, size_t path_len, int access_mode, int oflags) {
-    // Map access mode to Linux open flags
+wasi_fd_t wasi_path_open(const char* path, size_t path_len, uint64_t rights, int oflags) {
+    // Extract access mode from rights
     int os_flags = 0;
-    if (access_mode == WASI_O_RDWR) {
+    int has_read = (rights & WASI_RIGHT_FD_READ) != 0;
+    int has_write = (rights & WASI_RIGHT_FD_WRITE) != 0;
+
+    if (has_read && has_write) {
         os_flags |= O_RDWR;
-    } else if (access_mode == WASI_O_WRONLY) {
+    } else if (has_write) {
         os_flags |= O_WRONLY;
     } else {
         os_flags |= O_RDONLY;

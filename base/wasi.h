@@ -96,10 +96,16 @@ typedef struct iovec_s {
     size_t iov_len;
 } iovec_t;
 
-// File access modes (converted to WASI rights)
-#define WASI_O_RDONLY  0x0
-#define WASI_O_WRONLY  0x1
-#define WASI_O_RDWR    0x2
+// WASI rights flags (capabilities for file operations)
+#define WASI_RIGHT_FD_READ   0x2   // __WASI_RIGHTS_FD_READ (1 << 1)
+#define WASI_RIGHT_FD_WRITE  0x40  // __WASI_RIGHTS_FD_WRITE (1 << 6)
+#define WASI_RIGHT_FD_SEEK   0x4   // __WASI_RIGHTS_FD_SEEK (1 << 2)
+#define WASI_RIGHT_FD_TELL   0x20  // __WASI_RIGHTS_FD_TELL (1 << 5)
+
+// Common rights combinations
+#define WASI_RIGHTS_READ  (WASI_RIGHT_FD_READ | WASI_RIGHT_FD_SEEK | WASI_RIGHT_FD_TELL)
+#define WASI_RIGHTS_WRITE (WASI_RIGHT_FD_WRITE | WASI_RIGHT_FD_SEEK | WASI_RIGHT_FD_TELL)
+#define WASI_RIGHTS_RDWR  (WASI_RIGHTS_READ | WASI_RIGHTS_WRITE)
 
 // File creation flags (WASI oflags - passed through directly)
 #define WASI_O_CREAT   0x1  // __WASI_OFLAGS_CREAT (1 << 0)
@@ -115,11 +121,11 @@ typedef struct iovec_s {
 #define WASI_STDOUT_FD 1
 #define WASI_STDERR_FD 2
 
-// Open a file at the given path with the specified access mode and creation flags.
-// access_mode: WASI_O_RDONLY, WASI_O_WRONLY, or WASI_O_RDWR
+// Open a file at the given path with the specified rights and creation flags.
+// rights: combination of WASI_RIGHTS_READ, WASI_RIGHTS_WRITE, or WASI_RIGHTS_RDWR
 // oflags: combination of WASI_O_CREAT, WASI_O_TRUNC (passed directly to WASI)
 // Returns a file descriptor on success, or -1 on error.
-wasi_fd_t wasi_path_open(const char* path, size_t path_len, int access_mode, int oflags);
+wasi_fd_t wasi_path_open(const char* path, size_t path_len, uint64_t rights, int oflags);
 
 // Close a file descriptor.
 // Returns 0 on success, or errno on error.
