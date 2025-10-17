@@ -901,6 +901,48 @@ void test_std_fds(void) {
     assert(ret == 0);
     assert(nwritten == strlen(msg_after));
 
+    // Test opening multiple files to verify fcntl F_DUPFD works correctly
+    // This ensures that even if FD 3 is taken, we can still open more files
+    const char* file1 = "test_multi_fd1.txt";
+    const char* file2 = "test_multi_fd2.txt";
+    const char* file3 = "test_multi_fd3.txt";
+
+    wasi_fd_t fd1 = wasi_path_open(file1, strlen(file1), WASI_RIGHTS_WRITE, WASI_O_CREAT | WASI_O_TRUNC);
+    assert(fd1 >= 3);  // Should be >= 3 (not 0, 1, 2)
+
+    wasi_fd_t fd2 = wasi_path_open(file2, strlen(file2), WASI_RIGHTS_WRITE, WASI_O_CREAT | WASI_O_TRUNC);
+    assert(fd2 >= 3);  // Should be >= 3
+    assert(fd2 != fd1);  // Should be different from fd1
+
+    wasi_fd_t fd3 = wasi_path_open(file3, strlen(file3), WASI_RIGHTS_WRITE, WASI_O_CREAT | WASI_O_TRUNC);
+    assert(fd3 >= 3);  // Should be >= 3
+    assert(fd3 != fd1 && fd3 != fd2);  // Should be different from both
+
+    // Write to each file to verify they work
+    const char* content1 = "File 1";
+    const char* content2 = "File 2";
+    const char* content3 = "File 3";
+
+    ciovec_t iov1 = {.buf = content1, .buf_len = strlen(content1)};
+    ciovec_t iov2 = {.buf = content2, .buf_len = strlen(content2)};
+    ciovec_t iov3 = {.buf = content3, .buf_len = strlen(content3)};
+
+    ret = wasi_fd_write(fd1, &iov1, 1, &nwritten);
+    assert(ret == 0 && nwritten == strlen(content1));
+
+    ret = wasi_fd_write(fd2, &iov2, 1, &nwritten);
+    assert(ret == 0 && nwritten == strlen(content2));
+
+    ret = wasi_fd_write(fd3, &iov3, 1, &nwritten);
+    assert(ret == 0 && nwritten == strlen(content3));
+
+    // Close all files
+    assert(wasi_fd_close(fd1) == 0);
+    assert(wasi_fd_close(fd2) == 0);
+    assert(wasi_fd_close(fd3) == 0);
+
+    print("Multiple file opens work correctly\n");
+
     print("Standard file descriptors tests passed\n");
 }
 
