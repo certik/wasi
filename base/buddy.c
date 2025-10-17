@@ -1,6 +1,7 @@
 #include <base/buddy.h>
 #include <base/wasi.h>
 #include <base/base_types.h>
+#include <base/assert.h>
 
 #define MIN_PAGE_SIZE 4096UL
 #define MAX_ORDER 20 // 2^20 * 4KB = 4GB
@@ -83,9 +84,7 @@ void buddy_init(void) {
 }
 
 static void *buddy_alloc_order(int order) {
-    if (order < 0 || order > MAX_ORDER) {
-        return NULL;
-    }
+    assert(order >= 0 && order <= MAX_ORDER);
 
     // Find the smallest available block that is large enough
     int current_order;
@@ -128,9 +127,7 @@ static void *buddy_alloc_order(int order) {
 }
 
 void *buddy_alloc(size_t size) {
-    if (size == 0) {
-        return NULL;
-    }
+    assert(size > 0);
 
     // Add space for our header to the requested size
     size += sizeof(struct buddy_block);
@@ -149,9 +146,7 @@ void *buddy_alloc(size_t size) {
 }
 
 void buddy_free(void *ptr) {
-    if (ptr == NULL) {
-        return;
-    }
+    assert(ptr);
 
     // Get the block header from the user-provided pointer
     struct buddy_block *p = ((struct buddy_block *)ptr) - 1;
