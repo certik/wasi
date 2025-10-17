@@ -52,7 +52,10 @@ static char to_lower(char c) {
 
 // Tokenize text and count word frequencies
 static void count_words(Arena *arena, string text, WordFreqTable *table) {
+    println(str_lit("count_words: Starting, text size = {}"), (int64_t)text.size);
+
     size_t i = 0;
+    size_t word_count = 0;
     while (i < text.size) {
         // Skip non-alphanumeric characters
         while (i < text.size && !is_alnum(text.str[i])) {
@@ -79,7 +82,13 @@ static void count_words(Arena *arena, string text, WordFreqTable *table) {
         uint64_t *count_ptr = WordFreqTable_get(table, word);
         uint64_t new_count = count_ptr ? (*count_ptr + 1) : 1;
         WordFreqTable_insert(arena, table, word, new_count);
+
+        word_count++;
+        if (word_count % 10 == 0) {
+            println(str_lit("Processed {} words..."), (int64_t)word_count);
+        }
     }
+    println(str_lit("Total words processed: {}"), (int64_t)word_count);
 }
 
 // Comparison function for sorting (descending by count)
