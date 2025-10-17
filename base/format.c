@@ -3,6 +3,7 @@
 #include <base/mem.h>
 #include <base/format.h>
 #include <base/scratch.h>
+#include <base/exit.h>
 
 // Inline implementation of isdigit
 static inline int isdigit(int c) {
@@ -96,10 +97,8 @@ string format_explicit_varg(Arena *arena, string fmt, size_t arg_count,
             spec = (FormatSpec){.alignment = '\0', .width = -1, .precision = -1};
         }
         if (arg_index >= arg_count) {
-            string error = str_from_cstr_view("Error: missing argument");
-            result = str_concat(scratch.arena, result, error);
-            p = close_brace + 1;
-            continue;
+            // Missing argument
+            abort();
         }
         ArgType type = (ArgType)va_arg(ap, int);
         string s;
@@ -234,9 +233,10 @@ string format_explicit_varg(Arena *arena, string fmt, size_t arg_count,
         result = str_concat(scratch.arena, result, s);
         p = close_brace + 1;
     }
-    //if (arg_index < arg_count) {
-    //    return str_from_cstr_view("Error: excess arguments");
-    //}
+    if (arg_index != arg_count) {
+        // Arguments do not match the format string
+        abort();
+    }
 
     // Copy final result to the supplied arena
     string final_result = str_copy(arena, result);
