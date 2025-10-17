@@ -166,20 +166,21 @@ void wasi_proc_exit(int status) {
 int main();
 
 // File I/O implementations
-wasi_fd_t wasi_path_open(const char* path, size_t path_len, int flags) {
-    // Map WASI flags to Windows flags
+wasi_fd_t wasi_path_open(const char* path, size_t path_len, int access_mode, int oflags) {
+    // Map access mode to Windows access flags
     DWORD access = 0;
     DWORD creation = OPEN_EXISTING;
 
-    if ((flags & WASI_O_RDWR) == WASI_O_RDWR) {
+    if (access_mode == WASI_O_RDWR) {
         access = GENERIC_READ | GENERIC_WRITE;
-    } else if (flags & WASI_O_WRONLY) {
+    } else if (access_mode == WASI_O_WRONLY) {
         access = GENERIC_WRITE;
     } else {
         access = GENERIC_READ;
     }
 
-    if (flags & WASI_O_CREAT) {
+    // Map oflags to Windows creation disposition
+    if (oflags & WASI_O_CREAT) {
         creation = CREATE_ALWAYS;
     }
 

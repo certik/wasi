@@ -65,15 +65,10 @@ uint32_t wasi_fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nw
 }
 
 // File I/O implementations
-wasi_fd_t wasi_path_open(const char* path, size_t path_len, int flags) {
+wasi_fd_t wasi_path_open(const char* path, size_t path_len, int access_mode, int oflags) {
     // WASI requires path_open to be called with a directory fd (use 3 for preopen)
     // We simplify by using the preopen directory
     int fd = -1;
-
-    // Map flags to WASI oflags
-    int oflags = 0;
-    if (flags & WASI_O_CREAT) oflags |= 0x1;  // __WASI_OFLAGS_CREAT (1 << 0)
-    if (flags & WASI_O_TRUNC) oflags |= 0x8;  // __WASI_OFLAGS_TRUNC (1 << 3)
 
     // Determine rights based on access mode
     // __WASI_RIGHTS_FD_READ = (1 << 1) = 0x2
@@ -82,20 +77,21 @@ wasi_fd_t wasi_path_open(const char* path, size_t path_len, int flags) {
     // __WASI_RIGHTS_FD_WRITE = (1 << 6) = 0x40
     uint64_t rights_base = 0x4 | 0x20;  // SEEK, TELL (always needed)
 
-    if ((flags & WASI_O_RDWR) == WASI_O_RDWR) {
+    if (access_mode == WASI_O_RDWR) {
         rights_base |= 0x2 | 0x40;  // READ | WRITE
-    } else if (flags & WASI_O_WRONLY) {
+    } else if (access_mode == WASI_O_WRONLY) {
         rights_base |= 0x40;  // WRITE
     } else {
-        rights_base |= 0x2;  // READ (default for RDONLY)
+        rights_base |= 0x2;  // READ (RDONLY)
     }
 
+    // oflags are passed through directly (no translation needed)
     int ret = path_open(
         3,           // dirfd (preopen)
         0,           // dirflags
         path,
         path_len,
-        oflags,
+        oflags,      // passed through directly
         rights_base,
         0,           // inheriting rights
         0,           // fdflags

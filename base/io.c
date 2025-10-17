@@ -15,7 +15,7 @@ bool read_file(Arena *arena, const string filename, string *text) {
     Scratch scratch = scratch_begin_avoid_conflict(arena);
     // Open file using WASI interface
     wasi_fd_t fd = wasi_path_open(str_to_cstr_copy(scratch.arena, filename),
-            filename.size, WASI_O_RDONLY);
+            filename.size, WASI_O_RDONLY, 0);
     if (fd < 0) {
         scratch_end(scratch);
         return false;
