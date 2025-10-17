@@ -7,6 +7,6 @@ void exit(int status) {
 }
 
 void abort(void) {
-    PRINT_ERR("abort() called");
+    PRINT_ERR("Aborting...");
     exit(1);
 }
