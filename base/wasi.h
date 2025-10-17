@@ -132,3 +132,23 @@ int wasi_fd_seek(wasi_fd_t fd, int64_t offset, int whence, uint64_t* newoffset);
 // Get the current position in the file.
 // Returns 0 on success with position in *offset, or errno on error.
 int wasi_fd_tell(wasi_fd_t fd, uint64_t* offset);
+
+
+// Command Line Arguments
+//
+// Get the sizes of the command line arguments.
+// Returns 0 on success with:
+//   *argc: number of arguments
+//   *argv_buf_size: total size needed to store all argument strings (including null terminators)
+// Returns errno on error.
+int wasi_args_sizes_get(size_t* argc, size_t* argv_buf_size);
+
+// Get the command line arguments.
+// Parameters:
+//   argv: array of pointers to be filled with argument string pointers
+//   argv_buf: buffer to store the actual argument strings
+// The caller must allocate:
+//   - argv array of at least argc pointers
+//   - argv_buf buffer of at least argv_buf_size bytes
+// Returns 0 on success, or errno on error.
+int wasi_args_get(char** argv, char* argv_buf);

@@ -39,6 +39,10 @@ static uint8_t* linux_heap_base = NULL; // Reuse name for consistency
 static size_t committed_pages = 0;
 static const size_t RESERVED_SIZE = 1ULL << 32; // 4GB virtual space
 
+// Command line arguments storage
+static int stored_argc = 0;
+static char** stored_argv = NULL;
+
 static void ensure_heap_initialized() {
     if (linux_heap_base == NULL) {
         linux_heap_base = (uint8_t*)mmap(
@@ -174,8 +178,39 @@ int wasi_fd_tell(wasi_fd_t fd, uint64_t* offset) {
     return 0;  // Success
 }
 
+// Command line arguments implementation
+int wasi_args_sizes_get(size_t* argc, size_t* argv_buf_size) {
+    *argc = (size_t)stored_argc;
+
+    // Calculate total buffer size needed
+    size_t total_size = 0;
+    for (int i = 0; i < stored_argc; i++) {
+        const char* arg = stored_argv[i];
+        while (*arg++) total_size++;  // strlen
+        total_size++;  // null terminator
+    }
+    *argv_buf_size = total_size;
+    return 0;
+}
+
+int wasi_args_get(char** argv, char* argv_buf) {
+    char* buf_ptr = argv_buf;
+    for (int i = 0; i < stored_argc; i++) {
+        argv[i] = buf_ptr;
+        const char* src = stored_argv[i];
+        while (*src) {
+            *buf_ptr++ = *src++;
+        }
+        *buf_ptr++ = '\0';
+    }
+    return 0;
+}
+
 // Entry point for macOS.
-void _start() {
+// macOS passes argc and argv to the entry point (unlike raw Linux)
+void _start(int argc, char** argv) {
+    stored_argc = argc;
+    stored_argv = argv;
     ensure_heap_initialized();
     buddy_init();
     int status = main();

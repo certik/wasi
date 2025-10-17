@@ -28,6 +28,10 @@ static uint8_t* linux_heap_base = NULL;
 static size_t committed_pages = 0;
 static const size_t RESERVED_SIZE = 1ULL << 32; // Reserve 4GB of virtual address space
 
+// Command line arguments storage
+static int stored_argc = 0;
+static char** stored_argv = NULL;
+
 // Helper function to make a raw syscall.
 static inline long syscall(long n, long a1, long a2, long a3, long a4, long a5, long a6) {
     long ret;
@@ -189,26 +193,62 @@ int wasi_fd_tell(wasi_fd_t fd, uint64_t* offset) {
     return 0;  // Success
 }
 
+// Command line arguments implementation
+int wasi_args_sizes_get(size_t* argc, size_t* argv_buf_size) {
+    *argc = (size_t)stored_argc;
+
+    // Calculate total buffer size needed
+    size_t total_size = 0;
+    for (int i = 0; i < stored_argc; i++) {
+        const char* arg = stored_argv[i];
+        while (*arg++) total_size++;  // strlen
+        total_size++;  // null terminator
+    }
+    *argv_buf_size = total_size;
+    return 0;
+}
+
+int wasi_args_get(char** argv, char* argv_buf) {
+    char* buf_ptr = argv_buf;
+    for (int i = 0; i < stored_argc; i++) {
+        argv[i] = buf_ptr;
+        const char* src = stored_argv[i];
+        while (*src) {
+            *buf_ptr++ = *src++;
+        }
+        *buf_ptr++ = '\0';
+    }
+    return 0;
+}
+
 // The entry point for a -nostdlib Linux program is `_start`.
 // The kernel enters with RSP % 16 == 0, but the ABI requires RSP % 16 == 8
 // before a call instruction (so after the call pushes return address, it's aligned).
 // We need to ensure proper 16-byte stack alignment for functions using SSE instructions.
+// On entry, the stack layout is:
+//   rsp+0: argc
+//   rsp+8: argv[0]
+//   rsp+16: argv[1]
+//   ...
 __attribute__((naked))
 void _start() {
     __asm__ volatile (
-        "xor %%rbp, %%rbp\n"           // Clear frame pointer as per ABI
-        "andq $-16, %%rsp\n"            // Align stack to 16 bytes
-        "call _start_c\n"               // Call the C portion
-        "movq %%rax, %%rdi\n"          // Move return value to exit code
-        "movq $60, %%rax\n"            // SYS_EXIT
-        "syscall\n"                     // Exit
-        "hlt\n"                         // Should never reach here
-        ::: "memory"
+        "xor %rbp, %rbp\n"           // Clear frame pointer as per ABI
+        "mov (%rsp), %rdi\n"         // argc from stack to first argument (rdi)
+        "lea 8(%rsp), %rsi\n"        // argv from stack+8 to second argument (rsi)
+        "andq $-16, %rsp\n"          // Align stack to 16 bytes
+        "call _start_c\n"            // Call the C portion
+        "mov %eax, %edi\n"           // Move return value to exit code
+        "mov $60, %eax\n"            // SYS_EXIT
+        "syscall\n"                  // Exit
+        "hlt\n"                      // Should never reach here
     );
 }
 
 // The actual C entry point
-int _start_c() {
+int _start_c(int argc, char** argv) {
+    stored_argc = argc;
+    stored_argv = argv;
     ensure_heap_initialized();
     buddy_init();
     int status = main();

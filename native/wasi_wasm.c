@@ -11,6 +11,8 @@ int WASI(fd_close)(int fd);
 int WASI(fd_read)(int fd, const iovec_t* iovs, size_t iovs_len, size_t* nread);
 int WASI(fd_seek)(int fd, int64_t offset, int whence, uint64_t* newoffset);
 int WASI(fd_tell)(int fd, uint64_t* offset);
+int WASI(args_sizes_get)(size_t* argc, size_t* argv_buf_size);
+int WASI(args_get)(char** argv, char* argv_buf);
 
 #undef WASI
 
@@ -107,6 +109,15 @@ int wasi_fd_seek(wasi_fd_t fd, int64_t offset, int whence, uint64_t* newoffset) 
 
 int wasi_fd_tell(wasi_fd_t fd, uint64_t* offset) {
     return fd_tell(fd, offset);
+}
+
+// Command line arguments implementation
+int wasi_args_sizes_get(size_t* argc, size_t* argv_buf_size) {
+    return args_sizes_get(argc, argv_buf_size);
+}
+
+int wasi_args_get(char** argv, char* argv_buf) {
+    return args_get(argv, argv_buf);
 }
 
 // For WASI, the entry point is `_start`, which we define to call our `main` function.

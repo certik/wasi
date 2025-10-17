@@ -518,6 +518,54 @@ void test_string(void) {
     arena_free(arena);
 }
 
+void test_args(void) {
+    print("## Testing command line arguments...\n");
+
+    // Get argument sizes
+    size_t argc, argv_buf_size;
+    int ret = wasi_args_sizes_get(&argc, &argv_buf_size);
+    assert(ret == 0);
+
+    print("argc=");
+    Arena *arena = arena_new(4096);
+    println(arena, str_lit("{}"), (int)argc);
+    print("argv_buf_size=");
+    println(arena, str_lit("{}"), (int)argv_buf_size);
+
+    // Allocate buffers
+    char** argv = (char**)buddy_alloc(argc * sizeof(char*));
+    char* argv_buf = (char*)buddy_alloc(argv_buf_size);
+    assert(argv != NULL);
+    assert(argv_buf != NULL);
+
+    // Get arguments
+    ret = wasi_args_get(argv, argv_buf);
+    assert(ret == 0);
+
+    // Print all arguments
+    print("Arguments:\n");
+    for (size_t i = 0; i < argc; i++) {
+        Arena *tmp_arena = arena_new(256);
+        string idx_str = int_to_string(tmp_arena, (int)i);
+        print("  argv[");
+        print(str_to_cstr_copy(tmp_arena, idx_str));
+        print("] = \"");
+        print(argv[i]);
+        print("\"\n");
+        arena_free(tmp_arena);
+    }
+
+    // Verify argc is at least 1 (program name)
+    assert(argc >= 1);
+
+    // Free buffers
+    buddy_free(argv);
+    buddy_free(argv_buf);
+    arena_free(arena);
+
+    print("Command line arguments tests passed\n");
+}
+
 void test_base(void) {
     print("=== base tests ===\n");
 
@@ -532,6 +580,7 @@ void test_base(void) {
     test_vector_int();
     test_vector_int_ptr();
     test_string();
+    test_args();
 
     print("base tests passed\n\n");
 }
