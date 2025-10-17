@@ -14,6 +14,7 @@ typedef void* LPVOID;
 typedef const void* LPCVOID;
 typedef unsigned long long SIZE_T;
 typedef long long LONGLONG;
+typedef unsigned short wchar_t;
 typedef union {
     struct {
         DWORD LowPart;
