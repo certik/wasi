@@ -24,6 +24,7 @@ typedef union {
 } LARGE_INTEGER;
 
 // Windows constants
+#define STD_INPUT_HANDLE ((DWORD)-10)
 #define STD_OUTPUT_HANDLE ((DWORD)-11)
 #define STD_ERROR_HANDLE ((DWORD)-12)
 #define MEM_COMMIT 0x1000
@@ -230,7 +231,21 @@ int wasi_fd_close(wasi_fd_t fd) {
 }
 
 int wasi_fd_read(wasi_fd_t fd, const iovec_t* iovs, size_t iovs_len, size_t* nread) {
-    HANDLE handle = (HANDLE)(long long)fd;
+    HANDLE handle;
+    
+    // Handle standard input specially
+    if (fd == WASI_STDIN_FD) {
+        handle = GetStdHandle(STD_INPUT_HANDLE);
+    } else {
+        // Treat as a file handle returned from wasi_path_open
+        handle = (HANDLE)(long long)fd;
+    }
+    
+    if (handle == INVALID_HANDLE_VALUE) {
+        *nread = 0;
+        return 1;  // Error
+    }
+    
     size_t total_read = 0;
 
     // Windows doesn't have readv, so loop over iovecs
