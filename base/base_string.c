@@ -61,12 +61,10 @@ string char_to_string(Arena *arena, char c) {
 }
 
 string str_concat(Arena *arena, string a, string b) {
-    char *str = arena_alloc_array(arena, char, a.size + b.size + 1);
+    char *str = arena_alloc_array(arena, char, a.size + b.size);
     memcpy(str, a.str, a.size);
     memcpy(str + a.size, b.str, b.size);
-    str[a.size + b.size] = '\0';
-    string result = {str, a.size + b.size};
-    return result;
+    return (string){str, a.size + b.size};
 }
 
 uint32_t str_hash(string str) {
