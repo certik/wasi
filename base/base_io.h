@@ -2,6 +2,9 @@
 
 #include <base/wasi.h>
 
+// None of these functions allocate memory (no arenas), so they are safe to use
+// anywhere, including in arena / buddy allocator code, or in asserts.
+
 /**
  * @brief Writes all data from the iovecs to the specified file descriptor.
  *
@@ -17,3 +20,6 @@ uint32_t write_all(int fd, ciovec_t* iovs, size_t iovs_len);
 
 // Prints a single line, appends `\n`
 void writeln(int fd, char* text);
+
+// Prints: text + ' ' + int + '\n'
+void writeln_int(int fd, char* text, int n);

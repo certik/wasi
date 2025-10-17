@@ -2,6 +2,7 @@
 #include <base/base_types.h>
 #include <base/mem.h>
 #include <base/wasi.h>
+#include <base/numconv.h>
 
 uint32_t write_all(int fd, ciovec_t* iovs, size_t iovs_len) {
     size_t i;
@@ -40,4 +41,23 @@ void writeln(int fd, char* text) {
     iovs[1].buf_len = strlen(msg2);
 
     write_all(fd, iovs, 2);
+}
+
+void writeln_int(int fd, char* text, int n) {
+    const char *msg1 = text;
+    const char *msg2 = " ";
+    char p[32]; size_t p_len = int_to_str(n, p); p[p_len] = '\0';
+    const char *msg3 = "\n";
+
+    ciovec_t iovs[4];
+    iovs[0].buf = msg1;
+    iovs[0].buf_len = strlen(msg1);
+    iovs[1].buf = msg2;
+    iovs[1].buf_len = strlen(msg2);
+    iovs[2].buf = p;
+    iovs[2].buf_len = strlen(p);
+    iovs[3].buf = msg3;
+    iovs[3].buf_len = strlen(msg3);
+
+    write_all(WASI_STDERR_FD, iovs, 4);
 }

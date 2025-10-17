@@ -104,20 +104,7 @@ static void *buddy_alloc_order(int order) {
         void *new_mem = wasi_heap_grow(grow_by);
         if (!new_mem) {
             writeln(WASI_STDERR_FD, "buddy_alloc: wasi_heap_grow(grow_by) failed");
-
-            const char *msg1 = "grow_by = ";
-            char p[32]; size_t p_len = int_to_str(grow_by, p); p[p_len] = '\0';
-            const char *msg2 = "\n";
-
-            ciovec_t iovs[3];
-            iovs[0].buf = msg1;
-            iovs[0].buf_len = strlen(msg1);
-            iovs[1].buf = p;
-            iovs[1].buf_len = strlen(p);
-            iovs[2].buf = msg2;
-            iovs[2].buf_len = strlen(msg2);
-
-            write_all(WASI_STDERR_FD, iovs, 3);
+            writeln_int(WASI_STDERR_FD, "grow_by =", grow_by);
 
             wasi_proc_exit(1); // Or return NULL on failure
         }
