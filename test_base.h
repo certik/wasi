@@ -7,6 +7,7 @@ void test_arena(void);
 void test_scratch(void);
 void test_format(void);
 void test_io(void);
+void test_file_flags(void);
 void test_hashtable_int_string(void);
 void test_hashtable_string_int(void);
 void test_vector_int(void);

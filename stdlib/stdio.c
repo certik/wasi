@@ -50,13 +50,17 @@ static void free_file(FILE* file) {
 
 FILE *fopen(const char *filename, const char *mode) {
     // Parse mode string
-    int flags = 0;
+    uint64_t rights = WASI_RIGHTS_READ;
+    int oflags = 0;
+
     if (mode[0] == 'r') {
-        flags = WASI_O_RDONLY;
+        rights = WASI_RIGHTS_READ;
     } else if (mode[0] == 'w') {
-        flags = WASI_O_WRONLY | WASI_O_CREAT | WASI_O_TRUNC;
+        rights = WASI_RIGHTS_WRITE;
+        oflags = WASI_O_CREAT | WASI_O_TRUNC;
     } else if (mode[0] == 'a') {
-        flags = WASI_O_WRONLY | WASI_O_CREAT;
+        rights = WASI_RIGHTS_WRITE;
+        oflags = WASI_O_CREAT;
     } else {
         return NULL;
     }
@@ -65,7 +69,7 @@ FILE *fopen(const char *filename, const char *mode) {
     // Check for + mode (read/write)
     for (int i = 1; mode[i]; i++) {
         if (mode[i] == '+') {
-            flags = (flags & ~(WASI_O_RDONLY | WASI_O_WRONLY)) | WASI_O_RDWR;
+            rights = WASI_RIGHTS_RDWR;
         }
     }
 
@@ -73,7 +77,7 @@ FILE *fopen(const char *filename, const char *mode) {
     size_t filename_len = 0;
     while (filename[filename_len]) filename_len++;
 
-    wasi_fd_t fd = wasi_path_open(filename, filename_len, flags);
+    wasi_fd_t fd = wasi_path_open(filename, filename_len, rights, oflags);
     if (fd < 0) {
         return NULL;
     }

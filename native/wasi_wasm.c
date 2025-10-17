@@ -65,26 +65,19 @@ uint32_t wasi_fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nw
 }
 
 // File I/O implementations
-wasi_fd_t wasi_path_open(const char* path, size_t path_len, int flags) {
+wasi_fd_t wasi_path_open(const char* path, size_t path_len, uint64_t rights, int oflags) {
     // WASI requires path_open to be called with a directory fd (use 3 for preopen)
     // We simplify by using the preopen directory
     int fd = -1;
 
-    // Map flags to WASI oflags
-    int oflags = 0;
-    if (flags & WASI_O_CREAT) oflags |= 0x1;  // __WASI_OFLAGS_CREAT
-    if (flags & WASI_O_TRUNC) oflags |= 0x4;  // __WASI_OFLAGS_TRUNC
-
-    // Default rights for reading
-    uint64_t rights_base = 0x1 | 0x2 | 0x40 | 0x80;  // READ, WRITE, SEEK, TELL
-
+    // Both rights and oflags are passed through directly (no translation needed)
     int ret = path_open(
         3,           // dirfd (preopen)
         0,           // dirflags
         path,
         path_len,
-        oflags,
-        rights_base,
+        oflags,      // passed through directly
+        rights,      // passed through directly
         0,           // inheriting rights
         0,           // fdflags
         &fd

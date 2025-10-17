@@ -125,19 +125,23 @@ int main();
 #define O_TRUNC    0x0400
 
 // File I/O implementations
-wasi_fd_t wasi_path_open(const char* path, size_t path_len, int flags) {
-    // Map WASI flags to macOS flags
+wasi_fd_t wasi_path_open(const char* path, size_t path_len, uint64_t rights, int oflags) {
+    // Extract access mode from rights
     int os_flags = 0;
-    if ((flags & WASI_O_RDWR) == WASI_O_RDWR) {
+    int has_read = (rights & WASI_RIGHT_FD_READ) != 0;
+    int has_write = (rights & WASI_RIGHT_FD_WRITE) != 0;
+
+    if (has_read && has_write) {
         os_flags |= O_RDWR;
-    } else if (flags & WASI_O_WRONLY) {
+    } else if (has_write) {
         os_flags |= O_WRONLY;
     } else {
         os_flags |= O_RDONLY;
     }
 
-    if (flags & WASI_O_CREAT) os_flags |= O_CREAT;
-    if (flags & WASI_O_TRUNC) os_flags |= O_TRUNC;
+    // Map oflags to macOS creation flags
+    if (oflags & WASI_O_CREAT) os_flags |= O_CREAT;
+    if (oflags & WASI_O_TRUNC) os_flags |= O_TRUNC;
 
     // Default mode for created files (0644)
     return open(path, os_flags, 0644);
