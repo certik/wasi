@@ -14,7 +14,7 @@ static void write_buffer(char* output_buffer, size_t* output_pos) {
         ciovec_t iov;
         iov.buf = output_buffer;
         iov.buf_len = *output_pos;
-        write_all(1, &iov, 1);
+        write_all(WASI_STDOUT_FD, &iov, 1);
         *output_pos = 0;
     }
 }

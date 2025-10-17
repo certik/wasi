@@ -15,11 +15,17 @@
 #define SYS_MPROTECT 10
 #define SYS_READV 19
 #define SYS_WRITEV 20
+#define SYS_DUP 32
+#define SYS_DUP2 33
 #define SYS_EXIT 60
+#define SYS_FCNTL 72
 #define SYS_OPENAT 257
 
 // AT_FDCWD: special value meaning "current working directory" for openat
 #define AT_FDCWD -100
+
+// fcntl commands
+#define F_DUPFD 0
 
 // mmap flags
 #define PROT_READ  0x1
@@ -164,6 +170,35 @@ wasi_fd_t wasi_path_open(const char* path, size_t path_len, uint64_t rights, int
     // Use openat syscall with AT_FDCWD (current directory)
     // Default mode for created files (0644)
     long result = syscall(SYS_OPENAT, (long)AT_FDCWD, (long)path, (long)os_flags, (long)0644, 0, 0);
+
+    // On Linux, open() can return 0, 1, or 2 if those file descriptors were closed.
+    // This would collide with stdin/stdout/stderr. To prevent this, we use fcntl()
+    // with F_DUPFD to find the lowest available FD >= 3, then close the original low FD.
+    // See: https://man7.org/linux/man-pages/man2/open.2.html
+    // "The file descriptor returned by a successful call will be the lowest-numbered
+    //  file descriptor not currently open for the process."
+    // See: https://man7.org/linux/man-pages/man2/fcntl.2.html
+    // "F_DUPFD: Find the lowest numbered available file descriptor greater than or
+    //  equal to arg and make it be a copy of fd."
+    if (result >= 0 && result <= WASI_STDERR_FD) {
+        // Use fcntl with F_DUPFD to get lowest available FD >= 3
+        long new_fd = syscall(SYS_FCNTL, result, (long)F_DUPFD, (long)3, 0, 0, 0);
+        if (new_fd < 0) {
+            // fcntl failed, close the original FD and return error
+            syscall(SYS_CLOSE, result, 0, 0, 0, 0, 0);
+            return -1;
+        }
+        // Verify new_fd is not a reserved FD (should be > 2)
+        if (new_fd <= WASI_STDERR_FD) {
+            // This should never happen, but if it does, close both and fail
+            syscall(SYS_CLOSE, new_fd, 0, 0, 0, 0, 0);
+            syscall(SYS_CLOSE, result, 0, 0, 0, 0, 0);
+            return -1;
+        }
+        syscall(SYS_CLOSE, result, 0, 0, 0, 0, 0);
+        result = new_fd;
+    }
+
     return (wasi_fd_t)result;
 }
 

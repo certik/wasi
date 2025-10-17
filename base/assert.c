@@ -54,6 +54,6 @@ void __assert_fail(const char *assertion, const char *file, unsigned int line, c
     iovs[8].buf = msg5;
     iovs[8].buf_len = strlen(msg5);
 
-    write_all(2, iovs, 9);
+    write_all(WASI_STDERR_FD, iovs, 9);
     wasi_proc_exit(1);
 }

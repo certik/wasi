@@ -27,7 +27,7 @@ DEFINE_VECTOR_FOR_TYPE(int*, VecIntP)
 // Simple print function for base tests
 static void print(const char *str) {
     ciovec_t iov = {str, strlen(str)};
-    write_all(1, &iov, 1);
+    write_all(WASI_STDOUT_FD, &iov, 1);
 }
 
 // Helper function for inner scratch scope
@@ -852,6 +852,146 @@ void test_string(void) {
     arena_free(arena);
 }
 
+void test_std_fds(void) {
+    print("## Testing standard file descriptors...\n");
+
+    // Test that WASI_STDOUT_FD works
+    const char *msg_stdout = "Testing WASI_STDOUT_FD\n";
+    ciovec_t iov_stdout = {.buf = msg_stdout, .buf_len = strlen(msg_stdout)};
+    size_t nwritten;
+    uint32_t ret = wasi_fd_write(WASI_STDOUT_FD, &iov_stdout, 1, &nwritten);
+    assert(ret == 0);
+    assert(nwritten == strlen(msg_stdout));
+    print("WASI_STDOUT_FD works\n");
+
+    // Test that WASI_STDERR_FD works
+    const char *msg_stderr = "Testing WASI_STDERR_FD\n";
+    ciovec_t iov_stderr = {.buf = msg_stderr, .buf_len = strlen(msg_stderr)};
+    ret = wasi_fd_write(WASI_STDERR_FD, &iov_stderr, 1, &nwritten);
+    assert(ret == 0);
+    assert(nwritten == strlen(msg_stderr));
+    print("WASI_STDERR_FD works\n");
+
+    // Test that file operations don't interfere with standard streams
+    // Open a file and verify the returned FD is not 0, 1, or 2
+    const char* test_file = "test_std_fds.txt";
+    wasi_fd_t fd = wasi_path_open(test_file, strlen(test_file), WASI_RIGHTS_WRITE, WASI_O_CREAT | WASI_O_TRUNC);
+    assert(fd >= 0);
+    assert(fd != WASI_STDIN_FD);
+    assert(fd != WASI_STDOUT_FD);
+    assert(fd != WASI_STDERR_FD);
+    print("File descriptor is not 0, 1, or 2: ");
+    Scratch scratch = scratch_begin();
+    println(str_lit("{}"), (int)fd);
+    scratch_end(scratch);
+
+    // Write to the file
+    const char *file_content = "Test content";
+    ciovec_t iov_file = {.buf = file_content, .buf_len = strlen(file_content)};
+    ret = wasi_fd_write(fd, &iov_file, 1, &nwritten);
+    assert(ret == 0);
+    assert(nwritten == strlen(file_content));
+    assert(wasi_fd_close(fd) == 0);
+    print("File write successful\n");
+
+    // Verify stdout/stderr still work after file operations
+    const char *msg_after = "stdout works after file ops\n";
+    ciovec_t iov_after = {.buf = msg_after, .buf_len = strlen(msg_after)};
+    ret = wasi_fd_write(WASI_STDOUT_FD, &iov_after, 1, &nwritten);
+    assert(ret == 0);
+    assert(nwritten == strlen(msg_after));
+
+    // Test opening multiple files to verify fcntl F_DUPFD works correctly
+    // This ensures that even if FD 3 is taken, we can still open more files
+    const char* file1 = "test_multi_fd1.txt";
+    const char* file2 = "test_multi_fd2.txt";
+    const char* file3 = "test_multi_fd3.txt";
+
+    wasi_fd_t fd1 = wasi_path_open(file1, strlen(file1), WASI_RIGHTS_WRITE, WASI_O_CREAT | WASI_O_TRUNC);
+    assert(fd1 >= 3);  // Should be >= 3 (not 0, 1, 2)
+
+    wasi_fd_t fd2 = wasi_path_open(file2, strlen(file2), WASI_RIGHTS_WRITE, WASI_O_CREAT | WASI_O_TRUNC);
+    assert(fd2 >= 3);  // Should be >= 3
+    assert(fd2 != fd1);  // Should be different from fd1
+
+    wasi_fd_t fd3 = wasi_path_open(file3, strlen(file3), WASI_RIGHTS_WRITE, WASI_O_CREAT | WASI_O_TRUNC);
+    assert(fd3 >= 3);  // Should be >= 3
+    assert(fd3 != fd1 && fd3 != fd2);  // Should be different from both
+
+    // Write to each file to verify they work
+    const char* content1 = "File 1";
+    const char* content2 = "File 2";
+    const char* content3 = "File 3";
+
+    ciovec_t iov1 = {.buf = content1, .buf_len = strlen(content1)};
+    ciovec_t iov2 = {.buf = content2, .buf_len = strlen(content2)};
+    ciovec_t iov3 = {.buf = content3, .buf_len = strlen(content3)};
+
+    ret = wasi_fd_write(fd1, &iov1, 1, &nwritten);
+    assert(ret == 0 && nwritten == strlen(content1));
+
+    ret = wasi_fd_write(fd2, &iov2, 1, &nwritten);
+    assert(ret == 0 && nwritten == strlen(content2));
+
+    ret = wasi_fd_write(fd3, &iov3, 1, &nwritten);
+    assert(ret == 0 && nwritten == strlen(content3));
+
+    // Close all files
+    assert(wasi_fd_close(fd1) == 0);
+    assert(wasi_fd_close(fd2) == 0);
+    assert(wasi_fd_close(fd3) == 0);
+
+    print("Multiple file opens work correctly\n");
+
+    print("Standard file descriptors tests passed\n");
+}
+
+void test_stdin(void) {
+    print("## Testing stdin (WASI_STDIN_FD)...\n");
+
+    char buffer[256];
+    iovec_t iov = {.iov_base = buffer, .iov_len = sizeof(buffer) - 1};
+    size_t nread;
+    int ret = wasi_fd_read(WASI_STDIN_FD, &iov, 1, &nread);
+    assert(ret == 0);
+    assert(nread > 0);
+    buffer[nread] = '\0';
+
+    // Normalize: strip trailing whitespace (CR, LF, spaces, tabs)
+    // to handle platform differences (Windows CRLF vs Unix LF)
+    while (nread > 0 && (buffer[nread-1] == '\r' || buffer[nread-1] == '\n' ||
+                         buffer[nread-1] == ' ' || buffer[nread-1] == '\t')) {
+        nread--;
+    }
+    buffer[nread] = '\0';
+
+    // Verify we read the expected test data
+    const char* expected = "test input data";
+    size_t expected_len = strlen(expected);
+
+    // Debug output
+    print("Read from stdin (length ");
+    Arena *debug_arena = arena_new(1024);
+    println(str_lit("{}"), (int)nread);
+    print("): '");
+    print(buffer);
+    print("'\n");
+    print("Expected (length ");
+    println(str_lit("{}"), (int)expected_len);
+    print("): '");
+    print(expected);
+    print("'\n");
+    arena_free(debug_arena);
+
+    assert(nread == expected_len);
+    assert(memcmp(buffer, expected, expected_len) == 0);
+
+    print("Read from stdin: ");
+    print(buffer);
+    print("\n");
+    print("stdin test passed\n");
+}
+
 void test_args(void) {
     print("## Testing command line arguments...\n");
 
@@ -900,6 +1040,34 @@ void test_args(void) {
     print("Command line arguments tests passed\n");
 }
 
+int check_test_input_flag(void) {
+    // Get command line arguments to check for --test-input flag
+    size_t argc, argv_buf_size;
+    int ret = wasi_args_sizes_get(&argc, &argv_buf_size);
+
+    if (ret == 0 && argc > 1) {
+        char** argv = (char**)buddy_alloc(argc * sizeof(char*));
+        char* argv_buf = (char*)buddy_alloc(argv_buf_size);
+
+        if (argv && argv_buf) {
+            wasi_args_get(argv, argv_buf);
+
+            // Check if first argument is --test-input
+            if (strcmp(argv[1], "--test-input") == 0) {
+                test_stdin();
+                buddy_free(argv);
+                buddy_free(argv_buf);
+                return 1;
+            }
+
+            buddy_free(argv);
+            buddy_free(argv_buf);
+        }
+    }
+
+    return 0;
+}
+
 void test_base(void) {
     print("=== base tests ===\n");
 
@@ -915,6 +1083,7 @@ void test_base(void) {
     test_vector_int();
     test_vector_int_ptr();
     test_string();
+    test_std_fds();
     test_args();
 
     print("base tests passed\n\n");

@@ -23,6 +23,9 @@ extern void _exit(int status);
 extern int * __error(); // Returns pointer to errno
 extern int open(const char *path, int flags, ...);
 extern int close(int fd);
+extern int dup(int fd);
+extern int dup2(int oldfd, int newfd);
+extern int fcntl(int fd, int cmd, ...);
 extern ssize_t readv(int fd, const struct iovec *iov, int iovcnt);
 extern off_t lseek(int fd, off_t offset, int whence);
 
@@ -33,6 +36,9 @@ extern off_t lseek(int fd, off_t offset, int whence);
 
 #define MAP_PRIVATE 0x0002
 #define MAP_ANONYMOUS 0x1000  // Different from Linux
+
+// fcntl commands
+#define F_DUPFD 0
 
 // Emulated heap state for macOS.
 static uint8_t* linux_heap_base = NULL; // Reuse name for consistency
@@ -144,7 +150,37 @@ wasi_fd_t wasi_path_open(const char* path, size_t path_len, uint64_t rights, int
     if (oflags & WASI_O_TRUNC) os_flags |= O_TRUNC;
 
     // Default mode for created files (0644)
-    return open(path, os_flags, 0644);
+    int fd = open(path, os_flags, 0644);
+
+    // On macOS, open() can return 0, 1, or 2 if those file descriptors were closed.
+    // This would collide with stdin/stdout/stderr. To prevent this, we use fcntl()
+    // with F_DUPFD to find the lowest available FD >= 3, then close the original low FD.
+    // See: https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/open.2.html
+    // "The file descriptor returned by a successful call will be the lowest-numbered
+    //  file descriptor not currently open for the process."
+    // See: https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/fcntl.2.html
+    // "F_DUPFD: Find the lowest numbered available file descriptor greater than or
+    //  equal to arg and make it be a copy of fd."
+    if (fd >= 0 && fd <= WASI_STDERR_FD) {
+        // Use fcntl with F_DUPFD to get lowest available FD >= 3
+        int new_fd = fcntl(fd, F_DUPFD, 3);
+        if (new_fd < 0) {
+            // fcntl failed, close the original FD and return error
+            close(fd);
+            return -1;
+        }
+        // Verify new_fd is not a reserved FD (should be > 2)
+        if (new_fd <= WASI_STDERR_FD) {
+            // This should never happen, but if it does, close both and fail
+            close(new_fd);
+            close(fd);
+            return -1;
+        }
+        close(fd);
+        fd = new_fd;
+    }
+
+    return fd;
 }
 
 int wasi_fd_close(wasi_fd_t fd) {

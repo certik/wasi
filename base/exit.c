@@ -9,6 +9,6 @@ void exit(int status) {
 void abort(void) {
     const char *msg = "abort() called\n";
     ciovec_t iov = {.buf = msg, .buf_len = 15};
-    write_all(1, &iov, 1);
+    write_all(WASI_STDOUT_FD, &iov, 1);
     exit(1);
 }

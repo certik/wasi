@@ -13,7 +13,12 @@ void test_hashtable_string_int(void);
 void test_vector_int(void);
 void test_vector_int_ptr(void);
 void test_string(void);
+void test_std_fds(void);
+void test_stdin(void);
 void test_args(void);
+
+// Argument parsing helper
+int check_test_input_flag(void);
 
 // Main test runner
 void test_base(void);

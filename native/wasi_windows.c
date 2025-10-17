@@ -24,6 +24,7 @@ typedef union {
 } LARGE_INTEGER;
 
 // Windows constants
+#define STD_INPUT_HANDLE ((DWORD)-10)
 #define STD_OUTPUT_HANDLE ((DWORD)-11)
 #define STD_ERROR_HANDLE ((DWORD)-12)
 #define MEM_COMMIT 0x1000
@@ -71,9 +72,9 @@ uint32_t wasi_fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nw
     HANDLE hOutput;
 
     // Handle standard streams specially
-    if (fd == 1) {
+    if (fd == WASI_STDOUT_FD) {
         hOutput = GetStdHandle(STD_OUTPUT_HANDLE);
-    } else if (fd == 2) {
+    } else if (fd == WASI_STDERR_FD) {
         hOutput = GetStdHandle(STD_ERROR_HANDLE);
     } else {
         // Treat as a file handle returned from wasi_path_open
@@ -217,6 +218,10 @@ wasi_fd_t wasi_path_open(const char* path, size_t path_len, uint64_t rights, int
     }
 
     // Return handle cast to int (wasi_fd_t)
+    // Note: Windows HANDLEs are pointers (typically large values) and will never
+    // collide with the special file descriptor values 0, 1, or 2 (stdin/stdout/stderr).
+    // See: https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilea
+    // HANDLEs are kernel object handles, not POSIX-style small integer file descriptors.
     return (wasi_fd_t)(long long)handle;
 }
 
@@ -226,7 +231,21 @@ int wasi_fd_close(wasi_fd_t fd) {
 }
 
 int wasi_fd_read(wasi_fd_t fd, const iovec_t* iovs, size_t iovs_len, size_t* nread) {
-    HANDLE handle = (HANDLE)(long long)fd;
+    HANDLE handle;
+
+    // Handle standard input specially
+    if (fd == WASI_STDIN_FD) {
+        handle = GetStdHandle(STD_INPUT_HANDLE);
+    } else {
+        // Treat as a file handle returned from wasi_path_open
+        handle = (HANDLE)(long long)fd;
+    }
+
+    if (handle == INVALID_HANDLE_VALUE) {
+        *nread = 0;
+        return 1;  // Error
+    }
+
     size_t total_read = 0;
 
     // Windows doesn't have readv, so loop over iovecs
