@@ -1,7 +1,5 @@
+#include <base/io.h>
 #include <test_base.h>
-#include <base/wasi.h>
-#include <base/buddy.h>
-#include <base/mem.h>
 
 // Test runner that only depends on base/ - no stdlib/ dependencies
 // This proves that base/ is completely self-contained
@@ -14,5 +12,7 @@ int main() {
 
     // Normal test suite
     test_base();
+
+    println(str_lit("=== All tests passed ==="));
     return 0;
 }
