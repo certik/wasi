@@ -36,7 +36,7 @@ Arena *arena_new(size_t initial_size) {
     // Allocate the arena controller struct itself.
     Arena *arena = buddy_alloc(sizeof(Arena));
     if (!arena) {
-        writeln(WASI_STDERR_FD, "arena_new: abort 1");
+        PRINT_ERR("buddy_alloc failed for Arena");
         abort();
     }
 
@@ -50,7 +50,7 @@ Arena *arena_new(size_t initial_size) {
     size_t total_alloc_size = sizeof(struct arena_chunk) + initial_size;
     struct arena_chunk *first = buddy_alloc(total_alloc_size);
     if (!first) {
-        writeln(WASI_STDERR_FD, "arena_new: abort 2");
+        PRINT_ERR("buddy_alloc failed for size");
         buddy_free(arena);
         abort();
     }
@@ -108,8 +108,7 @@ try_alloc:
     size_t total_alloc_size = sizeof(struct arena_chunk) + new_chunk_data_size;
     struct arena_chunk *new_chunk = buddy_alloc(total_alloc_size);
     if (!new_chunk) {
-        // Buddy allocation failed.
-        writeln(WASI_STDERR_FD, "arena_alloc: abort 1");
+        PRINT_ERR("buddy_alloc failed");
         abort();
     }
 

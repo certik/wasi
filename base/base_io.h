@@ -28,4 +28,4 @@ void writeln_int(int fd, char* text, int n);
 void writeln_loc(int fd, const char *text, const char *file, unsigned int line, const char *function);
 
 #define array_size(a) (sizeof(a) / sizeof((a)[0]))
-#define PRINT_ERR(x) writeln_loc(WASI_STDERR_FD, (x), __FILE__, __LINE__, __func__);
+#define PRINT_ERR(x) writeln_loc(WASI_STDERR_FD, (x), __FILE__, __LINE__, __func__)
