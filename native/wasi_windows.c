@@ -25,14 +25,18 @@ typedef union {
 
 // Windows constants
 #define STD_OUTPUT_HANDLE ((DWORD)-11)
+#define STD_ERROR_HANDLE ((DWORD)-12)
 #define MEM_COMMIT 0x1000
 #define MEM_RESERVE 0x2000
 #define PAGE_READWRITE 0x04
 #define INVALID_HANDLE_VALUE ((HANDLE)(long long)-1)
 #define GENERIC_READ 0x80000000
 #define GENERIC_WRITE 0x40000000
+#define CREATE_NEW 1
 #define CREATE_ALWAYS 2
 #define OPEN_EXISTING 3
+#define OPEN_ALWAYS 4
+#define TRUNCATE_EXISTING 5
 #define FILE_SHARE_READ 0x00000001
 #define FILE_SHARE_WRITE 0x00000002
 #define FILE_BEGIN 0
@@ -64,28 +68,34 @@ static char* stored_argv_buf = NULL;
 
 // Emulation of `fd_write` using Windows WriteFile API
 uint32_t wasi_fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nwritten) {
-    if (fd != 1) { // Only support stdout
+    HANDLE hOutput;
+
+    // Handle standard streams specially
+    if (fd == 1) {
+        hOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+    } else if (fd == 2) {
+        hOutput = GetStdHandle(STD_ERROR_HANDLE);
+    } else {
+        // Treat as a file handle returned from wasi_path_open
+        hOutput = (HANDLE)(long long)fd;
+    }
+
+    if (hOutput == INVALID_HANDLE_VALUE) {
         *nwritten = 0;
         return 1; // Error
     }
-    
-    HANDLE hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
-    if (hStdOut == INVALID_HANDLE_VALUE) {
-        *nwritten = 0;
-        return 1; // Error
-    }
-    
+
     size_t total_written = 0;
     for (size_t i = 0; i < iovs_len; i++) {
         DWORD bytes_written = 0;
-        int result = WriteFile(hStdOut, iovs[i].buf, (DWORD)iovs[i].buf_len, &bytes_written, NULL);
+        int result = WriteFile(hOutput, iovs[i].buf, (DWORD)iovs[i].buf_len, &bytes_written, NULL);
         if (!result) {
             *nwritten = total_written;
             return 1; // Error
         }
         total_written += bytes_written;
     }
-    
+
     *nwritten = total_written;
     return 0; // Success
 }
@@ -98,7 +108,7 @@ static void ensure_heap_initialized() {
         if (windows_heap_base == NULL) {
             wasi_proc_exit(1); // Failed to reserve memory
         }
-        
+
         // Commit the first page
         void* committed = VirtualAlloc(windows_heap_base, WASM_PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE);
         if (committed == NULL) {
@@ -115,12 +125,12 @@ static inline uintptr_t align(uintptr_t val, uintptr_t alignment) {
 // Windows wasi_heap_grow implementation using VirtualAlloc
 void* wasi_heap_grow(size_t num_bytes) {
     size_t num_pages = align(num_bytes, WASM_PAGE_SIZE) / WASM_PAGE_SIZE;
-    
+
     if (num_pages == 0) {
         // TODO: what should be returned here?
         return (void*)(committed_pages * WASM_PAGE_SIZE);
     }
-    
+
     size_t bytes_to_commit = num_pages * WASM_PAGE_SIZE;
     void* new_memory = VirtualAlloc(
         windows_heap_base + (committed_pages * WASM_PAGE_SIZE),
@@ -128,11 +138,11 @@ void* wasi_heap_grow(size_t num_bytes) {
         MEM_COMMIT,
         PAGE_READWRITE
     );
-    
+
     if (new_memory == NULL) {
         return (void*)-1; // Growth failed
     }
-    
+
     size_t prev_size = committed_pages;
     committed_pages += num_pages;
     return (void*)(windows_heap_base + prev_size * WASM_PAGE_SIZE);
@@ -182,8 +192,14 @@ wasi_fd_t wasi_path_open(const char* path, size_t path_len, uint64_t rights, int
     }
 
     // Map oflags to Windows creation disposition
-    if (oflags & WASI_O_CREAT) {
-        creation = CREATE_ALWAYS;
+    if ((oflags & WASI_O_CREAT) && (oflags & WASI_O_TRUNC)) {
+        creation = CREATE_ALWAYS;  // Create new or truncate existing
+    } else if (oflags & WASI_O_CREAT) {
+        creation = OPEN_ALWAYS;    // Open existing or create new
+    } else if (oflags & WASI_O_TRUNC) {
+        creation = TRUNCATE_EXISTING;  // Truncate existing file (fails if doesn't exist)
+    } else {
+        creation = OPEN_EXISTING;  // Open existing file
     }
 
     HANDLE handle = CreateFileA(
