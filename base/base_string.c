@@ -60,8 +60,11 @@ string str_concat(Arena *arena, string a, string b) {
 }
 
 string str_copy(Arena *arena, string a) {
-    char *str = arena_alloc_array(arena, char, a.size);
-    memcpy(str, a.str, a.size);
+    char *str = NULL;
+    if (a.size > 0) {
+        str = arena_alloc_array(arena, char, a.size);
+        memcpy(str, a.str, a.size);
+    }
     return (string){str, a.size};
 }
 
