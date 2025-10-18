@@ -259,7 +259,7 @@ int main(void) {
 
         // Format percentage with 2 decimal places
         char pct_buf[32];
-        double_to_str(percentage, pct_buf, 2);
+        size_t pct_len = double_to_str(percentage, pct_buf, 2);
 
         println(str_lit("{}{:>3}. {:<20} {:>6}  {}%{}{}"),
                 str_lit(COLOR_GREEN),
@@ -267,7 +267,7 @@ int main(void) {
                 e->word,
                 (int64_t)e->count,
                 str_lit(COLOR_YELLOW),
-                str_from_cstr_view(pct_buf),
+                str_from_cstr_len_view(pct_buf, pct_len),
                 str_lit(COLOR_RESET));
     }
 
@@ -284,7 +284,7 @@ int main(void) {
         double percentage = (double)e->count * 100.0 / (double)total_count;
 
         char pct_buf[32];
-        double_to_str(percentage, pct_buf, 2);
+        size_t pct_len = double_to_str(percentage, pct_buf, 2);
 
         println(str_lit("{}{:>3}. {:<20} {:>6}  {}%{}{}"),
                 str_lit(COLOR_RED),
@@ -292,7 +292,7 @@ int main(void) {
                 e->word,
                 (int64_t)e->count,
                 str_lit(COLOR_YELLOW),
-                str_from_cstr_view(pct_buf),
+                str_from_cstr_len_view(pct_buf, pct_len),
                 str_lit(COLOR_RESET));
     }
 
