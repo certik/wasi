@@ -3,6 +3,7 @@
 #include <base/base_types.h>
 #include <base/assert.h>
 #include <base/exit.h>
+#include <base/base_io.h>
 
 // All allocations will be aligned to this boundary (must be a power of two).
 #define ARENA_ALIGNMENT 16
@@ -35,7 +36,7 @@ Arena *arena_new(size_t initial_size) {
     // Allocate the arena controller struct itself.
     Arena *arena = buddy_alloc(sizeof(Arena));
     if (!arena) {
-        abort();
+        FATAL_ERROR("buddy_alloc failed for Arena");
     }
 
     if (initial_size < MIN_CHUNK_SIZE) {
@@ -48,8 +49,8 @@ Arena *arena_new(size_t initial_size) {
     size_t total_alloc_size = sizeof(struct arena_chunk) + initial_size;
     struct arena_chunk *first = buddy_alloc(total_alloc_size);
     if (!first) {
-        buddy_free(arena);
-        abort();
+        //buddy_free(arena);
+        FATAL_ERROR("buddy_alloc failed for size");
     }
     first->next = NULL;
     first->size = total_alloc_size;
@@ -105,8 +106,7 @@ try_alloc:
     size_t total_alloc_size = sizeof(struct arena_chunk) + new_chunk_data_size;
     struct arena_chunk *new_chunk = buddy_alloc(total_alloc_size);
     if (!new_chunk) {
-        // Buddy allocation failed.
-        abort();
+        FATAL_ERROR("buddy_alloc failed");
     }
 
     new_chunk->next = NULL;

@@ -1,5 +1,6 @@
 #include <base/scratch.h>
 #include <base/wasi.h>
+#include <base/exit.h>
 
 Scratch scratch_begin_from_arena(Arena *arena) {
     return (Scratch){.arena=arena, .saved_pos=arena_get_pos(arena)};
@@ -25,8 +26,7 @@ Scratch scratch_begin_avoid_conflict(Arena *conflict) {
             return scratch_begin_from_arena(scratch_arenas[i]);
         }
     }
-    //assert(false);
-    wasi_proc_exit(1);
+    FATAL_ERROR("Cannot find conflict-free arena.");
     return (Scratch){NULL,0};
 }
 
