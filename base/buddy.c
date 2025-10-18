@@ -87,6 +87,316 @@ void buddy_init(void) {
     }
 }
 
+// Helper to append a string to a buffer (simple strcat that knows buffer size)
+static void str_append_safe(char *dest, const char *src, size_t dest_size) {
+    size_t dest_len = strlen(dest);
+    size_t src_len = strlen(src);
+    size_t space_left = dest_size - dest_len - 1; // -1 for null terminator
+
+    if (src_len > space_left) {
+        src_len = space_left;
+    }
+
+    memcpy(dest + dest_len, src, src_len);
+    dest[dest_len + src_len] = '\0';
+}
+
+void buddy_print_stats() {
+    int fd = WASI_STDOUT_FD;
+    writeln(fd, "");
+    writeln(fd, "=== Buddy Allocator Statistics ===");
+    writeln(fd, "");
+
+    // Calculate total free and allocated bytes per order
+    size_t free_counts[MAX_ORDER + 1];
+    size_t allocated_counts[MAX_ORDER + 1];
+    size_t total_free_bytes = 0;
+    size_t total_allocated_bytes = 0;
+
+    for (int o = 0; o <= MAX_ORDER; o++) {
+        free_counts[o] = 0;
+        allocated_counts[o] = 0;
+    }
+
+    // Count free blocks
+    for (int o = 0; o <= MAX_ORDER; o++) {
+        struct buddy_block *block = free_lists[o].first;
+        while (block) {
+            size_t block_size = MIN_PAGE_SIZE << o;
+            total_free_bytes += block_size;
+            free_counts[o]++;
+            block = block->next;
+        }
+    }
+
+    // Count allocated blocks by scanning all committed memory
+    uintptr_t heap_start = (uintptr_t)heap_base;
+    uintptr_t heap_end = heap_start + wasi_heap_size();
+
+    // Scan through memory looking for allocated blocks
+    // This is a heuristic scan - we check each MIN_PAGE_SIZE aligned address
+    for (uintptr_t addr = heap_start; addr < heap_end; addr += MIN_PAGE_SIZE) {
+        struct buddy_block *block = (struct buddy_block *)addr;
+        // Check if this looks like an allocated block (negative order)
+        if (block->order < 0) {
+            int order = -block->order - 1;
+            if (order >= 0 && order <= MAX_ORDER) {
+                size_t block_size = MIN_PAGE_SIZE << order;
+                // Verify the block is within bounds and properly aligned
+                if ((addr % block_size) == 0 && addr + block_size <= heap_end) {
+                    total_allocated_bytes += block_size;
+                    allocated_counts[order]++;
+                    // Skip past this allocated block
+                    addr += block_size - MIN_PAGE_SIZE; // -MIN_PAGE_SIZE because loop adds it
+                }
+            }
+        }
+    }
+
+    size_t committed_bytes = wasi_heap_size();
+
+    // Helper to print size_t value with label
+    #define PRINT_SIZE(label, value) do { \
+        char buf[32]; \
+        size_t len = uint64_to_str((value), buf); \
+        buf[len] = '\0'; \
+        write_all(fd, (ciovec_t[]){(ciovec_t){(label), strlen(label)}}, 1); \
+        write_all(fd, (ciovec_t[]){(ciovec_t){" ", 1}}, 1); \
+        write_all(fd, (ciovec_t[]){(ciovec_t){buf, len}}, 1); \
+        write_all(fd, (ciovec_t[]){(ciovec_t){"\n", 1}}, 1); \
+    } while(0)
+
+    // Helper to print floating point MiB with 2 decimal places
+    #define PRINT_MIB(label, bytes) do { \
+        double mib = (double)(bytes) / (1024.0 * 1024.0); \
+        char buf[32]; \
+        size_t len = double_to_str(mib, buf, 2); \
+        buf[len] = '\0'; \
+        write_all(fd, (ciovec_t[]){(ciovec_t){(label), strlen(label)}}, 1); \
+        write_all(fd, (ciovec_t[]){(ciovec_t){" ", 1}}, 1); \
+        write_all(fd, (ciovec_t[]){(ciovec_t){buf, len}}, 1); \
+        write_all(fd, (ciovec_t[]){(ciovec_t){"\n", 1}}, 1); \
+    } while(0)
+
+    // Print memory overview
+    writeln(fd, "Memory Overview:");
+    PRINT_SIZE("  Committed (bytes): ", committed_bytes);
+    PRINT_MIB("  Committed (MiB):   ", committed_bytes);
+    PRINT_SIZE("  Free (bytes):      ", total_free_bytes);
+    PRINT_MIB("  Free (MiB):        ", total_free_bytes);
+    PRINT_SIZE("  Allocated (bytes): ", total_allocated_bytes);
+    PRINT_MIB("  Allocated (MiB):   ", total_allocated_bytes);
+    if (committed_bytes > 0) {
+        double utilization = ((double)total_allocated_bytes * 100.0) / (double)committed_bytes;
+        char util_buf[32];
+        size_t util_len = double_to_str(utilization, util_buf, 2);
+        util_buf[util_len] = '\0';
+        write_all(fd, (ciovec_t[]){(ciovec_t){"  Utilization (%):   ", 21}}, 1);
+        write_all(fd, (ciovec_t[]){(ciovec_t){" ", 1}}, 1);
+        write_all(fd, (ciovec_t[]){(ciovec_t){util_buf, util_len}}, 1);
+        write_all(fd, (ciovec_t[]){(ciovec_t){"\n", 1}}, 1);
+    }
+    writeln(fd, "");
+
+    // Print per-order breakdown (all orders)
+    writeln(fd, "Per-Order Breakdown (all orders 0-20):");
+    writeln(fd, "  'Free' = blocks in free list, 'Allocated' = blocks given to user");
+    writeln(fd, "Order  BlockSize        Free  Allocated   FreeMiB  AllocMiB");
+    writeln(fd, "-----  --------------  -----  ---------  --------  --------");
+
+    int total_orders_with_free = 0;
+    int total_orders_with_allocated = 0;
+    for (int o = 0; o <= MAX_ORDER; o++) {
+        if (free_counts[o] > 0) total_orders_with_free++;
+        if (allocated_counts[o] > 0) total_orders_with_allocated++;
+    }
+
+    for (int o = 0; o <= MAX_ORDER; o++) {
+            size_t block_size = MIN_PAGE_SIZE << o;
+            size_t free_bytes = free_counts[o] * block_size;
+            size_t alloc_bytes = allocated_counts[o] * block_size;
+
+            // Print order (width 5, right-aligned)
+            char order_str[32];
+            size_t order_len = int_to_str(o, order_str);
+            order_str[order_len] = '\0';
+            for (int i = 0; i < 5 - order_len; i++) {
+                write_all(fd, (ciovec_t[]){(ciovec_t){" ", 1}}, 1);
+            }
+            write_all(fd, (ciovec_t[]){(ciovec_t){order_str, order_len}}, 1);
+            write_all(fd, (ciovec_t[]){(ciovec_t){"  ", 2}}, 1);
+
+            // Print block size (width 14, right-aligned)
+            char size_str[32];
+            size_t size_len = uint64_to_str(block_size, size_str);
+            size_str[size_len] = '\0';
+            for (int i = 0; i < 14 - size_len; i++) {
+                write_all(fd, (ciovec_t[]){(ciovec_t){" ", 1}}, 1);
+            }
+            write_all(fd, (ciovec_t[]){(ciovec_t){size_str, size_len}}, 1);
+            write_all(fd, (ciovec_t[]){(ciovec_t){"  ", 2}}, 1);
+
+            // Print free count (width 5, right-aligned)
+            char free_count_str[32];
+            size_t free_count_len = int_to_str(free_counts[o], free_count_str);
+            free_count_str[free_count_len] = '\0';
+            for (int i = 0; i < 5 - free_count_len; i++) {
+                write_all(fd, (ciovec_t[]){(ciovec_t){" ", 1}}, 1);
+            }
+            write_all(fd, (ciovec_t[]){(ciovec_t){free_count_str, free_count_len}}, 1);
+            write_all(fd, (ciovec_t[]){(ciovec_t){"  ", 2}}, 1);
+
+            // Print allocated count (width 9, right-aligned)
+            char alloc_count_str[32];
+            size_t alloc_count_len = int_to_str(allocated_counts[o], alloc_count_str);
+            alloc_count_str[alloc_count_len] = '\0';
+            for (int i = 0; i < 9 - alloc_count_len; i++) {
+                write_all(fd, (ciovec_t[]){(ciovec_t){" ", 1}}, 1);
+            }
+            write_all(fd, (ciovec_t[]){(ciovec_t){alloc_count_str, alloc_count_len}}, 1);
+            write_all(fd, (ciovec_t[]){(ciovec_t){"  ", 2}}, 1);
+
+            // Print free MiB (width 9, right-aligned, 2 decimal places)
+            char free_mib_str[32];
+            double free_mib = (double)free_bytes / (1024.0 * 1024.0);
+            size_t free_mib_len = double_to_str(free_mib, free_mib_str, 2);
+            free_mib_str[free_mib_len] = '\0';
+            for (int i = 0; i < 9 - free_mib_len; i++) {
+                write_all(fd, (ciovec_t[]){(ciovec_t){" ", 1}}, 1);
+            }
+            write_all(fd, (ciovec_t[]){(ciovec_t){free_mib_str, free_mib_len}}, 1);
+            write_all(fd, (ciovec_t[]){(ciovec_t){"  ", 2}}, 1);
+
+            // Print alloc MiB (width 9, right-aligned, 2 decimal places)
+            char alloc_mib_str[32];
+            double alloc_mib = (double)alloc_bytes / (1024.0 * 1024.0);
+            size_t alloc_mib_len = double_to_str(alloc_mib, alloc_mib_str, 2);
+            alloc_mib_str[alloc_mib_len] = '\0';
+            for (int i = 0; i < 9 - alloc_mib_len; i++) {
+                write_all(fd, (ciovec_t[]){(ciovec_t){" ", 1}}, 1);
+            }
+            write_all(fd, (ciovec_t[]){(ciovec_t){alloc_mib_str, alloc_mib_len}}, 1);
+
+            write_all(fd, (ciovec_t[]){(ciovec_t){"\n", 1}}, 1);
+    }
+
+    // Print summary
+    writeln(fd, "");
+    char summary1[128], summary2[128];
+    char free_orders_str[16], alloc_orders_str[16];
+    size_t free_orders_len = int_to_str(total_orders_with_free, free_orders_str);
+    free_orders_str[free_orders_len] = '\0';
+    size_t alloc_orders_len = int_to_str(total_orders_with_allocated, alloc_orders_str);
+    alloc_orders_str[alloc_orders_len] = '\0';
+
+    strcpy(summary1, "Summary: ");
+    str_append_safe(summary1, free_orders_str, sizeof(summary1));
+    str_append_safe(summary1, " orders have free blocks (buddy has memory at these sizes)", sizeof(summary1));
+    writeln(fd, summary1);
+
+    strcpy(summary2, "         ");
+    str_append_safe(summary2, alloc_orders_str, sizeof(summary2));
+    str_append_safe(summary2, " orders have allocated blocks (user is using these sizes)", sizeof(summary2));
+    writeln(fd, summary2);
+    writeln(fd, "");
+
+    // Print alignment diagnostics for large orders
+    writeln(fd, "Alignment Diagnostics:");
+    writeln(fd, "  (Buddy allocator requires blocks to be aligned to their size)");
+    uintptr_t current_top = (uintptr_t)heap_base + wasi_heap_size();
+
+    char top_str[32];
+    size_t top_len = uint64_to_str(current_top, top_str);
+    top_str[top_len] = '\0';
+    write_all(fd, (ciovec_t[]){(ciovec_t){"  Current heap top:    ", 23}}, 1);
+    write_all(fd, (ciovec_t[]){(ciovec_t){top_str, top_len}}, 1);
+    write_all(fd, (ciovec_t[]){(ciovec_t){"\n", 1}}, 1);
+
+    writeln(fd, "");
+    writeln(fd, "  Alignment status for large orders:");
+    for (int o = 9; o <= 14; o++) {
+        size_t alignment = MIN_PAGE_SIZE << o;
+        uintptr_t misalignment = current_top % alignment;
+        size_t size_mib = alignment >> 20;
+
+        char line[128];
+        char order_str[32], size_str[32], status[64];
+        size_t order_str_len = int_to_str(o, order_str);
+        order_str[order_str_len] = '\0';
+        size_t size_str_len = int_to_str(size_mib, size_str);
+        size_str[size_str_len] = '\0';
+
+        if (misalignment == 0) {
+            strcpy(status, "ALIGNED");
+        } else {
+            char mis_str[32];
+            size_t mis_str_len = uint64_to_str(misalignment, mis_str);
+            mis_str[mis_str_len] = '\0';
+            strcpy(status, "MISALIGNED by ");
+            str_append_safe(status, mis_str, sizeof(status));
+            str_append_safe(status, " bytes", sizeof(status));
+        }
+
+        strcpy(line, "    Order ");
+        str_append_safe(line, order_str, sizeof(line));
+        str_append_safe(line, " (", sizeof(line));
+        str_append_safe(line, size_str, sizeof(line));
+        str_append_safe(line, " MiB): ", sizeof(line));
+        str_append_safe(line, status, sizeof(line));
+
+        writeln(fd, line);
+    }
+    writeln(fd, "");
+
+    // Print warnings
+    writeln(fd, "DIAGNOSIS:");
+    int has_warnings = 0;
+    for (int o = 9; o <= MAX_ORDER; o++) {
+        size_t alignment = MIN_PAGE_SIZE << o;
+        uintptr_t misalignment = current_top % alignment;
+        if (misalignment != 0 && free_counts[o] == 0) {
+            if (!has_warnings) {
+                writeln(fd, "  *** ALIGNMENT BUG DETECTED ***");
+                writeln(fd, "  Cannot allocate large blocks because heap top is misaligned.");
+                writeln(fd, "  Even though memory is available, add_memory() cannot create");
+                writeln(fd, "  properly aligned blocks at these orders:");
+                writeln(fd, "");
+                has_warnings = 1;
+            }
+            char msg[128];
+            char order_str[32], size_str[32], padding_str[32];
+            size_t order_str_len = int_to_str(o, order_str);
+            order_str[order_str_len] = '\0';
+            size_t size_str_len = int_to_str((alignment >> 20), size_str);
+            size_str[size_str_len] = '\0';
+
+            // Calculate padding needed to align
+            size_t padding_needed = (alignment - misalignment) % alignment;
+            size_t padding_len = uint64_to_str(padding_needed, padding_str);
+            padding_str[padding_len] = '\0';
+
+            strcpy(msg, "    Order ");
+            str_append_safe(msg, order_str, sizeof(msg));
+            str_append_safe(msg, " (", sizeof(msg));
+            str_append_safe(msg, size_str, sizeof(msg));
+            str_append_safe(msg, " MiB): needs ", sizeof(msg));
+            str_append_safe(msg, padding_str, sizeof(msg));
+            str_append_safe(msg, " bytes padding", sizeof(msg));
+            writeln(fd, msg);
+        }
+    }
+
+    if (!has_warnings) {
+        writeln(fd, "  No alignment issues detected.");
+    }
+    writeln(fd, "");
+    writeln(fd, "=== End Statistics ===");
+    writeln(fd, "");
+
+    #undef PRINT_SIZE
+    #undef PRINT_MIB
+}
+
 static void *buddy_alloc_order(int order) {
     assert(order >= 0 && order <= MAX_ORDER);
 
@@ -104,6 +414,7 @@ static void *buddy_alloc_order(int order) {
         size_t grow_by = ((required_size + WASM_PAGE_SIZE - 1) / WASM_PAGE_SIZE) * WASM_PAGE_SIZE;
         void *new_mem = wasi_heap_grow(grow_by);
         if (!new_mem) {
+            buddy_print_stats();
             writeln_int(WASI_STDERR_FD, "order =", order);
             writeln_int(WASI_STDERR_FD, "required_size =", required_size);
             writeln_int(WASI_STDERR_FD, "grow_by =", grow_by);
