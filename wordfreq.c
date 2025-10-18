@@ -193,8 +193,6 @@ int main(void) {
     }
 
     // Now create an arena for the rest of the work
-    // TODO: bug here:
-    return 0;
     Arena *arena = arena_new(1024 * 1024); // 1MB initial
 
     println(str_lit("Reading file..."));
