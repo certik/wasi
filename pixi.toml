@@ -80,6 +80,39 @@ clang \
 
 test_base_wasm = { cmd="wasmtime --dir . arena_base.wasm", depends-on=["build_base_wasm"] }
 
+build_wordfreq_wasm = """
+clang \
+    --target=wasm32-wasi \
+    -Os \
+    -nostdlib \
+    -nostdinc \
+    -fno-builtin \
+    -I base \
+    -I stdlib \
+    -I native \
+    -I . \
+    -Wl,--no-entry \
+    -Wl,--export=__heap_base \
+    -Wl,--export=_start \
+    -Wl,--initial-memory=131072 \
+    -o wordfreq.wasm \
+    wordfreq.c \
+    base/base_io.c \
+    base/buddy.c \
+    base/arena.c \
+    base/scratch.c \
+    base/format.c \
+    base/io.c \
+    base/base_string.c \
+    base/mem.c \
+    base/numconv.c \
+    base/assert.c \
+    base/exit.c \
+    native/wasi_wasm.c
+"""
+
+test_wordfreq_wasm = { cmd="wasmtime --dir . wordfreq.wasm test_wordfreq.txt", depends-on=["build_wordfreq_wasm"] }
+
 [feature.wasm.dependencies]
 clang = ">=20.1.4,<21"
 lld = ">=20.1.4,<21"
@@ -116,6 +149,33 @@ clang \
 """
 
 test_linux = { cmd="./arena_linux", depends-on=["build_linux"] }
+
+build_wordfreq_linux = """
+clang \
+    -nostdlib \
+    -nostdinc \
+    -fno-builtin \
+    -I base \
+    -I stdlib \
+    -I native \
+    -I . \
+    -o wordfreq_linux \
+    wordfreq.c \
+    base/base_io.c \
+    base/buddy.c \
+    base/arena.c \
+    base/scratch.c \
+    base/format.c \
+    base/io.c \
+    base/base_string.c \
+    base/mem.c \
+    base/numconv.c \
+    base/assert.c \
+    base/exit.c \
+    native/wasi_linux.c
+"""
+
+test_wordfreq_linux = { cmd="./wordfreq_linux test_wordfreq.txt", depends-on=["build_wordfreq_linux"] }
 
 [feature.linux.dependencies]
 clang = ">=20.1.4,<21"
@@ -155,6 +215,36 @@ clang \
 """
 
 test_macos = { cmd="./arena_macos", depends-on=["build_macos"] }
+
+build_wordfreq_macos = """
+clang \
+    -g \
+    -nostdlib \
+    -nostdinc \
+    -fno-builtin \
+    -I base \
+    -I stdlib \
+    -I native \
+    -I . \
+    -o wordfreq_macos \
+    wordfreq.c \
+    base/base_io.c \
+    base/buddy.c \
+    base/arena.c \
+    base/scratch.c \
+    base/format.c \
+    base/io.c \
+    base/base_string.c \
+    base/mem.c \
+    base/numconv.c \
+    base/assert.c \
+    base/exit.c \
+    native/wasi_macos.c \
+    -lSystem \
+    -Wl,-e,__start
+"""
+
+test_wordfreq_macos = { cmd="./wordfreq_macos test_wordfreq.txt", depends-on=["build_wordfreq_macos"] }
 
 [feature.macos.dependencies]
 # Use the system Clang on macOS
@@ -223,6 +313,59 @@ link \
 """
 
 test_windows = { cmd="arena_windows.exe", depends-on=["build_windows"] }
+
+build_wordfreq_windows = """
+cl \
+    /nologo \
+    /X \
+    /std:c11 \
+    /Zc:preprocessor \
+    /I"base" \
+    /I"stdlib" \
+    /I"native" \
+    /I"." \
+    /GS- \
+    /Gs0 \
+    /kernel \
+    /c \
+    wordfreq.c \
+    base/base_io.c \
+    base/buddy.c \
+    base/arena.c \
+    base/scratch.c \
+    base/format.c \
+    base/io.c \
+    base/base_string.c \
+    base/mem.c \
+    base/numconv.c \
+    base/assert.c \
+    base/exit.c \
+    native/wasi_windows.c \
+    && \
+link \
+    /nologo \
+    /subsystem:console \
+    /nodefaultlib \
+    /entry:_start \
+    kernel32.lib \
+    shell32.lib \
+    wordfreq.obj \
+    base_io.obj \
+    buddy.obj \
+    arena.obj \
+    scratch.obj \
+    format.obj \
+    io.obj \
+    base_string.obj \
+    mem.obj \
+    numconv.obj \
+    exit.obj \
+    assert.obj \
+    wasi_windows.obj \
+    /out:wordfreq_windows.exe
+"""
+
+test_wordfreq_windows = { cmd="wordfreq_windows.exe test_wordfreq.txt", depends-on=["build_wordfreq_windows"] }
 
 [feature.windows.dependencies]
 # Note: MSVC is not available through conda-forge, so we rely on system installation
