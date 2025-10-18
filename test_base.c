@@ -554,6 +554,7 @@ void test_scratch(void) {
 
 
 void test_format(void) {
+    println(str_lit("")); // Test empty string / line
     println(str_lit("## Testing format..."));
     Arena* arena = arena_new(1024*10);
     double pi = 3.1415926535;
