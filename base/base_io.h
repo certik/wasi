@@ -2,6 +2,9 @@
 
 #include <base/wasi.h>
 
+// None of these functions allocate memory (no arenas), so they are safe to use
+// anywhere, including in arena / buddy allocator code, or in asserts.
+
 /**
  * @brief Writes all data from the iovecs to the specified file descriptor.
  *
@@ -14,3 +17,15 @@
  * @return 0 on success, or an error code if fd_write fails.
  */
 uint32_t write_all(int fd, ciovec_t* iovs, size_t iovs_len);
+
+// Prints a single line, appends `\n`
+void writeln(int fd, char* text);
+
+// Prints: text + ' ' + int + '\n'
+void writeln_int(int fd, char* text, int n);
+
+// Prints text with location information, appends '\n'
+void writeln_loc(int fd, const char *text, const char *file, unsigned int line, const char *function);
+
+#define array_size(a) (sizeof(a) / sizeof((a)[0]))
+#define PRINT_ERR(x) writeln_loc(WASI_STDERR_FD, (x), __FILE__, __LINE__, __func__)

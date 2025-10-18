@@ -65,10 +65,7 @@ string read_file_ok(Arena *arena, const string filename) {
     if (read_file(arena, filename, &text)) {
         return text;
     } else {
-        const char *msg = "File cannot be opened.\n";
-        ciovec_t iov = {.buf = msg, .buf_len = strlen(msg)};
-        write_all(WASI_STDOUT_FD, &iov, 1);
-        abort();
+        FATAL_ERROR("File cannot be opened.");
         return text;
     }
 }

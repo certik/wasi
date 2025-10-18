@@ -4,6 +4,7 @@
 #include <base/format.h>
 #include <base/scratch.h>
 #include <base/exit.h>
+#include <base/base_io.h>
 
 // Inline implementation of isdigit
 static inline int isdigit(int c) {
@@ -97,8 +98,7 @@ string format_explicit_varg(Arena *arena, string fmt, size_t arg_count,
             spec = (FormatSpec){.alignment = '\0', .width = -1, .precision = -1};
         }
         if (arg_index >= arg_count) {
-            // Missing argument
-            abort();
+            FATAL_ERROR("Missing argument");
         }
         ArgType type = (ArgType)va_arg(ap, int);
         string s;
@@ -234,8 +234,7 @@ string format_explicit_varg(Arena *arena, string fmt, size_t arg_count,
         p = close_brace + 1;
     }
     if (arg_index != arg_count) {
-        // Arguments do not match the format string
-        abort();
+        FATAL_ERROR("Arguments do not match the format string");
     }
 
     // Copy final result to the supplied arena
