@@ -411,13 +411,27 @@ static void *buddy_alloc_order(int order) {
     // If no block is available, grow the heap
     if (current_order > MAX_ORDER) {
         size_t required_size = MIN_PAGE_SIZE << order;
-        size_t grow_by = ((required_size + WASM_PAGE_SIZE - 1) / WASM_PAGE_SIZE) * WASM_PAGE_SIZE;
+        size_t alignment = MIN_PAGE_SIZE << order;
+
+        // Calculate current heap top and alignment padding needed
+        uintptr_t current_top = (uintptr_t)heap_base + wasi_heap_size();
+        uintptr_t aligned_top = (current_top + alignment - 1) / alignment * alignment;
+        size_t padding = aligned_top - current_top;
+
+        // Total bytes to grow: padding + required_size
+        size_t total_grow = padding + required_size;
+
+        // Round up to WASM_PAGE_SIZE boundary
+        size_t grow_by = ((total_grow + WASM_PAGE_SIZE - 1) / WASM_PAGE_SIZE) * WASM_PAGE_SIZE;
+
         void *new_mem = wasi_heap_grow(grow_by);
         if (!new_mem) {
             buddy_print_stats();
             writeln_int(WASI_STDERR_FD, "order =", order);
             writeln_int(WASI_STDERR_FD, "required_size =", required_size);
             writeln_int(WASI_STDERR_FD, "grow_by =", grow_by);
+            writeln_int(WASI_STDERR_FD, "padding =", padding);
+            writeln_int(WASI_STDERR_FD, "current_top % alignment =", current_top % alignment);
             FATAL_ERROR("wasi_heap_grow(grow_by) failed");
         }
         add_memory(new_mem, grow_by);
