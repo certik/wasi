@@ -181,7 +181,7 @@ fn points_segments(c_in: vec3f, p: vec2f, p0: vec2f, p1: vec2f, p2: vec2f, p3: v
 fn fragmentMain(@builtin(position) pos: vec4f) -> @location(0) vec4f {
     let iTime = inputs.time;
     let fragCoord = vec2f(pos.x, inputs.size.y - pos.y);
-    let iResolution = inputs.size;
+    let iResolution = inputs.size.xy;
 
     var uv = (fragCoord * 2.0 - iResolution) / iResolution.y;
     let aspect = iResolution.x / iResolution.y;
