@@ -182,6 +182,7 @@ fn fragmentMain(@builtin(position) pos: vec4f) -> @location(0) vec4f {
     let iTime = inputs.time;
     let fragCoord = vec2f(pos.x, inputs.size.y - pos.y);
     let iResolution = inputs.size.xy;
+    let iMouse = inputs.mouse;
 
     var uv = (fragCoord * 2.0 - iResolution) / iResolution.y;
     let aspect = iResolution.x / iResolution.y;
@@ -189,12 +190,20 @@ fn fragmentMain(@builtin(position) pos: vec4f) -> @location(0) vec4f {
     let scale = max(aspect, 1.0);
     uv /= scale;
 
-    // Animated Bezier control points
+    // Mouse-controlled Bezier control points
+    var mouseUV = vec2f(0.0);
+    if (iMouse.z > 0.0) {
+        let mouseCoord = vec2f(iMouse.x, iResolution.y - iMouse.y);
+        mouseUV = (mouseCoord * 2.0 - iResolution) / iResolution.y;
+        mouseUV.x *= aspect;
+        mouseUV /= scale;
+    }
+
     let t = iTime * 0.5;
-    let p0 = vec2f(-1.0, -0.3 + 0.2 * sin(t));
-    let p1 = vec2f(-0.3, 0.7 + 0.2 * cos(t * 1.3));
-    let p2 = vec2f(0.3, 0.7 + 0.2 * sin(t * 1.7));
-    let p3 = vec2f(1.0, -0.3 + 0.2 * cos(t * 0.9));
+    let p0 = vec2f(-1.0, -0.3);
+    let p1 = select(vec2f(-0.3, 0.7), mouseUV, iMouse.z > 0.0);
+    let p2 = select(vec2f(0.3, 0.7), mouseUV * 0.8, iMouse.z > 0.0 && iMouse.w > 0.0);
+    let p3 = vec2f(1.0, -0.3);
 
     let d = bezier(uv, p0, p1, p2, p3);
     var o = df_debug(d);
