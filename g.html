@@ -112,10 +112,10 @@
             new Float32Array(vertexBuffer.getMappedRange()).set(vertices);
             vertexBuffer.unmap();
 
-            // Uniform buffer
+            // Uniform buffer (80 bytes to match WGSL alignment requirements)
             const uniformBuffer = device.createBuffer({
                 label: 'uniform buffer',
-                size: 14 * 4, // 14 f32
+                size: 80, // Aligned size for uniform buffer
                 usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
             });
 
@@ -407,13 +407,19 @@
             function render() {
                 updateCamera();
 
+                // Pack data with proper alignment for WGSL uniforms
+                // viewWidth, viewHeight, padding (vec3 needs 16-byte alignment),
+                // cameraPos (vec3), padding after vec3,
+                // then remaining floats
                 const data = new Float32Array([
                     canvas.width, canvas.height,
+                    0.0, 0.0, // padding for vec3 alignment
                     cameraPos.x, cameraPos.y, cameraPos.z,
+                    0.0, // padding after vec3
                     yaw, pitch, fov,
                     performance.now() / 1000,
                     mapWidth, mapHeight, wallHeight,
-                    0.0, 0.0
+                    0.0 // final padding
                 ]);
                 device.queue.writeBuffer(uniformBuffer, 0, data);
 
