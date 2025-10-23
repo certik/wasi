@@ -428,14 +428,23 @@
             function updateCamera() {
                 const cy = Math.cos(yaw);
                 const sy = Math.sin(yaw);
+                const cp = Math.cos(pitch);
+                const sp = Math.sin(pitch);
+
+                // Forward direction includes pitch
+                const forwardX = cy * cp;
+                const forwardY = sp;
+                const forwardZ = sy * cp;
 
                 if (keys['w']) {
-                    cameraPos[0] += cy * moveSpeed;
-                    cameraPos[2] += sy * moveSpeed;
+                    cameraPos[0] += forwardX * moveSpeed;
+                    cameraPos[1] += forwardY * moveSpeed;
+                    cameraPos[2] += forwardZ * moveSpeed;
                 }
                 if (keys['s']) {
-                    cameraPos[0] -= cy * moveSpeed;
-                    cameraPos[2] -= sy * moveSpeed;
+                    cameraPos[0] -= forwardX * moveSpeed;
+                    cameraPos[1] -= forwardY * moveSpeed;
+                    cameraPos[2] -= forwardZ * moveSpeed;
                 }
                 if (keys['a']) {
                     cameraPos[0] += sy * moveSpeed;
