@@ -219,20 +219,20 @@
                     // Calculate distance from camera for fog
                     let viewDist = sqrt(viewX * viewX + viewY * viewY + viewZ * viewZ);
 
-                    // Perspective divide
+                    // Perspective projection
                     let aspect = u.viewWidth / u.viewHeight;
                     let f = tan(u.fov * 0.5);
+                    let near = 0.01;
+                    let far = 100.0;
 
-                    if (viewZ > 0.01) {
-                        let clipX = (viewX / viewZ) / (f * aspect);
-                        let clipY = (viewY / viewZ) / f;
-                        let clipZ = (viewZ - 0.01) / (100.0 - 0.01);
-                        output.clipPos = vec4<f32>(clipX, clipY, clipZ, 1.0);
-                    } else {
-                        // Behind camera - clip it
-                        output.clipPos = vec4<f32>(0.0, 0.0, -1.0, 1.0);
-                    }
+                    // Output clip-space coordinates (before perspective divide)
+                    // Let GPU handle perspective divide by setting w = viewZ
+                    let clipX = viewX / (f * aspect);
+                    let clipY = viewY / f;
+                    let clipZ = ((far + near) * viewZ - 2.0 * far * near) / (far - near);
+                    let clipW = viewZ;
 
+                    output.clipPos = vec4<f32>(clipX, clipY, clipZ, clipW);
                     output.worldPos = position;
                     output.surfaceType = surfaceType;
                     output.viewDist = viewDist;
