@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WebGPU Simple Test</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <script type="module">
+        // Test with single colored triangle to verify basic setup
+        async function init() {
+            const canvas = document.getElementById('canvas');
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            const adapter = await navigator.gpu.requestAdapter();
+            const device = await adapter.requestDevice();
+
+            // Catch WebGPU errors
+            device.addEventListener('uncapturederror', (event) => {
+                console.error('WebGPU uncaptured error:', event.error);
+            });
+            const context = canvas.getContext('webgpu');
+            const format = navigator.gpu.getPreferredCanvasFormat();
+            context.configure({ device, format });
+
+            // Simple floor quad using indices - smaller, centered at origin
+            const positions = new Float32Array([
+                // 4 vertices for a quad (2x2 square)
+                -1, 0, -1,    // v0: bottom-left
+                1, 0, -1,     // v1: bottom-right
+                -1, 0, 1,     // v2: top-left
+                1, 0, 1       // v3: top-right
+            ]);
+
+            const uvs = new Float32Array([
+                0, 0,       // v0
+                1, 0,       // v1
+                0, 1,       // v2
+                1, 1        // v3
+            ]);
+
+            const indices = new Uint16Array([
+                0, 1, 2,    // First triangle
+                1, 3, 2     // Second triangle
+            ]);
+
+            const positionBuffer = device.createBuffer({
+                size: positions.byteLength,
+                usage: GPUBufferUsage.VERTEX,
+                mappedAtCreation: true
+            });
+            new Float32Array(positionBuffer.getMappedRange()).set(positions);
+            positionBuffer.unmap();
+
+            const uvBuffer = device.createBuffer({
+                size: uvs.byteLength,
+                usage: GPUBufferUsage.VERTEX,
+                mappedAtCreation: true
+            });
+            new Float32Array(uvBuffer.getMappedRange()).set(uvs);
+            uvBuffer.unmap();
+
+            const indexBuffer = device.createBuffer({
+                size: indices.byteLength,
+                usage: GPUBufferUsage.INDEX,
+                mappedAtCreation: true
+            });
+            new Uint16Array(indexBuffer.getMappedRange()).set(indices);
+            indexBuffer.unmap();
+
+            // Uniform buffer - use individual floats to avoid vec/matrix alignment issues
+            // Layout: cameraPosX, cameraPosY, cameraPosZ, yaw, pitch, fov, viewWidth, viewHeight
+            const uniformBuffer = device.createBuffer({
+                size: 32, // 8 floats * 4 bytes
+                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+            });
+
+            console.log('Uniform buffer created with individual floats (no vectors/matrices)');
+
+            const vsSource = `
+                struct Uniforms {
+                    cameraPosX: f32,
+                    cameraPosY: f32,
+                    cameraPosZ: f32,
+                    yaw: f32,
+                    pitch: f32,
+                    fov: f32,
+                    viewWidth: f32,
+                    viewHeight: f32,
+                };
+                @group(0) @binding(0) var<uniform> u: Uniforms;
+
+                struct VertexOutput {
+                    @builtin(position) clipPos: vec4<f32>,
+                    @location(0) uv: vec2<f32>,
+                };
+
+                @vertex fn vs_main(
+                    @location(0) position: vec3<f32>,
+                    @location(1) uv: vec2<f32>
+                ) -> VertexOutput {
+                    var output: VertexOutput;
+
+                    // Transform to camera space
+                    let cy = cos(u.yaw);
+                    let sy = sin(u.yaw);
+                    let cp = cos(u.pitch);
+                    let sp = sin(u.pitch);
+
+                    // Position relative to camera
+                    let dx = position.x - u.cameraPosX;
+                    let dy = position.y - u.cameraPosY;
+                    let dz = position.z - u.cameraPosZ;
+
+                    // Rotate by yaw (around Y axis)
+                    let rotX = dx * cy - dz * sy;
+                    let rotZ = dx * sy + dz * cy;
+
+                    // Rotate by pitch (around X axis)
+                    let viewX = rotX;
+                    let viewY = dy * cp - rotZ * sp;
+                    let viewZ = dy * sp + rotZ * cp;
+
+                    // Perspective divide
+                    let aspect = u.viewWidth / u.viewHeight;
+                    let f = tan(u.fov * 0.5);
+
+                    if (viewZ > 0.1) {
+                        let clipX = (viewX / viewZ) / (f * aspect);
+                        let clipY = (viewY / viewZ) / f;
+                        let clipZ = (viewZ - 0.1) / (100.0 - 0.1);
+                        output.clipPos = vec4<f32>(clipX, clipY, clipZ, 1.0);
+                    } else {
+                        // Behind camera
+                        output.clipPos = vec4<f32>(0.0, 0.0, -1.0, 1.0);
+                    }
+
+                    output.uv = uv;
+                    return output;
+                }
+            `;
+
+            const fsSource = `
+                struct VertexOutput {
+                    @builtin(position) clipPos: vec4<f32>,
+                    @location(0) uv: vec2<f32>,
+                };
+
+                @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+                    // Checkerboard pattern
+                    let checkerU = floor(in.uv.x * 4.0);
+                    let checkerV = floor(in.uv.y * 4.0);
+                    let checker = (i32(checkerU) + i32(checkerV)) & 1;
+                    let checkerFactor = select(0.7, 1.0, checker == 0);
+
+                    // Blue floor with checkerboard
+                    let baseColor = vec4<f32>(0.0, 0.0, 1.0, 1.0);
+                    return baseColor * checkerFactor;
+                }
+            `;
+
+            const bindGroupLayout = device.createBindGroupLayout({
+                entries: [{
+                    binding: 0,
+                    visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+                    buffer: { type: 'uniform' }
+                }]
+            });
+
+            const pipelineLayout = device.createPipelineLayout({
+                bindGroupLayouts: [bindGroupLayout]
+            });
+
+            const vsModule = device.createShaderModule({ code: vsSource });
+            const fsModule = device.createShaderModule({ code: fsSource });
+
+            // Check for compilation errors
+            vsModule.getCompilationInfo().then(info => {
+                if (info.messages.length > 0) {
+                    console.log('Vertex shader compilation info:', info.messages);
+                }
+            });
+            fsModule.getCompilationInfo().then(info => {
+                if (info.messages.length > 0) {
+                    console.log('Fragment shader compilation info:', info.messages);
+                }
+            });
+
+            const pipeline = device.createRenderPipeline({
+                layout: pipelineLayout,
+                vertex: {
+                    module: vsModule,
+                    entryPoint: 'vs_main',
+                    buffers: [
+                        {
+                            arrayStride: 12,
+                            attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' }]
+                        },
+                        {
+                            arrayStride: 8,
+                            attributes: [{ shaderLocation: 1, offset: 0, format: 'float32x2' }]
+                        }
+                    ]
+                },
+                fragment: {
+                    module: fsModule,
+                    entryPoint: 'fs_main',
+                    targets: [{ format }]
+                },
+                primitive: { topology: 'triangle-list', cullMode: 'none' }
+            });
+
+            console.log('Pipeline created with explicit layout');
+
+            const depthTexture = device.createTexture({
+                size: [canvas.width, canvas.height],
+                format: 'depth24plus',
+                usage: GPUTextureUsage.RENDER_ATTACHMENT
+            });
+
+            // Create bind group AFTER buffer is initialized
+            const bindGroup = device.createBindGroup({
+                layout: bindGroupLayout,
+                entries: [{ binding: 0, resource: { buffer: uniformBuffer } }]
+            });
+            console.log('Bind group created after buffer init');
+
+            console.log('Positions:', positions);
+            console.log('Indices:', indices);
+            console.log('UVs:', uvs);
+
+            // Camera setup - looking straight down at the floor
+            let yaw = 0;
+            let pitch = -Math.PI / 2 + 0.1; // Almost straight down
+            const cameraPos = [0, 3, 0]; // 3 units above the 2x2 floor
+
+            function perspective(fov, aspect, near, far) {
+                const f = 1.0 / Math.tan(fov / 2);
+                const nf = 1 / (near - far);
+                // Column-major for WGSL
+                return new Float32Array([
+                    f / aspect, 0, 0, 0,           // column 0
+                    0, f, 0, 0,                     // column 1
+                    0, 0, (far + near) * nf, (2 * far * near) * nf,  // column 2
+                    0, 0, -1, 0                     // column 3
+                ]);
+            }
+
+            function lookAt(eye, target, up) {
+                const zAxis = normalize([eye[0] - target[0], eye[1] - target[1], eye[2] - target[2]]);
+                const xAxis = normalize(cross(up, zAxis));
+                const yAxis = cross(zAxis, xAxis);
+                // Column-major for WGSL
+                return new Float32Array([
+                    xAxis[0], xAxis[1], xAxis[2], 0,  // column 0
+                    yAxis[0], yAxis[1], yAxis[2], 0,  // column 1
+                    zAxis[0], zAxis[1], zAxis[2], 0,  // column 2
+                    -dot(xAxis, eye), -dot(yAxis, eye), -dot(zAxis, eye), 1  // column 3
+                ]);
+            }
+
+            function normalize(v) {
+                const len = Math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+                return [v[0]/len, v[1]/len, v[2]/len];
+            }
+
+            function cross(a, b) {
+                return [a[1]*b[2] - a[2]*b[1], a[2]*b[0] - a[0]*b[2], a[0]*b[1] - a[1]*b[0]];
+            }
+
+            function dot(a, b) {
+                return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+            }
+
+            function multiply(a, b) {
+                // Column-major matrix multiplication for WGSL
+                const result = new Float32Array(16);
+                for (let col = 0; col < 4; col++) {
+                    for (let row = 0; row < 4; row++) {
+                        let sum = 0;
+                        for (let k = 0; k < 4; k++) {
+                            sum += a[k * 4 + row] * b[col * 4 + k];
+                        }
+                        result[col * 4 + row] = sum;
+                    }
+                }
+                return result;
+            }
+
+            let frameCount = 0;
+            function render() {
+                // Update uniforms
+                const data = new Float32Array(8);
+                data[0] = cameraPos[0];
+                data[1] = cameraPos[1];
+                data[2] = cameraPos[2];
+                data[3] = yaw;
+                data[4] = pitch;
+                data[5] = Math.PI / 3; // fov
+                data[6] = canvas.width;
+                data[7] = canvas.height;
+
+                device.queue.writeBuffer(uniformBuffer, 0, data);
+
+                if (frameCount < 1) {
+                    console.log('Camera:', cameraPos, 'yaw:', yaw.toFixed(2), 'pitch:', pitch.toFixed(2));
+                    console.log('Floor is at y=0, camera at y=5, looking down');
+                }
+
+                const encoder = device.createCommandEncoder();
+                const pass = encoder.beginRenderPass({
+                    colorAttachments: [{
+                        view: context.getCurrentTexture().createView(),
+                        clearValue: { r: 0.5, g: 0.7, b: 1.0, a: 1.0 },
+                        loadOp: 'clear',
+                        storeOp: 'store'
+                    }]
+                });
+
+                pass.setPipeline(pipeline);
+                pass.setBindGroup(0, bindGroup);
+                if (frameCount === 0) {
+                    console.log('Bind group set in render pass');
+                }
+                pass.setVertexBuffer(0, positionBuffer);
+                pass.setVertexBuffer(1, uvBuffer);
+                pass.setIndexBuffer(indexBuffer, 'uint16');
+                pass.drawIndexed(6); // 6 indices = 2 triangles
+                pass.end();
+
+                if (frameCount < 2) {
+                    console.log('Frame', frameCount, 'drawing 6 indices');
+                }
+
+                device.queue.submit([encoder.finish()]);
+
+                frameCount++;
+                requestAnimationFrame(render);
+            }
+
+            render();
+        }
+
+        init();
+    </script>
+</body>
+</html>
