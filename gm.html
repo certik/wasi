@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WebGPU 3D World from 2D Map (Mesh-Based)</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; position: absolute; }
+        #textCanvas { pointer-events: none; z-index: 1; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <canvas id="textCanvas"></canvas>
+    <script type="module">
+        // Math utilities for matrices
+        function mat4() {
+            return new Float32Array(16).fill(0).map((_, i) => i % 5 === 0 ? 1 : 0);
+        }
+
+        function perspective(fov, aspect, near, far) {
+            const f = 1.0 / Math.tan(fov / 2);
+            const nf = 1 / (near - far);
+            const m = mat4();
+            m[0] = f / aspect;
+            m[5] = f;
+            m[10] = (far + near) * nf;
+            m[11] = -1;
+            m[14] = (2 * far * near) * nf;
+            return m;
+        }
+
+        function lookAt(eye, target, up) {
+            const z = normalize(sub(eye, target));
+            const x = normalize(cross(up, z));
+            const y = cross(z, x);
+            const m = mat4();
+            m[0] = x[0]; m[1] = y[0]; m[2] = z[0];
+            m[4] = x[1]; m[5] = y[1]; m[6] = z[1];
+            m[8] = x[2]; m[9] = y[2]; m[10] = z[2];
+            m[12] = -dot(x, eye); m[13] = -dot(y, eye); m[14] = -dot(z, eye);
+            return m;
+        }
+
+        function multiply(a, b) {
+            const c = mat4();
+            for (let i = 0; i < 4; i++) {
+                for (let j = 0; j < 4; j++) {
+                    for (let k = 0; k < 4; k++) {
+                        c[i * 4 + j] += a[i * 4 + k] * b[k * 4 + j];
+                    }
+                }
+            }
+            return c;
+        }
+
+        function vec3(x, y, z) { return new Float32Array([x, y, z]); }
+        function sub(a, b) { return vec3(a[0] - b[0], a[1] - b[1], a[2] - b[2]); }
+        function cross(a, b) {
+            return vec3(
+                a[1] * b[2] - a[2] * b[1],
+                a[2] * b[0] - a[0] * b[2],
+                a[0] * b[1] - a[1] * b[0]
+            );
+        }
+        function dot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+        function normalize(v) {
+            const len = Math.sqrt(dot(v, v));
+            return len > 0 ? vec3(v[0] / len, v[1] / len, v[2] / len) : v;
+        }
+
+        async function init() {
+            const canvas = document.getElementById('canvas');
+            const textCanvas = document.getElementById('textCanvas');
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            textCanvas.width = window.innerWidth;
+            textCanvas.height = window.innerHeight;
+
+            const textCtx = textCanvas.getContext('2d');
+
+            if (!navigator.gpu) {
+                alert('WebGPU not supported.');
+                return;
+            }
+
+            const adapter = await navigator.gpu.requestAdapter();
+            const device = await adapter.requestDevice();
+            const context = canvas.getContext('webgpu');
+            const format = navigator.gpu.getPreferredCanvasFormat();
+            context.configure({ device, format });
+
+            // Map definition (1 = wall, 0 = floor, 5-8 = starting position with direction)
+            const mapWidth = 10;
+            const mapHeight = 10;
+            const map = [
+                [1,1,1,1,1,1,1,1,1,1],
+                [1,6,0,0,0,0,0,0,0,1],
+                [1,0,1,0,1,0,1,0,0,1],
+                [1,0,1,0,0,0,0,1,0,1],
+                [1,0,1,0,1,0,0,0,0,1],
+                [1,0,1,1,0,0,1,0,0,1],
+                [1,0,0,0,0,1,0,0,1,1],
+                [1,0,1,0,0,0,0,0,0,1],
+                [1,0,0,0,1,0,0,1,0,1],
+                [1,1,1,1,1,1,1,1,1,1]
+            ];
+
+            // Find starting position and direction
+            let startX = 1.5, startZ = 1.5, startYaw = 0;
+            for (let z = 0; z < mapHeight; z++) {
+                for (let x = 0; x < mapWidth; x++) {
+                    const cell = map[z][x];
+                    if (cell >= 5 && cell <= 8) {
+                        startX = x + 0.5;
+                        startZ = z + 0.5;
+                        if (cell === 5) startYaw = -Math.PI / 2;    // North
+                        else if (cell === 6) startYaw = 0;          // East
+                        else if (cell === 7) startYaw = Math.PI / 2; // South
+                        else if (cell === 8) startYaw = Math.PI;    // West
+                        map[z][x] = 0; // Clear the marker
+                        console.log(`Starting at (${startX}, ${startZ}) facing ${cell===5?'North':cell===6?'East':cell===7?'South':'West'} with yaw=${startYaw}`);
+                    }
+                }
+            }
+
+            const wallHeight = 2.0;
+            const checkerSize = 4.0; // For 4x4 checker per unit
+
+            // Generate meshes
+            const positions = [];
+            const uvs = [];
+            const indices = [];
+            let indexOffset = 0;
+
+            // Floor: one big quad
+            const floorPositions = [
+                -0.5, 0, -0.5,  mapWidth - 0.5, 0, -0.5,
+                -0.5, 0, mapHeight - 0.5,  mapWidth - 0.5, 0, mapHeight - 0.5
+            ];
+            const floorUVs = [
+                0, 0,  mapWidth * checkerSize, 0,
+                0, mapHeight * checkerSize,  mapWidth * checkerSize, mapHeight * checkerSize
+            ];
+            positions.push(...floorPositions);
+            uvs.push(...floorUVs);
+            indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
+            indexOffset += 4;
+
+            // Ceiling: similar but at wallHeight
+            const ceilingPositions = [
+                -0.5, wallHeight, -0.5,  mapWidth - 0.5, wallHeight, -0.5,
+                -0.5, wallHeight, mapHeight - 0.5,  mapWidth - 0.5, wallHeight, mapHeight - 0.5
+            ];
+            const ceilingUVs = floorUVs; // Same tiling
+            positions.push(...ceilingPositions);
+            uvs.push(...ceilingUVs);
+            indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
+            indexOffset += 4;
+
+            // Walls: generate quads for each boundary
+            for (let z = 0; z < mapHeight; z++) {
+                for (let x = 0; x < mapWidth; x++) {
+                    if (map[z][x] === 1) {
+                        // Check four directions for exposed faces
+                        // North face (negative Z)
+                        if (z === 0 || map[z - 1][x] === 0) {
+                            const wallPositions = [
+                                x - 0.5, 0, z - 0.5,  x + 0.5, 0, z - 0.5,
+                                x - 0.5, wallHeight, z - 0.5,  x + 0.5, wallHeight, z - 0.5
+                            ];
+                            const wallUVs = [
+                                0, 0,  1, 0,
+                                0, wallHeight * checkerSize,  1, wallHeight * checkerSize
+                            ];
+                            positions.push(...wallPositions);
+                            uvs.push(...wallUVs);
+                            indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
+                            indexOffset += 4;
+                        }
+                        // South face (positive Z)
+                        if (z === mapHeight - 1 || map[z + 1][x] === 0) {
+                            const wallPositions = [
+                                x - 0.5, 0, z + 0.5,  x + 0.5, 0, z + 0.5,
+                                x - 0.5, wallHeight, z + 0.5,  x + 0.5, wallHeight, z + 0.5
+                            ];
+                            const wallUVs = [
+                                0, 0,  1, 0,
+                                0, wallHeight * checkerSize,  1, wallHeight * checkerSize
+                            ];
+                            positions.push(...wallPositions);
+                            uvs.push(...wallUVs);
+                            indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
+                            indexOffset += 4;
+                        }
+                        // West face (negative X)
+                        if (x === 0 || map[z][x - 1] === 0) {
+                            const wallPositions = [
+                                x - 0.5, 0, z - 0.5,  x - 0.5, 0, z + 0.5,
+                                x - 0.5, wallHeight, z - 0.5,  x - 0.5, wallHeight, z + 0.5
+                            ];
+                            const wallUVs = [
+                                0, 0,  0, 1,
+                                wallHeight * checkerSize, 0,  wallHeight * checkerSize, 1
+                            ];
+                            positions.push(...wallPositions);
+                            uvs.push(...wallUVs);
+                            indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
+                            indexOffset += 4;
+                        }
+                        // East face (positive X)
+                        if (x === mapWidth - 1 || map[z][x + 1] === 0) {
+                            const wallPositions = [
+                                x + 0.5, 0, z - 0.5,  x + 0.5, 0, z + 0.5,
+                                x + 0.5, wallHeight, z - 0.5,  x + 0.5, wallHeight, z + 0.5
+                            ];
+                            const wallUVs = [
+                                0, 0,  0, 1,
+                                wallHeight * checkerSize, 0,  wallHeight * checkerSize, 1
+                            ];
+                            positions.push(...wallPositions);
+                            uvs.push(...wallUVs);
+                            indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
+                            indexOffset += 4;
+                        }
+                    }
+                }
+            }
+
+            // Buffers
+            const positionBuffer = device.createBuffer({
+                size: positions.length * 4,
+                usage: GPUBufferUsage.VERTEX,
+                mappedAtCreation: true
+            });
+            new Float32Array(positionBuffer.getMappedRange()).set(positions);
+            positionBuffer.unmap();
+
+            const uvBuffer = device.createBuffer({
+                size: uvs.length * 4,
+                usage: GPUBufferUsage.VERTEX,
+                mappedAtCreation: true
+            });
+            new Float32Array(uvBuffer.getMappedRange()).set(uvs);
+            uvBuffer.unmap();
+
+            const indexBuffer = device.createBuffer({
+                size: indices.length * 2,
+                usage: GPUBufferUsage.INDEX,
+                mappedAtCreation: true
+            });
+            new Uint16Array(indexBuffer.getMappedRange()).set(indices);
+            indexBuffer.unmap();
+
+            // Uniform buffer for matrices and camera
+            const uniformBuffer = device.createBuffer({
+                size: 80, // viewProj (64) + cameraPos (12) + padding (4)
+                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+            });
+
+            // Shaders
+            const vsSource = `
+                struct Uniforms {
+                    viewProj: mat4x4<f32>,
+                    cameraPos: vec3<f32>,
+                    padding: f32,
+                };
+                @group(0) @binding(0) var<uniform> u: Uniforms;
+                struct VertexInput {
+                    @location(0) position: vec3<f32>,
+                    @location(1) uv: vec2<f32>,
+                };
+                struct VertexOutput {
+                    @builtin(position) clipPos: vec4<f32>,
+                    @location(0) worldPos: vec3<f32>,
+                    @location(1) uv: vec2<f32>,
+                    @location(2) isWall: f32,
+                };
+                @vertex fn vs_main(in: VertexInput) -> VertexOutput {
+                    var out: VertexOutput;
+                    out.clipPos = u.viewProj * vec4<f32>(in.position, 1.0);
+                    out.worldPos = in.position;
+                    out.uv = in.uv;
+                    out.isWall = 0.0; // Set per instance or uniform; here assume all walls for simplicity, detect by y
+                    return out;
+                }
+            `;
+
+            const fsSource = `
+                struct Uniforms {
+                    viewProj: mat4x4<f32>,
+                    cameraPos: vec3<f32>,
+                    padding: f32,
+                };
+                @group(0) @binding(0) var<uniform> u: Uniforms;
+                @group(0) @binding(1) var s: sampler;
+
+                struct VertexOutput {
+                    @builtin(position) clipPos: vec4<f32>,
+                    @location(0) worldPos: vec3<f32>,
+                    @location(1) uv: vec2<f32>,
+                    @location(2) isWall: f32,
+                };
+
+                @fragment fn fs_main(in: VertexOutput, @builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
+                    let dist = length(in.worldPos - u.cameraPos);
+                    let isWall = in.worldPos.y > 0.01 && in.worldPos.y < 1.99; // Detect wall vs floor/ceiling
+                    let isFloor = in.worldPos.y < 0.01;
+                    let isCeiling = in.worldPos.y > 1.99;
+
+                    var baseColor: vec4<f32>;
+                    if (isWall) {
+                        baseColor = vec4<f32>(1.0, 0.0, 0.0, 1.0); // Red
+                    } else if (isFloor) {
+                        baseColor = vec4<f32>(0.0, 0.0, 1.0, 1.0); // Blue
+                    } else {
+                        baseColor = vec4<f32>(1.0, 1.0, 0.0, 1.0); // Yellow
+                    }
+
+                    // Checkerboard
+                    let checkerU = floor(in.uv.x);
+                    let checkerV = floor(in.uv.y);
+                    let checker = (i32(checkerU) + i32(checkerV)) & 1;
+                    let checkerFactor = select(0.7, 1.0, checker == 0);
+                    var color = baseColor * checkerFactor;
+
+                    // Fog
+                    let factor = exp2(-dist * 0.05);
+                    color.r *= factor;
+                    color.g *= factor;
+                    color.b *= factor;
+
+                    // Crosshair (fullscreen logic)
+                    let aspect = 1920.0 / 1080.0; // Assume 1080p; adjust if needed
+                    let centerX = 960.0;
+                    let centerY = 540.0;
+                    let crosshairSize = 10.0;
+                    let crosshairThickness = 2.0;
+                    let dx = abs(fragCoord.x - centerX);
+                    let dy = abs(fragCoord.y - centerY);
+
+                    if ((dx < crosshairThickness && dy < crosshairSize) ||
+                        (dy < crosshairThickness && dx < crosshairSize)) {
+                        if (dx < 1.0 || dy < 1.0) {
+                            color = vec4<f32>(1.0, 1.0, 1.0, 1.0);
+                        } else {
+                            color = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+                        }
+                    }
+
+                    if (dist > 100.0) {
+                        discard; // Or return sky, but for meshes, skybox separate if needed
+                    }
+
+                    return color;
+                }
+            `;
+
+            const vsModule = device.createShaderModule({ code: vsSource });
+            const fsModule = device.createShaderModule({ code: fsSource });
+
+            const bindGroupLayout = device.createBindGroupLayout({
+                entries: [
+                    { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+                    { binding: 1, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
+                ]
+            });
+
+            const pipeline = device.createRenderPipeline({
+                layout: device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }),
+                vertex: {
+                    module: vsModule,
+                    entryPoint: 'vs_main',
+                    buffers: [
+                        {
+                            arrayStride: 12, // vec3<f32>
+                            attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' }]
+                        },
+                        {
+                            arrayStride: 8, // vec2<f32>
+                            attributes: [{ shaderLocation: 1, offset: 0, format: 'float32x2' }]
+                        }
+                    ]
+                },
+                fragment: {
+                    module: fsModule,
+                    entryPoint: 'fs_main',
+                    targets: [{ format }]
+                },
+                primitive: {
+                    topology: 'triangle-list'
+                },
+                depthStencil: {
+                    depthWriteEnabled: true,
+                    depthCompare: 'less',
+                    format: 'depth24plus'
+                }
+            });
+
+            const sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
+            const bindGroup = device.createBindGroup({
+                layout: bindGroupLayout,
+                entries: [
+                    { binding: 0, resource: { buffer: uniformBuffer } },
+                    { binding: 1, resource: sampler }
+                ]
+            });
+
+            // Depth texture
+            const depthTexture = device.createTexture({
+                size: [canvas.width, canvas.height, 1],
+                format: 'depth24plus',
+                usage: GPUTextureUsage.RENDER_ATTACHMENT
+            });
+
+            // Camera and controls
+            let cameraPos = { x: startX, y: 1.0, z: startZ };
+            let yaw = startYaw;
+            let pitch = 0.0;
+            const fov = Math.PI / 3;
+            const moveSpeed = 0.1;
+            const keys = {};
+            let mapArray = map;
+
+            document.addEventListener('keydown', (e) => { keys[e.key.toLowerCase()] = true; });
+            document.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
+
+            canvas.addEventListener('click', () => canvas.requestPointerLock());
+            document.addEventListener('pointerlockchange', () => {
+                if (document.pointerLockElement === canvas) {
+                    document.addEventListener('mousemove', onMouseMove);
+                } else {
+                    document.removeEventListener('mousemove', onMouseMove);
+                }
+            });
+
+            function onMouseMove(e) {
+                yaw += e.movementX * 0.002;
+                pitch -= e.movementY * 0.002;
+                pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, pitch));
+            }
+
+            function updateCamera() {
+                let dx = 0;
+                let dz = 0;
+                const cosYaw = Math.cos(yaw);
+                const sinYaw = Math.sin(yaw);
+                if (keys['w']) {
+                    dx += cosYaw * moveSpeed;
+                    dz += sinYaw * moveSpeed;
+                }
+                if (keys['s']) {
+                    dx -= cosYaw * moveSpeed;
+                    dz -= sinYaw * moveSpeed;
+                }
+                if (keys['a']) {
+                    dx += sinYaw * moveSpeed;
+                    dz -= cosYaw * moveSpeed;
+                }
+                if (keys['d']) {
+                    dx -= sinYaw * moveSpeed;
+                    dz += cosYaw * moveSpeed;
+                }
+
+                const newX = cameraPos.x + dx;
+                const newZ = cameraPos.z + dz;
+                const mapX = Math.floor(newX);
+                const mapZ = Math.floor(newZ);
+                if (mapX >= 0 && mapX < mapWidth && mapZ >= 0 && mapZ < mapHeight && mapArray[mapZ][mapX] === 0) {
+                    cameraPos.x = newX;
+                    cameraPos.z = newZ;
+                }
+            }
+
+            // Render loop
+            let frameCount = 0;
+            let lastFrameTime = performance.now();
+            let fps = 0;
+            let fpsUpdateTime = performance.now();
+            let fpsFrameCount = 0;
+
+            function render() {
+                updateCamera();
+
+                // FPS calc
+                const currentTime = performance.now();
+                fpsFrameCount++;
+                if (currentTime - fpsUpdateTime >= 500) {
+                    fps = Math.round(fpsFrameCount * 1000 / (currentTime - fpsUpdateTime));
+                    fpsFrameCount = 0;
+                    fpsUpdateTime = currentTime;
+                }
+
+                // Matrices
+                const aspect = canvas.width / canvas.height;
+                const proj = perspective(fov, aspect, 0.1, 100.0);
+                const target = vec3(
+                    cameraPos.x + Math.cos(yaw) * Math.cos(pitch),
+                    cameraPos.y + Math.sin(pitch),
+                    cameraPos.z + Math.sin(yaw) * Math.cos(pitch)
+                );
+                const up = vec3(0, 1, 0); // Adjust if pitch extreme
+                const view = lookAt(vec3(cameraPos.x, cameraPos.y, cameraPos.z), target, up);
+                const viewProj = multiply(proj, view);
+
+                const data = new Float32Array(20); // 80 bytes
+                data.set(viewProj); // 0-15
+                data[16] = cameraPos.x;
+                data[17] = cameraPos.y;
+                data[18] = cameraPos.z;
+                // 19 padding
+
+                device.queue.writeBuffer(uniformBuffer, 0, data);
+
+                const commandEncoder = device.createCommandEncoder();
+                const textureView = context.getCurrentTexture().createView();
+
+                const renderPass = commandEncoder.beginRenderPass({
+                    colorAttachments: [{
+                        view: textureView,
+                        clearValue: { r: 0.5, g: 0.7, b: 1.0, a: 1.0 }, // Sky blue clear
+                        loadOp: 'clear',
+                        storeOp: 'store',
+                    }],
+                    depthStencilAttachment: {
+                        view: depthTexture.createView(),
+                        depthClearValue: 1.0,
+                        depthLoadOp: 'clear',
+                        depthStoreOp: 'store'
+                    }
+                });
+
+                renderPass.setPipeline(pipeline);
+                renderPass.setBindGroup(0, bindGroup);
+                renderPass.setVertexBuffer(0, positionBuffer);
+                renderPass.setVertexBuffer(1, uvBuffer);
+                renderPass.setIndexBuffer(indexBuffer, 'uint16');
+                renderPass.drawIndexed(indices.length);
+                renderPass.end();
+
+                device.queue.submit([commandEncoder.finish()]);
+
+                // Text overlay
+                textCtx.clearRect(0, 0, textCanvas.width, textCanvas.height);
+                textCtx.font = '16px monospace';
+                textCtx.fillStyle = 'white';
+                textCtx.strokeStyle = 'black';
+                textCtx.lineWidth = 3;
+
+                const directionNames = ['E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE'];
+                const directionIndex = Math.round(((yaw / Math.PI * 4) + 8) % 8);
+                const direction = directionNames[directionIndex];
+
+                const lines = [
+                    `FPS: ${fps}`,
+                    `Pos: (${cameraPos.x.toFixed(2)}, ${cameraPos.y.toFixed(2)}, ${cameraPos.z.toFixed(2)})`,
+                    `Dir: ${direction} (yaw: ${(yaw * 180 / Math.PI).toFixed(1)}°, pitch: ${(pitch * 180 / Math.PI).toFixed(1)}°)`
+                ];
+
+                let y = 20;
+                for (const line of lines) {
+                    textCtx.strokeText(line, 10, y);
+                    textCtx.fillText(line, 10, y);
+                    y += 20;
+                }
+
+                requestAnimationFrame(render);
+            }
+
+            render();
+
+            // Resize
+            window.addEventListener('resize', () => {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                textCanvas.width = window.innerWidth;
+                textCanvas.height = window.innerHeight;
+                // Recreate depth texture
+                depthTexture.destroy();
+                depthTexture = device.createTexture({
+                    size: [canvas.width, canvas.height, 1],
+                    format: 'depth24plus',
+                    usage: GPUTextureUsage.RENDER_ATTACHMENT
+                });
+            });
+        }
+
+        init();
+    </script>
+</body>
+</html>
