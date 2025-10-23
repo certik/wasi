@@ -62,13 +62,13 @@
                 }
             }
 
-            // Map definition (1 = wall, 0 = floor, 5-8 = starting position with direction)
+            // Map definition (1 = wall, 2 = wall with window, 0 = floor, 5-8 = starting position with direction)
             const mapWidth = 10;
             const mapHeight = 10;
             const map = [
                 [1,1,1,1,1,1,1,1,1,1],
                 [1,7,0,0,0,0,0,0,0,1],
-                [1,0,1,1,1,0,1,0,0,1],
+                [1,0,1,2,1,0,1,0,0,1],
                 [1,0,1,0,0,0,0,1,0,1],
                 [1,0,1,0,1,0,0,0,0,1],
                 [1,0,1,0,1,0,1,0,0,1],
@@ -106,6 +106,116 @@
             const indices = [];
             let indexOffset = 0;
 
+            const windowBottom = 0.5;
+            const windowTop = 1.5;
+            const invWallHeight = 1.0 / wallHeight;
+
+            function pushNorthSegment(x, z, y0, y1) {
+                const v0 = y0 * invWallHeight;
+                const v1 = y1 * invWallHeight;
+                positions.push(
+                    x, y0, z,
+                    x + 1, y0, z,
+                    x, y1, z,
+                    x + 1, y1, z
+                );
+                uvs.push(0, v0, 1, v0, 0, v1, 1, v1);
+                surfaceTypes.push(1, 1, 1, 1);
+                indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
+                indexOffset += 4;
+            }
+
+            function pushSouthSegment(x, z, y0, y1) {
+                const v0 = y0 * invWallHeight;
+                const v1 = y1 * invWallHeight;
+                positions.push(
+                    x, y0, z + 1,
+                    x + 1, y0, z + 1,
+                    x, y1, z + 1,
+                    x + 1, y1, z + 1
+                );
+                uvs.push(0, v0, 1, v0, 0, v1, 1, v1);
+                surfaceTypes.push(1, 1, 1, 1);
+                indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
+                indexOffset += 4;
+            }
+
+            function pushWestSegment(x, z, y0, y1) {
+                const v0 = y0 * invWallHeight;
+                const v1 = y1 * invWallHeight;
+                positions.push(
+                    x, y0, z,
+                    x, y0, z + 1,
+                    x, y1, z,
+                    x, y1, z + 1
+                );
+                uvs.push(0, v0, 1, v0, 0, v1, 1, v1);
+                surfaceTypes.push(1, 1, 1, 1);
+                indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
+                indexOffset += 4;
+            }
+
+            function pushEastSegment(x, z, y0, y1) {
+                const v0 = y0 * invWallHeight;
+                const v1 = y1 * invWallHeight;
+                positions.push(
+                    x + 1, y0, z,
+                    x + 1, y0, z + 1,
+                    x + 1, y1, z,
+                    x + 1, y1, z + 1
+                );
+                uvs.push(0, v0, 1, v0, 0, v1, 1, v1);
+                surfaceTypes.push(1, 1, 1, 1);
+                indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
+                indexOffset += 4;
+            }
+
+            function pushWindowNorthSegments(x, z) {
+                if (windowBottom > 0) pushNorthSegment(x, z, 0, windowBottom);
+                if (windowTop < wallHeight) pushNorthSegment(x, z, windowTop, wallHeight);
+            }
+
+            function pushWindowSouthSegments(x, z) {
+                if (windowBottom > 0) pushSouthSegment(x, z, 0, windowBottom);
+                if (windowTop < wallHeight) pushSouthSegment(x, z, windowTop, wallHeight);
+            }
+
+            function pushWindowWestSegments(x, z) {
+                if (windowBottom > 0) pushWestSegment(x, z, 0, windowBottom);
+                if (windowTop < wallHeight) pushWestSegment(x, z, windowTop, wallHeight);
+            }
+
+            function pushWindowEastSegments(x, z) {
+                if (windowBottom > 0) pushEastSegment(x, z, 0, windowBottom);
+                if (windowTop < wallHeight) pushEastSegment(x, z, windowTop, wallHeight);
+            }
+
+            function pushWindowBottomFill(x, z) {
+                positions.push(
+                    x, windowBottom, z,
+                    x + 1, windowBottom, z,
+                    x, windowBottom, z + 1,
+                    x + 1, windowBottom, z + 1
+                );
+                uvs.push(0, 0, 1, 0, 0, 1, 1, 1);
+                surfaceTypes.push(0, 0, 0, 0);
+                indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
+                indexOffset += 4;
+            }
+
+            function pushWindowTopFill(x, z) {
+                positions.push(
+                    x, windowTop, z,
+                    x + 1, windowTop, z,
+                    x, windowTop, z + 1,
+                    x + 1, windowTop, z + 1
+                );
+                uvs.push(0, 0, 1, 0, 0, 1, 1, 1);
+                surfaceTypes.push(2, 2, 2, 2);
+                indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
+                indexOffset += 4;
+            }
+
             // Floor: one big quad (matching collision coordinate system)
             const floorPositions = [
                 0, 0, 0,  mapWidth, 0, 0,
@@ -133,75 +243,56 @@
             indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
             indexOffset += 4;
 
+            const isSolidCell = (value) => value === 1 || value === 2;
+
             // Walls: generate quads for each boundary
             for (let z = 0; z < mapHeight; z++) {
                 for (let x = 0; x < mapWidth; x++) {
-                    if (map[z][x] === 1) {
-                        // Check four directions for exposed faces
-                        // North face (negative Z) - matching collision coordinate system
-                        if (z === 0 || map[z - 1][x] === 0) {
-                            const wallPositions = [
-                                x, 0, z,  x + 1, 0, z,
-                                x, wallHeight, z,  x + 1, wallHeight, z
-                            ];
-                            const wallUVs = [
-                                0, 0,  1, 0,
-                                0, wallHeight * checkerSize,  1, wallHeight * checkerSize
-                            ];
-                            positions.push(...wallPositions);
-                            uvs.push(...wallUVs);
-                            surfaceTypes.push(1, 1, 1, 1); // wall
-                            indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
-                            indexOffset += 4;
+                    const cell = map[z][x];
+                    if (!isSolidCell(cell)) {
+                        continue;
+                    }
+
+                    const isWindow = cell === 2;
+
+                    // North face (negative Z)
+                    if (z === 0 || !isSolidCell(map[z - 1][x])) {
+                        if (isWindow) {
+                            pushWindowNorthSegments(x, z);
+                        } else {
+                            pushNorthSegment(x, z, 0, wallHeight);
                         }
-                        // South face (positive Z) - matching collision coordinate system
-                        if (z === mapHeight - 1 || map[z + 1][x] === 0) {
-                            const wallPositions = [
-                                x, 0, z + 1,  x + 1, 0, z + 1,
-                                x, wallHeight, z + 1,  x + 1, wallHeight, z + 1
-                            ];
-                            const wallUVs = [
-                                0, 0,  1, 0,
-                                0, wallHeight * checkerSize,  1, wallHeight * checkerSize
-                            ];
-                            positions.push(...wallPositions);
-                            uvs.push(...wallUVs);
-                            surfaceTypes.push(1, 1, 1, 1); // wall
-                            indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
-                            indexOffset += 4;
+                    }
+                    // South face (positive Z)
+                    if (z === mapHeight - 1 || !isSolidCell(map[z + 1][x])) {
+                        if (isWindow) {
+                            pushWindowSouthSegments(x, z);
+                        } else {
+                            pushSouthSegment(x, z, 0, wallHeight);
                         }
-                        // West face (negative X) - matching collision coordinate system
-                        if (x === 0 || map[z][x - 1] === 0) {
-                            const wallPositions = [
-                                x, 0, z,  x, 0, z + 1,
-                                x, wallHeight, z,  x, wallHeight, z + 1
-                            ];
-                            const wallUVs = [
-                                0, 0,  1, 0,
-                                0, wallHeight * checkerSize,  1, wallHeight * checkerSize
-                            ];
-                            positions.push(...wallPositions);
-                            uvs.push(...wallUVs);
-                            surfaceTypes.push(1, 1, 1, 1); // wall
-                            indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
-                            indexOffset += 4;
+                    }
+                    // West face (negative X)
+                    if (x === 0 || !isSolidCell(map[z][x - 1])) {
+                        if (isWindow) {
+                            pushWindowWestSegments(x, z);
+                        } else {
+                            pushWestSegment(x, z, 0, wallHeight);
                         }
-                        // East face (positive X) - matching collision coordinate system
-                        if (x === mapWidth - 1 || map[z][x + 1] === 0) {
-                            const wallPositions = [
-                                x + 1, 0, z,  x + 1, 0, z + 1,
-                                x + 1, wallHeight, z,  x + 1, wallHeight, z + 1
-                            ];
-                            const wallUVs = [
-                                0, 0,  1, 0,
-                                0, wallHeight * checkerSize,  1, wallHeight * checkerSize
-                            ];
-                            positions.push(...wallPositions);
-                            uvs.push(...wallUVs);
-                            surfaceTypes.push(1, 1, 1, 1); // wall
-                            indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
-                            indexOffset += 4;
+                    }
+                    // East face (positive X)
+                    if (x === mapWidth - 1 || !isSolidCell(map[z][x + 1])) {
+                        if (isWindow) {
+                            pushWindowEastSegments(x, z);
+                        } else {
+                            pushEastSegment(x, z, 0, wallHeight);
                         }
+                    }
+
+                    if (isWindow) {
+                        pushWestSegment(x, z, windowBottom, windowTop);
+                        pushEastSegment(x, z, windowBottom, windowTop);
+                        pushWindowBottomFill(x, z);
+                        pushWindowTopFill(x, z);
                     }
                 }
             }
@@ -868,7 +959,7 @@
                             if (tileX >= 0 && tileX < i32(mapWidth) && tileY >= 0 && tileY < i32(mapHeight)) {
                                 let idx = u32(tileY) * mapWidth + u32(tileX);
                                 let cell = mapData[idx];
-                                if (cell == 1u) {
+                                if (cell >= 1u) {
                                     tileColor = vec4<f32>(0.7, 0.1, 0.1, 0.9);
                                 } else {
                                     tileColor = vec4<f32>(0.1, 0.2, 0.35, 0.7);
