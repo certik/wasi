@@ -23,9 +23,21 @@
 
             const adapter = await navigator.gpu.requestAdapter();
             const device = await adapter.requestDevice();
+
+            // Add error handling
+            device.addEventListener('uncapturederror', (event) => {
+                console.error('[WebGPU] Uncaptured error:', event.error);
+            });
+
             const context = canvas.getContext('webgpu');
             const format = navigator.gpu.getPreferredCanvasFormat();
-            context.configure({ device, format });
+            console.log('[WebGPU] Preferred canvas format:', format);
+            context.configure({
+                device,
+                format,
+                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST
+            });
+            console.log('[WebGPU] Canvas configured');
 
             function createSolidTexture(device, rgba, label) {
                 const texture = device.createTexture({
@@ -40,24 +52,33 @@
             }
 
             async function createTextureFromUrl(device, url, label) {
+                console.log(`[Texture] Starting to load ${label} from ${url}`);
                 try {
                     const response = await fetch(url, { mode: 'cors' });
+                    console.log(`[Texture] Fetched ${label}, status: ${response.status}`);
                     const blob = await response.blob();
+                    console.log(`[Texture] Blob size for ${label}: ${blob.size} bytes`);
                     const imageBitmap = await createImageBitmap(blob, { colorSpaceConversion: 'none' });
+                    console.log(`[Texture] ImageBitmap created for ${label}: ${imageBitmap.width}x${imageBitmap.height}`);
                     const texture = device.createTexture({
                         label,
                         size: [imageBitmap.width, imageBitmap.height, 1],
                         format: 'rgba8unorm',
-                        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+                        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
                     });
+                    console.log(`[Texture] Texture created for ${label}`);
                     device.queue.copyExternalImageToTexture(
                         { source: imageBitmap },
                         { texture },
                         [imageBitmap.width, imageBitmap.height]
                     );
-                    return texture.createView();
+                    console.log(`[Texture] Data copied to texture for ${label}`);
+                    const view = texture.createView();
+                    console.log(`[Texture] Successfully loaded ${label}`);
+                    return view;
                 } catch (err) {
-                    console.warn(`Falling back to solid texture for ${label}:`, err);
+                    console.warn(`[Texture] ERROR loading ${label}:`, err);
+                    console.warn(`Falling back to solid texture for ${label}`);
                     return createSolidTexture(device, [255, 255, 255, 255], `${label}-fallback`);
                 }
             }
@@ -1110,11 +1131,16 @@
                 }
             });
 
+            console.log('[Texture] Starting to load all textures...');
             const [wallTextureView, floorTextureView, ceilingTextureView] = await Promise.all([
                 createTextureFromUrl(device, 'https://threejs.org/examples/textures/brick_diffuse.jpg', 'wall-texture'),
                 createTextureFromUrl(device, 'https://threejs.org/examples/textures/hardwood2_diffuse.jpg', 'floor-texture'),
                 createTextureFromUrl(device, 'https://threejs.org/examples/textures/lava/cloud.png', 'ceiling-texture')
             ]);
+            console.log('[Texture] All textures loaded successfully');
+            console.log('[Texture] Wall texture view:', wallTextureView);
+            console.log('[Texture] Floor texture view:', floorTextureView);
+            console.log('[Texture] Ceiling texture view:', ceilingTextureView);
 
             const sampler = device.createSampler({
                 magFilter: 'linear',
@@ -1245,6 +1271,7 @@
             let hudVisible = true;
             let texturesEnabled = false;
             let horizontalMovement = true;
+            let lastLoggedTextureState = false;
 
             document.addEventListener('keydown', (e) => {
                 const key = e.key.toLowerCase();
@@ -1255,6 +1282,7 @@
                         mapRelativeMode = !mapRelativeMode;
                     } else if (key === 't') {
                         texturesEnabled = !texturesEnabled;
+                        console.log('[Texture] Textures toggled:', texturesEnabled ? 'ENABLED' : 'DISABLED');
                     } else if (key === 'h') {
                         hudVisible = !hudVisible;
                     } else if (key === 'f') {
@@ -1439,6 +1467,11 @@
                 data[9] = 0;
                 data[10] = 0;
                 data[11] = 0;
+
+                if (texturesEnabled !== lastLoggedTextureState) {
+                    console.log('[Texture] Uniform buffer useTextures value:', data[8]);
+                    lastLoggedTextureState = texturesEnabled;
+                }
 
                 device.queue.writeBuffer(uniformBuffer, 0, data);
 
