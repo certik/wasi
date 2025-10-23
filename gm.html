@@ -1441,7 +1441,16 @@
             let fpsUpdateTime = performance.now();
             let fpsFrameCount = 0;
 
+            // Performance timing
+            let avgFrameTime = 0;
+            let avgJsTime = 0;
+            let avgGpuCopyTime = 0;
+            let avgGpuRenderTime = 0;
+            const PERF_SMOOTHING = 0.9; // Exponential moving average
+
             function render() {
+                const frameStartTime = performance.now();
+
                 updateCamera();
 
                 // FPS calc
@@ -1475,12 +1484,16 @@
 
                 device.queue.writeBuffer(uniformBuffer, 0, data);
 
+                const jsEndTime = performance.now();
+                const jsTime = jsEndTime - frameStartTime;
+
                 const directionNames = ['E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE'];
                 const directionIndex = Math.round(((yaw / Math.PI * 4) + 8) % 8);
                 const direction = directionNames[directionIndex];
 
                 const lines = [
-                    `FPS: ${fps}`,
+                    `FPS: ${fps}  Frame: ${avgFrameTime.toFixed(2)}ms`,
+                    `JS: ${avgJsTime.toFixed(2)}ms  GPU Copy: ${avgGpuCopyTime.toFixed(2)}ms  GPU Render: ${avgGpuRenderTime.toFixed(2)}ms`,
                     `Pos: (${cameraPos.x.toFixed(2)}, ${cameraPos.y.toFixed(2)}, ${cameraPos.z.toFixed(2)})`,
                     `Dir: ${direction} (yaw: ${(yaw * 180 / Math.PI).toFixed(1)}°, pitch: ${(pitch * 180 / Math.PI).toFixed(1)}°)`,
                     `Movement: ${horizontalMovement ? 'Person' : 'Flying'} (f)  HUD: ${hudVisible ? 'ON' : 'OFF'} (h)  Map: ${mapVisible ? 'ON' : 'OFF'} (m/r)  Textures: ${texturesEnabled ? 'ON' : 'OFF'} (t)`
@@ -1534,6 +1547,9 @@
                 device.queue.writeBuffer(overlayUniformBuffer, 0, overlayParams);
                 device.queue.writeBuffer(overlayTextBuffer, 0, overlayTextArray);
 
+                const gpuCopyEndTime = performance.now();
+                const gpuCopyTime = gpuCopyEndTime - jsEndTime;
+
                 const commandEncoder = device.createCommandEncoder();
                 const textureView = context.getCurrentTexture().createView();
 
@@ -1567,6 +1583,16 @@
                 renderPass.end();
 
                 device.queue.submit([commandEncoder.finish()]);
+
+                const gpuRenderEndTime = performance.now();
+                const gpuRenderTime = gpuRenderEndTime - gpuCopyEndTime;
+                const totalFrameTime = gpuRenderEndTime - frameStartTime;
+
+                // Update smoothed averages
+                avgFrameTime = avgFrameTime * PERF_SMOOTHING + totalFrameTime * (1 - PERF_SMOOTHING);
+                avgJsTime = avgJsTime * PERF_SMOOTHING + jsTime * (1 - PERF_SMOOTHING);
+                avgGpuCopyTime = avgGpuCopyTime * PERF_SMOOTHING + gpuCopyTime * (1 - PERF_SMOOTHING);
+                avgGpuRenderTime = avgGpuRenderTime * PERF_SMOOTHING + gpuRenderTime * (1 - PERF_SMOOTHING);
 
                 requestAnimationFrame(render);
             }
