@@ -55,7 +55,7 @@
                         // Shader: forward = (cos(yaw), 0, sin(yaw)) when pitch=0
                         // yaw=0: forward=(1,0,0) = +X = East
                         // yaw=π/2: forward=(0,0,1) = +Z = South
-                        // yaw=π: forward=(-1,0,0) = -X = West  
+                        // yaw=π: forward=(-1,0,0) = -X = West
                         // yaw=-π/2: forward=(0,0,-1) = -Z = North
                         if (cell === 5) startYaw = -Math.PI / 2;    // North (-Z)
                         else if (cell === 6) startYaw = 0;          // East (+X)
@@ -204,13 +204,13 @@
                     if (dirX > 0.0) {
                         sideDistX = (f32(mapX + 1) - pos.x) / dirX;
                     } else {
-                        sideDistX = (pos.x - f32(mapX)) / dirX;
+                        sideDistX = (pos.x - f32(mapX)) / (-dirX);
                     }
                     var sideDistZ: f32;
                     if (dirZ > 0.0) {
                         sideDistZ = (f32(mapZ + 1) - pos.z) / dirZ;
                     } else {
-                        sideDistZ = (pos.z - f32(mapZ)) / dirZ;
+                        sideDistZ = (pos.z - f32(mapZ)) / (-dirZ);
                     }
                     var t_hit = 1e30;
                     var isXSide = false;
@@ -259,7 +259,7 @@
                     let up = vec3<f32>(-sp * cy, cp, -sp * sy);
 
                     let rayDir = normalize(forward + right * h + up * v);
-                    
+
                     let cameraPos = vec3<f32>(u.cameraPosX, u.cameraPosY, u.cameraPosZ);
 
                     // Floor: only hit if ray is going down (rayDir.y < 0)
@@ -436,7 +436,7 @@
             let frameCount = 0;
             function render() {
                 updateCamera();
-                
+
                 // Debug log first frame and whenever pitch changes
                 if (frameCount < 5 || Math.abs(pitch) > 0.01) {
                     console.log(`Frame ${frameCount}: pos=(${cameraPos.x.toFixed(2)}, ${cameraPos.y.toFixed(2)}, ${cameraPos.z.toFixed(2)}), yaw=${yaw.toFixed(3)}, pitch=${pitch.toFixed(3)}`);
@@ -468,11 +468,11 @@
                 data[13] = mapHeight;
                 data[14] = wallHeight;
                 // data[15-19] = padding
-                
+
                 if (frameCount === 1) {
                     console.log(`data[8]=yaw=${data[8].toFixed(3)}, data[9]=pitch=${data[9].toFixed(3)}, data[10]=fov=${data[10].toFixed(3)}`);
                 }
-                
+
                 device.queue.writeBuffer(uniformBuffer, 0, data);
 
                 const commandEncoder = device.createCommandEncoder();
