@@ -510,12 +510,19 @@
                             tileScale = 4.0 / 5.0; // Floor texture 5x larger
                         }
                         let sampleUV = vec2<f32>(texU, texV) * tileScale;
+
+                        // Sample all textures unconditionally to satisfy uniform control flow requirement
+                        let ceilingSample = textureSample(ceilingTexture, s, sampleUV);
+                        let wallSample = textureSample(wallTexture, s, sampleUV);
+                        let floorSample = textureSample(floorTexture, s, sampleUV);
+
+                        // Select the appropriate sample based on surface type
                         if (in.surfaceType > 1.5 && in.surfaceType < 2.5) {
-                            baseColor = textureSample(ceilingTexture, s, sampleUV);
+                            baseColor = ceilingSample;
                         } else if (in.surfaceType > 0.5) {
-                            baseColor = textureSample(wallTexture, s, sampleUV);
+                            baseColor = wallSample;
                         } else {
-                            baseColor = textureSample(floorTexture, s, sampleUV);
+                            baseColor = floorSample;
                         }
                     } else {
                         let checkerU = floor(texU * 4.0);
