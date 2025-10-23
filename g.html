@@ -5,16 +5,23 @@
     <title>WebGPU 3D World from 2D Map</title>
     <style>
         body { margin: 0; overflow: hidden; }
-        canvas { display: block; }
+        canvas { display: block; position: absolute; }
+        #textCanvas { pointer-events: none; }
     </style>
 </head>
 <body>
     <canvas id="canvas"></canvas>
+    <canvas id="textCanvas"></canvas>
     <script type="module">
         async function init() {
             const canvas = document.getElementById('canvas');
+            const textCanvas = document.getElementById('textCanvas');
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
+            textCanvas.width = window.innerWidth;
+            textCanvas.height = window.innerHeight;
+            
+            const textCtx = textCanvas.getContext('2d');
 
             if (!navigator.gpu) {
                 alert('WebGPU not supported.');
@@ -459,8 +466,23 @@
 
             // Render loop
             let frameCount = 0;
+            let lastFrameTime = performance.now();
+            let fps = 0;
+            let fpsUpdateTime = performance.now();
+            let fpsFrameCount = 0;
+            
             function render() {
                 updateCamera();
+                
+                // Calculate FPS
+                const currentTime = performance.now();
+                fpsFrameCount++;
+                if (currentTime - fpsUpdateTime >= 500) { // Update FPS every 500ms
+                    fps = Math.round(fpsFrameCount * 1000 / (currentTime - fpsUpdateTime));
+                    fpsFrameCount = 0;
+                    fpsUpdateTime = currentTime;
+                }
+                lastFrameTime = currentTime;
 
                 // Debug log first frame and whenever pitch changes
                 if (frameCount < 5 || Math.abs(pitch) > 0.01) {
@@ -519,6 +541,31 @@
                 renderPass.end();
 
                 device.queue.submit([commandEncoder.finish()]);
+                
+                // Draw text overlay
+                textCtx.clearRect(0, 0, textCanvas.width, textCanvas.height);
+                textCtx.font = '16px monospace';
+                textCtx.fillStyle = 'white';
+                textCtx.strokeStyle = 'black';
+                textCtx.lineWidth = 3;
+                
+                const directionNames = ['E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE'];
+                const directionIndex = Math.round(((yaw / Math.PI * 4) + 8) % 8);
+                const direction = directionNames[directionIndex];
+                
+                const lines = [
+                    `FPS: ${fps}`,
+                    `Pos: (${cameraPos.x.toFixed(2)}, ${cameraPos.y.toFixed(2)}, ${cameraPos.z.toFixed(2)})`,
+                    `Dir: ${direction} (yaw: ${(yaw * 180 / Math.PI).toFixed(1)}°, pitch: ${(pitch * 180 / Math.PI).toFixed(1)}°)`
+                ];
+                
+                let y = 20;
+                for (const line of lines) {
+                    textCtx.strokeText(line, 10, y);
+                    textCtx.fillText(line, 10, y);
+                    y += 20;
+                }
+                
                 requestAnimationFrame(render);
             }
 
@@ -528,6 +575,8 @@
             window.addEventListener('resize', () => {
                 canvas.width = window.innerWidth;
                 canvas.height = window.innerHeight;
+                textCanvas.width = window.innerWidth;
+                textCanvas.height = window.innerHeight;
             });
         }
 
