@@ -413,99 +413,127 @@
 
             const overlayFsSource = `
                 struct Params {
-                    width: f32,
-                    height: f32,
-                    value: f32,
-                    padding: f32,
+                    viewportAndOrigin: vec4<f32>,
+                    sizeAndMetrics: vec4<f32>,
+                    spacingAndPadding: vec4<f32>,
                 };
 
                 @group(0) @binding(0)
                 var<uniform> params: Params;
 
+                @group(0) @binding(1)
+                var<storage, read> textData: array<u32>;
+
+                const font = array<array<u32, 7>, 5>(
+                    array<u32, 7>(0xebfbe7fcu, 0x7dffddfcu, 0xb2d7dffcu, 0xb6dbc404u, 0x04446200u, 0x00008000u, 0x01200000u),
+                    array<u32, 7>(0xa89b21b4u, 0xba592544u, 0xb3fb6d28u, 0xb6a45c84u, 0x9ec02ab4u, 0x70c7c000u, 0x1e100000u),
+                    array<u32, 7>(0xa93fb9fcu, 0xfe5da744u, 0xd2fbae68u, 0xb6a48f9cu, 0xd0f472f4u, 0xbee8adb4u, 0xa6108000u),
+                    array<u32, 7>(0xaa1269a4u, 0xb6592d54u, 0xb2db2d88u, 0xaba53d94u, 0x93d56ab4u, 0xb7c2aae8u, 0x2a154000u),
+                    array<u32, 7>(0xebf3f9e4u, 0xbdff1decu, 0xbed735e8u, 0xead5ef6cu, 0x70d4efb4u, 0x78ccbab4u, 0xf9288000u),
+                );
+
+                const GLYPH_WIDTH: u32 = 3u;
+                const GLYPH_HEIGHT: u32 = 5u;
+                const COLON_CODE: u32 = 66u;
+                const PERIOD_CODE: u32 = 67u;
+                const MINUS_CODE: u32 = 68u;
+                const SPACE_CODE: u32 = 69u;
+                const NEWLINE_CODE: u32 = 255u;
+
+                fn sample_font(char_idx: u32, column: u32, row: u32) -> bool {
+                    let total_offset = char_idx * 3u;
+                    let word_idx = total_offset / 30u;
+                    let local_offset = total_offset % 30u;
+                    let bits = (font[row][word_idx] >> (29u - local_offset)) & 0x07u;
+                    return ((bits >> (2u - column)) & 1u) == 1u;
+                }
+
+                fn sample_custom(char_idx: u32, column: u32, row: u32) -> bool {
+                    if (char_idx == COLON_CODE) {
+                        return column == 1u && (row == 1u || row == 3u);
+                    }
+                    if (char_idx == PERIOD_CODE) {
+                        return column == 1u && row == 4u;
+                    }
+                    if (char_idx == MINUS_CODE) {
+                        return row == 2u;
+                    }
+                    return false;
+                }
+
+                fn glyph_on(char_idx: u32, column: u32, row: u32) -> bool {
+                    if (char_idx <= 65u) {
+                        return sample_font(char_idx, column, row);
+                    }
+                    if (char_idx == SPACE_CODE) {
+                        return false;
+                    }
+                    return sample_custom(char_idx, column, row);
+                }
+
                 struct FragIn {
                     @location(0) frag_position: vec2<f32>,
                 };
 
-                const font = array<u32, 5u>(
-                    0xebfbe7fcu,
-                    0xa89b21b4u,
-                    0xa93fb9fcu,
-                    0xaa1269a4u,
-                    0xebf3f9e4u,
-                );
-
-                const max_number_length: u32 = 4u;
-
-                fn number_to_digits(value: f32) -> array<u32, max_number_length> {
-                    var digits = array<u32, max_number_length>(0u, 0u, 0u, 0u);
-                    var num = clamp(floor(value + 0.5), 0.0, 9999.0);
-                    var idx: u32 = max_number_length;
-                    loop {
-                        if (idx == 0u) { break; }
-                        idx = idx - 1u;
-                        digits[idx] = u32(num % 10.0);
-                        num = floor(num / 10.0);
-                        if (num == 0.0) { break; }
-                    }
-                    return digits;
-                }
-
-                fn digit_bit(digit: u32, column: u32, row: u32) -> bool {
-                    let offset = digit * 3u;
-                    let row_bits = (font[row] >> (29u - offset)) & 0x07u;
-                    return ((row_bits >> (2u - column)) & 1u) == 1u;
-                }
-
                 @fragment
                 fn fragment_main(fragData: FragIn) -> @location(0) vec4<f32> {
+                    let panelOrigin = vec2<f32>(params.viewportAndOrigin.z, params.viewportAndOrigin.w);
+                    let panelSize = vec2<f32>(params.sizeAndMetrics.x, params.sizeAndMetrics.y);
+                    let scale = params.sizeAndMetrics.z;
+                    let glyphSpacing = u32(params.sizeAndMetrics.w + 0.5);
+                    let lineSpacing = u32(params.spacingAndPadding.x + 0.5);
+                    let textLength = u32(params.spacingAndPadding.y + 0.5);
+                    let padding = vec2<f32>(params.spacingAndPadding.z, params.spacingAndPadding.w);
+
                     let screen = vec2<f32>(
-                        fragData.frag_position.x * params.width,
-                        (1.0 - fragData.frag_position.y) * params.height
+                        fragData.frag_position.x * params.viewportAndOrigin.x,
+                        (1.0 - fragData.frag_position.y) * params.viewportAndOrigin.y
                     );
 
-                    let panelSize = vec2<f32>(200.0, 80.0);
-                    let rectMin = vec2<f32>(10.0, params.height - panelSize.y - 10.0);
-                    let rectMax = rectMin + panelSize;
-                    var color = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+                    let panelMax = panelOrigin + panelSize;
+                    if (screen.x < panelOrigin.x || screen.x > panelMax.x || screen.y < panelOrigin.y || screen.y > panelMax.y) {
+                        return vec4<f32>(0.0, 0.0, 0.0, 0.0);
+                    }
 
-                    if (screen.x >= rectMin.x && screen.x <= rectMax.x && screen.y >= rectMin.y && screen.y <= rectMax.y) {
-                        color = vec4<f32>(0.0, 1.0, 0.0, 0.4);
+                    var color = vec4<f32>(0.0, 1.0, 0.0, 0.3);
 
-                        let digitsOrigin = rectMin + vec2<f32>(12.0, 12.0);
-                        let local = screen - digitsOrigin;
-                        if (local.x >= 0.0 && local.y >= 0.0) {
-                            let digits = number_to_digits(params.value);
-                            var first_non_zero: u32 = 0u;
-                            loop {
-                                if (first_non_zero >= max_number_length) { break; }
-                                if (digits[first_non_zero] != 0u) { break; }
-                                first_non_zero = first_non_zero + 1u;
-                            }
-                            if (first_non_zero >= max_number_length) {
-                                first_non_zero = max_number_length - 1u;
-                            }
+                    let textLocal = screen - (panelOrigin + padding);
+                    if (textLocal.x < 0.0 || textLocal.y < 0.0) {
+                        return color;
+                    }
 
-                            let digitScale = 6.0;
-                            let cellX = u32(floor(local.x / digitScale));
-                            let cellY = u32(floor(local.y / digitScale));
-                            if (cellY < 5u) {
-                                let digitWidth: u32 = 3u;
-                                let spacing: u32 = 1u;
-                                let stride = digitWidth + spacing;
-                                let digitIndex = cellX / stride;
-                                if (digitIndex < max_number_length) {
-                                    let column = cellX % stride;
-                                    if (column < digitWidth) {
-                                        let valueIndex = digitIndex;
-                                        if (valueIndex < first_non_zero && digits[valueIndex] == 0u) {
-                                            // Skip leading zeros
-                                        } else if (digit_bit(digits[valueIndex], column, cellY)) {
-                                            color = vec4<f32>(1.0, 0.0, 0.0, 1.0);
-                                        }
-                                    }
+                    var cursorX: u32 = 0u;
+                    var cursorY: u32 = 0u;
+                    var idx: u32 = 0u;
+                    loop {
+                        if (idx >= textLength) { break; }
+                        let code = textData[idx];
+                        if (code == NEWLINE_CODE) {
+                            cursorX = 0u;
+                            cursorY = cursorY + GLYPH_HEIGHT + lineSpacing;
+                            idx = idx + 1u;
+                            continue;
+                        }
+
+                        let glyphOrigin = vec2<f32>(
+                            f32(cursorX) * scale,
+                            f32(cursorY) * scale
+                        );
+                        let glyphLocal = textLocal - glyphOrigin;
+                        if (glyphLocal.x >= 0.0 && glyphLocal.y >= 0.0 &&
+                            glyphLocal.x < scale * f32(GLYPH_WIDTH) &&
+                            glyphLocal.y < scale * f32(GLYPH_HEIGHT)) {
+                            let column = u32(floor(glyphLocal.x / scale));
+                            let row = u32(floor(glyphLocal.y / scale));
+                            if (column < GLYPH_WIDTH && row < GLYPH_HEIGHT) {
+                                if (glyph_on(code, column, row)) {
+                                    return vec4<f32>(1.0, 0.0, 0.0, 1.0);
                                 }
                             }
                         }
+
+                        cursorX = cursorX + GLYPH_WIDTH + glyphSpacing;
+                        idx = idx + 1u;
                     }
 
                     return color;
@@ -525,7 +553,8 @@
 
             const overlayBindGroupLayout = device.createBindGroupLayout({
                 entries: [
-                    { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }
+                    { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+                    { binding: 1, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } }
                 ]
             });
 
@@ -612,14 +641,21 @@
             console.log('Pipeline and bind group created successfully');
 
             const overlayUniformBuffer = device.createBuffer({
-                size: 16,
+                size: 64,
                 usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+            });
+
+            const overlayTextCapacity = 256;
+            const overlayTextBuffer = device.createBuffer({
+                size: overlayTextCapacity * 4,
+                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
             });
 
             const overlayBindGroup = device.createBindGroup({
                 layout: overlayBindGroupLayout,
                 entries: [
-                    { binding: 0, resource: { buffer: overlayUniformBuffer } }
+                    { binding: 0, resource: { buffer: overlayUniformBuffer } },
+                    { binding: 1, resource: { buffer: overlayTextBuffer } }
                 ]
             });
 
@@ -638,7 +674,56 @@
             new Float32Array(overlayVertexBuffer.getMappedRange()).set(overlayVertexData);
             overlayVertexBuffer.unmap();
 
-            const overlayParams = new Float32Array(4);
+            const overlayParams = new Float32Array(16);
+            const overlayTextArray = new Uint32Array(overlayTextCapacity);
+
+            const GLYPH_WIDTH = 3;
+            const GLYPH_HEIGHT = 5;
+            const GLYPH_SPACING = 1;
+            const LINE_SPACING = 2;
+            const TEXT_SCALE = 6.0;
+            const PANEL_PADDING_X = 12.0;
+            const PANEL_PADDING_Y = 12.0;
+            const PANEL_MARGIN = 10.0;
+            const NEWLINE_CODE = 255;
+            const COLON_CODE = 66;
+            const PERIOD_CODE = 67;
+            const MINUS_CODE = 68;
+            const SPACE_CODE = 69;
+
+            function charToGlyphCode(ch) {
+                if (ch >= '0' && ch <= '9') return ch.charCodeAt(0) - 48;
+                if (ch >= 'A' && ch <= 'Z') return 10 + (ch.charCodeAt(0) - 65);
+                if (ch >= 'a' && ch <= 'z') return 36 + (ch.charCodeAt(0) - 97);
+                switch (ch) {
+                    case ' ': return SPACE_CODE;
+                    case ':': return COLON_CODE;
+                    case '.': return PERIOD_CODE;
+                    case '-': return MINUS_CODE;
+                    case '(': return 62;
+                    case ')': return 63;
+                    case ',': return 64;
+                    case '°': return 65;
+                    default: return SPACE_CODE;
+                }
+            }
+
+            function buildOverlayText(lines) {
+                let index = 0;
+                let maxLineLength = 0;
+                overlayTextArray.fill(SPACE_CODE);
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i];
+                    maxLineLength = Math.max(maxLineLength, line.length);
+                    for (let j = 0; j < line.length && index < overlayTextCapacity; j++) {
+                        overlayTextArray[index++] = charToGlyphCode(line[j]);
+                    }
+                    if (i < lines.length - 1 && index < overlayTextCapacity) {
+                        overlayTextArray[index++] = NEWLINE_CODE;
+                    }
+                }
+                return { length: index, maxLineLength };
+            }
 
             // Depth texture
             let depthTexture = device.createTexture({
@@ -651,8 +736,8 @@
             // Camera and controls
             const personHeight = 1.0;
             const turnSpeed = 0.03;
-            const mouseSensitivity = 0.004;
-            const orientationSmoothing = 0.15;
+            const mouseSensitivity = 0.002;
+            const orientationSmoothing = 0.35;
             let cameraPos = { x: startX, y: personHeight, z: startZ };
             let yaw = startYaw;
             let pitch = 0.0;
@@ -828,11 +913,43 @@
 
                 device.queue.writeBuffer(uniformBuffer, 0, data);
 
+                const directionNames = ['E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE'];
+                const directionIndex = Math.round(((yaw / Math.PI * 4) + 8) % 8);
+                const direction = directionNames[directionIndex];
+
+                const lines = [
+                    `FPS: ${fps}`,
+                    `Pos: (${cameraPos.x.toFixed(2)}, ${cameraPos.y.toFixed(2)}, ${cameraPos.z.toFixed(2)})`,
+                    `Dir: ${direction} (yaw: ${(yaw * 180 / Math.PI).toFixed(1)}°, pitch: ${(pitch * 180 / Math.PI).toFixed(1)}°)`
+                ];
+
+                const { length: textLength, maxLineLength } = buildOverlayText(lines);
+                const lineCount = lines.length;
+                const charAdvance = (GLYPH_WIDTH + GLYPH_SPACING) * TEXT_SCALE;
+                const panelWidth = PANEL_PADDING_X * 2 + maxLineLength * charAdvance;
+                const panelHeight = PANEL_PADDING_Y * 2 + lineCount * GLYPH_HEIGHT * TEXT_SCALE + Math.max(0, (lineCount - 1)) * LINE_SPACING * TEXT_SCALE;
+                const panelOriginX = PANEL_MARGIN;
+                const panelOriginY = Math.max(PANEL_MARGIN, canvas.height - panelHeight - PANEL_MARGIN);
+
                 overlayParams[0] = canvas.width;
                 overlayParams[1] = canvas.height;
-                overlayParams[2] = fps;
-                overlayParams[3] = 0;
+                overlayParams[2] = panelOriginX;
+                overlayParams[3] = panelOriginY;
+                overlayParams[4] = panelWidth;
+                overlayParams[5] = panelHeight;
+                overlayParams[6] = TEXT_SCALE;
+                overlayParams[7] = GLYPH_SPACING;
+                overlayParams[8] = LINE_SPACING;
+                overlayParams[9] = textLength;
+                overlayParams[10] = PANEL_PADDING_X;
+                overlayParams[11] = PANEL_PADDING_Y;
+                overlayParams[12] = 0;
+                overlayParams[13] = 0;
+                overlayParams[14] = 0;
+                overlayParams[15] = 0;
+
                 device.queue.writeBuffer(overlayUniformBuffer, 0, overlayParams);
+                device.queue.writeBuffer(overlayTextBuffer, 0, overlayTextArray);
 
                 const commandEncoder = device.createCommandEncoder();
                 const textureView = context.getCurrentTexture().createView();
@@ -874,16 +991,6 @@
                 textCtx.fillStyle = 'white';
                 textCtx.strokeStyle = 'black';
                 textCtx.lineWidth = 3;
-
-                const directionNames = ['E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE'];
-                const directionIndex = Math.round(((yaw / Math.PI * 4) + 8) % 8);
-                const direction = directionNames[directionIndex];
-
-                const lines = [
-                    `FPS: ${fps}`,
-                    `Pos: (${cameraPos.x.toFixed(2)}, ${cameraPos.y.toFixed(2)}, ${cameraPos.z.toFixed(2)})`,
-                    `Dir: ${direction} (yaw: ${(yaw * 180 / Math.PI).toFixed(1)}°, pitch: ${(pitch * 180 / Math.PI).toFixed(1)}°)`
-                ];
 
                 let y = 20;
                 for (const line of lines) {
