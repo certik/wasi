@@ -200,8 +200,8 @@
                                 x - 0.5, wallHeight, z - 0.5,  x - 0.5, wallHeight, z + 0.5
                             ];
                             const wallUVs = [
-                                0, 0,  0, 1,
-                                wallHeight * checkerSize, 0,  wallHeight * checkerSize, 1
+                                0, 0,  1, 0,
+                                0, wallHeight * checkerSize,  1, wallHeight * checkerSize
                             ];
                             positions.push(...wallPositions);
                             uvs.push(...wallUVs);
@@ -215,8 +215,8 @@
                                 x + 0.5, wallHeight, z - 0.5,  x + 0.5, wallHeight, z + 0.5
                             ];
                             const wallUVs = [
-                                0, 0,  0, 1,
-                                wallHeight * checkerSize, 0,  wallHeight * checkerSize, 1
+                                0, 0,  1, 0,
+                                0, wallHeight * checkerSize,  1, wallHeight * checkerSize
                             ];
                             positions.push(...wallPositions);
                             uvs.push(...wallUVs);
@@ -302,7 +302,7 @@
                     @location(2) isWall: f32,
                 };
 
-                @fragment fn fs_main(in: VertexOutput, @builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
+                @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                     let dist = length(in.worldPos - u.cameraPos);
                     let isWall = in.worldPos.y > 0.01 && in.worldPos.y < 1.99; // Detect wall vs floor/ceiling
                     let isFloor = in.worldPos.y < 0.01;
@@ -336,8 +336,8 @@
                     let centerY = 540.0;
                     let crosshairSize = 10.0;
                     let crosshairThickness = 2.0;
-                    let dx = abs(fragCoord.x - centerX);
-                    let dy = abs(fragCoord.y - centerY);
+                    let dx = abs(in.clipPos.x - centerX);
+                    let dy = abs(in.clipPos.y - centerY);
 
                     if ((dx < crosshairThickness && dy < crosshairSize) ||
                         (dy < crosshairThickness && dx < crosshairSize)) {
@@ -358,6 +358,7 @@
 
             const vsModule = device.createShaderModule({ code: vsSource });
             const fsModule = device.createShaderModule({ code: fsSource });
+            console.log('Shaders compiled successfully');
 
             const bindGroupLayout = device.createBindGroupLayout({
                 entries: [
@@ -405,13 +406,15 @@
                     { binding: 1, resource: sampler }
                 ]
             });
+            console.log('Pipeline and bind group created successfully');
 
             // Depth texture
-            const depthTexture = device.createTexture({
+            let depthTexture = device.createTexture({
                 size: [canvas.width, canvas.height, 1],
                 format: 'depth24plus',
                 usage: GPUTextureUsage.RENDER_ATTACHMENT
             });
+            console.log(`Mesh generated: ${positions.length/3} vertices, ${indices.length/3} triangles`);
 
             // Camera and controls
             let cameraPos = { x: startX, y: 1.0, z: startZ };
