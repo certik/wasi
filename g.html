@@ -115,7 +115,7 @@
             // Uniform buffer
             const uniformBuffer = device.createBuffer({
                 label: 'uniform buffer',
-                size: 12 * 4, // 12 f32
+                size: 14 * 4, // 14 f32
                 usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
             });
 
@@ -147,6 +147,8 @@
                     wallHeight: f32,
                     padding1: f32,
                     padding2: f32,
+                    padding3: f32,
+                    padding4: f32,
                 };
 
                 struct WallHit {
@@ -165,12 +167,12 @@
                     let eps = 1e-6;
                     let dirX = select(dir.x, eps, abs(dir.x) < eps);
                     let dirZ = select(dir.z, eps, abs(dir.z) < eps);
-                    let mapX = i32(floor(pos.x));
-                    let mapZ = i32(floor(pos.z));
+                    var mapX: i32 = i32(floor(pos.x));
+                    var mapZ: i32 = i32(floor(pos.z));
                     let deltaDistX = 1.0 / abs(dirX);
                     let deltaDistZ = 1.0 / abs(dirZ);
-                    let stepX = select(-1, 1, dirX > 0.0);
-                    let stepZ = select(-1, 1, dirZ > 0.0);
+                    let stepX: i32 = select(i32(-1), i32(1), dirX > 0.0);
+                    let stepZ: i32 = select(i32(-1), i32(1), dirZ > 0.0);
                     var sideDistX: f32;
                     if (dirX > 0.0) {
                         sideDistX = (f32(mapX + 1) - pos.x) / dirX;
@@ -226,8 +228,8 @@
                     let sp = sin(u.pitch);
 
                     let forward = vec3<f32>(cy * cp, sp, sy * cp);
-                    let right = vec3<f32>(cy, 0.0, sy);
-                    let up = vec3<f32>(0.0, 1.0, 0.0);
+                    let right = vec3<f32>(sy, 0.0, -cy);
+                    let up = vec3<f32>(-sp * cy, cp, -sp * sy);
 
                     let rayDir = normalize(forward + right * h + up * v);
 
@@ -269,7 +271,10 @@
 
                     var color = textureSample(tex, s, vec2<f32>(texU, texV));
                     // Simple distance fog
-                    color.rgb *= exp2(-minT * 0.05);
+                    let factor = exp2(-minT * 0.05);
+                    color.r *= factor;
+                    color.g *= factor;
+                    color.b *= factor;
                     return color;
                 }
             `;
@@ -393,7 +398,8 @@
                     cameraPos.x, cameraPos.y, cameraPos.z,
                     yaw, pitch, fov,
                     performance.now() / 1000,
-                    mapWidth, mapHeight, wallHeight
+                    mapWidth, mapHeight, wallHeight,
+                    0.0, 0.0
                 ]);
                 device.queue.writeBuffer(uniformBuffer, 0, data);
 
