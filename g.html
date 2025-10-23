@@ -214,7 +214,7 @@
                 }
 
                 @fragment
-                fn fragment_main(@builtin(position) fragCoord: vec2<f32>) -> @location(0) vec4<f32> {
+                fn fragment_main(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
                     let aspect = u.viewWidth / u.viewHeight;
                     let tanHalfFov = tan(u.fov * 0.5);
                     let ndcX = 2.0 * fragCoord.x / u.viewWidth - 1.0;
@@ -246,11 +246,13 @@
                     let hitPos = u.cameraPos + rayDir * minT;
                     var texU: f32;
                     var texV: f32;
-                    var tex: texture_2d<f32>;
+                    var isWall = false;
+                    var isFloor = false;
+                    var isCeiling = false;
 
                     if (minT == t_wall && t_wall < 1e29) {
                         // Wall hit
-                        tex = wallTex;
+                        isWall = true;
                         if (wallHit.isXSide) {
                             texU = fract(hitPos.z);
                         } else {
@@ -259,17 +261,29 @@
                         texV = hitPos.y / u.wallHeight;
                     } else if (minT == t_floor) {
                         // Floor hit
-                        tex = floorTex;
+                        isFloor = true;
                         texU = fract(hitPos.x);
                         texV = fract(hitPos.z);
                     } else {
                         // Ceiling hit
-                        tex = ceilingTex;
+                        isCeiling = true;
                         texU = fract(hitPos.x);
                         texV = fract(hitPos.z);
                     }
 
-                    var color = textureSample(tex, s, vec2<f32>(texU, texV));
+                    // Sample all textures and select the appropriate one
+                    let wallColor = textureSample(wallTex, s, vec2<f32>(texU, texV));
+                    let floorColor = textureSample(floorTex, s, vec2<f32>(texU, texV));
+                    let ceilingColor = textureSample(ceilingTex, s, vec2<f32>(texU, texV));
+
+                    var color: vec4<f32>;
+                    if (isWall) {
+                        color = wallColor;
+                    } else if (isFloor) {
+                        color = floorColor;
+                    } else {
+                        color = ceilingColor;
+                    }
                     // Simple distance fog
                     let factor = exp2(-minT * 0.05);
                     color.r *= factor;
