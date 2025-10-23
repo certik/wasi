@@ -392,6 +392,126 @@
                 }
             `;
 
+            const overlayVsSource = `
+                struct VertexInput {
+                    @location(0) position: vec2<f32>,
+                };
+
+                struct VertexOutput {
+                    @builtin(position) position: vec4<f32>,
+                    @location(0) frag_position: vec2<f32>,
+                };
+
+                @vertex
+                fn vertex_main(input: VertexInput) -> VertexOutput {
+                    var output: VertexOutput;
+                    output.position = vec4<f32>(input.position, 0.0, 1.0);
+                    output.frag_position = input.position * 0.5 + vec2<f32>(0.5, 0.5);
+                    return output;
+                }
+            `;
+
+            const overlayFsSource = `
+                struct Params {
+                    width: f32,
+                    height: f32,
+                    value: f32,
+                    padding: f32,
+                };
+
+                @group(0) @binding(0)
+                var<uniform> params: Params;
+
+                struct FragIn {
+                    @location(0) frag_position: vec2<f32>,
+                };
+
+                const font = array<u32, 5u>(
+                    0xebfbe7fcu,
+                    0xa89b21b4u,
+                    0xa93fb9fcu,
+                    0xaa1269a4u,
+                    0xebf3f9e4u,
+                );
+
+                const max_number_length: u32 = 4u;
+
+                fn number_to_digits(value: f32) -> array<u32, max_number_length> {
+                    var digits = array<u32, max_number_length>(0u, 0u, 0u, 0u);
+                    var num = clamp(floor(value + 0.5), 0.0, 9999.0);
+                    var idx: u32 = max_number_length;
+                    loop {
+                        if (idx == 0u) { break; }
+                        idx = idx - 1u;
+                        digits[idx] = u32(num % 10.0);
+                        num = floor(num / 10.0);
+                        if (num == 0.0) { break; }
+                    }
+                    return digits;
+                }
+
+                fn digit_bit(digit: u32, column: u32, row: u32) -> bool {
+                    let offset = digit * 3u;
+                    let row_bits = (font[row] >> (29u - offset)) & 0x07u;
+                    return ((row_bits >> (2u - column)) & 1u) == 1u;
+                }
+
+                @fragment
+                fn fragment_main(fragData: FragIn) -> @location(0) vec4<f32> {
+                    let screen = vec2<f32>(
+                        fragData.frag_position.x * params.width,
+                        (1.0 - fragData.frag_position.y) * params.height
+                    );
+
+                    let panelSize = vec2<f32>(200.0, 80.0);
+                    let rectMin = vec2<f32>(10.0, params.height - panelSize.y - 10.0);
+                    let rectMax = rectMin + panelSize;
+                    var color = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+
+                    if (screen.x >= rectMin.x && screen.x <= rectMax.x && screen.y >= rectMin.y && screen.y <= rectMax.y) {
+                        color = vec4<f32>(0.0, 1.0, 0.0, 0.4);
+
+                        let digitsOrigin = rectMin + vec2<f32>(12.0, 12.0);
+                        let local = screen - digitsOrigin;
+                        if (local.x >= 0.0 && local.y >= 0.0) {
+                            let digits = number_to_digits(params.value);
+                            var first_non_zero: u32 = 0u;
+                            loop {
+                                if (first_non_zero >= max_number_length) { break; }
+                                if (digits[first_non_zero] != 0u) { break; }
+                                first_non_zero = first_non_zero + 1u;
+                            }
+                            if (first_non_zero >= max_number_length) {
+                                first_non_zero = max_number_length - 1u;
+                            }
+
+                            let digitScale = 6.0;
+                            let cellX = u32(floor(local.x / digitScale));
+                            let cellY = u32(floor(local.y / digitScale));
+                            if (cellY < 5u) {
+                                let digitWidth: u32 = 3u;
+                                let spacing: u32 = 1u;
+                                let stride = digitWidth + spacing;
+                                let digitIndex = cellX / stride;
+                                if (digitIndex < max_number_length) {
+                                    let column = cellX % stride;
+                                    if (column < digitWidth) {
+                                        let valueIndex = digitIndex;
+                                        if (valueIndex < first_non_zero && digits[valueIndex] == 0u) {
+                                            // Skip leading zeros
+                                        } else if (digit_bit(digits[valueIndex], column, cellY)) {
+                                            color = vec4<f32>(1.0, 0.0, 0.0, 1.0);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    return color;
+                }
+            `;
+
             const vsModule = device.createShaderModule({ code: vsSource });
             const fsModule = device.createShaderModule({ code: fsSource });
             console.log('Shaders compiled successfully');
@@ -400,6 +520,12 @@
                 entries: [
                     { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
                     { binding: 1, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
+                ]
+            });
+
+            const overlayBindGroupLayout = device.createBindGroupLayout({
+                entries: [
+                    { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }
                 ]
             });
 
@@ -439,6 +565,42 @@
                 }
             });
 
+            const overlayVsModule = device.createShaderModule({ code: overlayVsSource });
+            const overlayFsModule = device.createShaderModule({ code: overlayFsSource });
+
+            const overlayPipeline = device.createRenderPipeline({
+                layout: device.createPipelineLayout({ bindGroupLayouts: [overlayBindGroupLayout] }),
+                vertex: {
+                    module: overlayVsModule,
+                    entryPoint: 'vertex_main',
+                    buffers: [
+                        {
+                            arrayStride: 8,
+                            attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x2' }]
+                        }
+                    ]
+                },
+                fragment: {
+                    module: overlayFsModule,
+                    entryPoint: 'fragment_main',
+                    targets: [{
+                        format,
+                        blend: {
+                            color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+                            alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' }
+                        }
+                    }]
+                },
+                primitive: {
+                    topology: 'triangle-strip'
+                },
+                depthStencil: {
+                    depthWriteEnabled: false,
+                    depthCompare: 'always',
+                    format: 'depth24plus'
+                }
+            });
+
             const sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
             const bindGroup = device.createBindGroup({
                 layout: bindGroupLayout,
@@ -448,6 +610,35 @@
                 ]
             });
             console.log('Pipeline and bind group created successfully');
+
+            const overlayUniformBuffer = device.createBuffer({
+                size: 16,
+                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+            });
+
+            const overlayBindGroup = device.createBindGroup({
+                layout: overlayBindGroupLayout,
+                entries: [
+                    { binding: 0, resource: { buffer: overlayUniformBuffer } }
+                ]
+            });
+
+            const overlayVertexData = new Float32Array([
+                -1, -1,
+                 1, -1,
+                -1,  1,
+                 1,  1,
+            ]);
+
+            const overlayVertexBuffer = device.createBuffer({
+                size: overlayVertexData.byteLength,
+                usage: GPUBufferUsage.VERTEX,
+                mappedAtCreation: true
+            });
+            new Float32Array(overlayVertexBuffer.getMappedRange()).set(overlayVertexData);
+            overlayVertexBuffer.unmap();
+
+            const overlayParams = new Float32Array(4);
 
             // Depth texture
             let depthTexture = device.createTexture({
@@ -637,6 +828,12 @@
 
                 device.queue.writeBuffer(uniformBuffer, 0, data);
 
+                overlayParams[0] = canvas.width;
+                overlayParams[1] = canvas.height;
+                overlayParams[2] = fps;
+                overlayParams[3] = 0;
+                device.queue.writeBuffer(overlayUniformBuffer, 0, overlayParams);
+
                 const commandEncoder = device.createCommandEncoder();
                 const textureView = context.getCurrentTexture().createView();
 
@@ -662,6 +859,11 @@
                 renderPass.setVertexBuffer(2, surfaceTypeBuffer);
                 renderPass.setIndexBuffer(indexBuffer, 'uint16');
                 renderPass.drawIndexed(indices.length);
+
+                renderPass.setPipeline(overlayPipeline);
+                renderPass.setBindGroup(0, overlayBindGroup);
+                renderPass.setVertexBuffer(0, overlayVertexBuffer);
+                renderPass.draw(4);
                 renderPass.end();
 
                 device.queue.submit([commandEncoder.finish()]);
