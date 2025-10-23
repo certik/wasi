@@ -1222,7 +1222,8 @@
                 const lines = [
                     `FPS: ${fps}`,
                     `Pos: (${cameraPos.x.toFixed(2)}, ${cameraPos.y.toFixed(2)}, ${cameraPos.z.toFixed(2)})`,
-                    `Dir: ${direction} (yaw: ${(yaw * 180 / Math.PI).toFixed(1)}°, pitch: ${(pitch * 180 / Math.PI).toFixed(1)}°)`
+                    `Dir: ${direction} (yaw: ${(yaw * 180 / Math.PI).toFixed(1)}°, pitch: ${(pitch * 180 / Math.PI).toFixed(1)}°)`,
+                    `h: HUD; m: map; r: map orientation`
                 ];
 
                 const { length: textLength, maxLineLength } = buildOverlayText(lines);
