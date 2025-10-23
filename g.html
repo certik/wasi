@@ -302,20 +302,45 @@
                         texV = fract(hitPos.z);
                     }
 
-                    // Use solid colors for debugging
-                    var color: vec4<f32>;
+                    // Use solid colors with checkerboard pattern
+                    var baseColor: vec4<f32>;
                     if (isWall) {
-                        color = vec4<f32>(1.0, 0.0, 0.0, 1.0); // Red for walls
+                        baseColor = vec4<f32>(1.0, 0.0, 0.0, 1.0); // Red for walls
                     } else if (isFloor) {
-                        color = vec4<f32>(0.0, 0.0, 1.0, 1.0); // Blue for floor
+                        baseColor = vec4<f32>(0.0, 0.0, 1.0, 1.0); // Blue for floor
                     } else {
-                        color = vec4<f32>(1.0, 1.0, 0.0, 1.0); // Yellow for ceiling
+                        baseColor = vec4<f32>(1.0, 1.0, 0.0, 1.0); // Yellow for ceiling
                     }
+                    
+                    // Add checkerboard pattern
+                    let checker = (i32(floor(texU * 4.0)) + i32(floor(texV * 4.0))) & 1;
+                    let checkerFactor = select(0.7, 1.0, checker == 0);
+                    var color = baseColor * checkerFactor;
+                    
                     // Simple distance fog
                     let factor = exp2(-minT * 0.05);
                     color.r *= factor;
                     color.g *= factor;
                     color.b *= factor;
+                    
+                    // Draw crosshair
+                    let centerX = u.viewWidth * 0.5;
+                    let centerY = u.viewHeight * 0.5;
+                    let crosshairSize = 10.0;
+                    let crosshairThickness = 2.0;
+                    let dx = abs(fragCoord.x - centerX);
+                    let dy = abs(fragCoord.y - centerY);
+                    
+                    if ((dx < crosshairThickness && dy < crosshairSize) || 
+                        (dy < crosshairThickness && dx < crosshairSize)) {
+                        // Crosshair color: white with black outline for visibility
+                        if (dx < 1.0 || dy < 1.0) {
+                            color = vec4<f32>(1.0, 1.0, 1.0, 1.0);
+                        } else {
+                            color = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+                        }
+                    }
+                    
                     return color;
                 }
             `;
