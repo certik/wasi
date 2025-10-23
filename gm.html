@@ -62,17 +62,17 @@
                 }
             }
 
-            // Map definition (1 = wall, 2 = wall with window, 0 = floor, 5-8 = starting position with direction)
+            // Map definition (1 = wall, 2 = wall with north/south window, 3 = wall with east/west window, 0 = floor, 5-8 = starting position with direction)
             const mapWidth = 10;
             const mapHeight = 10;
             const map = [
                 [1,1,1,1,1,1,1,1,1,1],
                 [1,7,0,0,0,0,0,0,0,1],
-                [1,0,1,2,1,0,1,0,0,1],
+                [1,0,1,2,1,0,2,0,0,1],
                 [1,0,1,0,0,0,0,1,0,1],
                 [1,0,1,0,1,0,0,0,0,1],
-                [1,0,1,0,1,0,1,0,0,1],
-                [1,0,1,0,1,1,0,0,1,1],
+                [1,0,1,0,3,0,1,0,0,1],
+                [1,0,3,0,1,1,0,0,1,1],
                 [1,0,1,0,1,0,0,0,0,1],
                 [1,0,0,0,1,0,0,1,0,1],
                 [1,1,1,1,1,1,1,1,1,1]
@@ -243,7 +243,7 @@
             indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
             indexOffset += 4;
 
-            const isSolidCell = (value) => value === 1 || value === 2;
+            const isSolidCell = (value) => value === 1 || value === 2 || value === 3;
 
             // Walls: generate quads for each boundary
             for (let z = 0; z < mapHeight; z++) {
@@ -253,11 +253,12 @@
                         continue;
                     }
 
-                    const isWindow = cell === 2;
+                    const isWindowNS = cell === 2;
+                    const isWindowEW = cell === 3;
 
                     // North face (negative Z)
                     if (z === 0 || !isSolidCell(map[z - 1][x])) {
-                        if (isWindow) {
+                        if (isWindowNS) {
                             pushWindowNorthSegments(x, z);
                         } else {
                             pushNorthSegment(x, z, 0, wallHeight);
@@ -265,7 +266,7 @@
                     }
                     // South face (positive Z)
                     if (z === mapHeight - 1 || !isSolidCell(map[z + 1][x])) {
-                        if (isWindow) {
+                        if (isWindowNS) {
                             pushWindowSouthSegments(x, z);
                         } else {
                             pushSouthSegment(x, z, 0, wallHeight);
@@ -273,7 +274,7 @@
                     }
                     // West face (negative X)
                     if (x === 0 || !isSolidCell(map[z][x - 1])) {
-                        if (isWindow) {
+                        if (isWindowEW) {
                             pushWindowWestSegments(x, z);
                         } else {
                             pushWestSegment(x, z, 0, wallHeight);
@@ -281,16 +282,21 @@
                     }
                     // East face (positive X)
                     if (x === mapWidth - 1 || !isSolidCell(map[z][x + 1])) {
-                        if (isWindow) {
+                        if (isWindowEW) {
                             pushWindowEastSegments(x, z);
                         } else {
                             pushEastSegment(x, z, 0, wallHeight);
                         }
                     }
 
-                    if (isWindow) {
-                        pushWestSegment(x, z, windowBottom, windowTop);
-                        pushEastSegment(x, z, windowBottom, windowTop);
+                    if (isWindowNS || isWindowEW) {
+                        if (isWindowNS) {
+                            pushWestSegment(x, z, windowBottom, windowTop);
+                            pushEastSegment(x, z, windowBottom, windowTop);
+                        } else {
+                            pushNorthSegment(x, z, windowBottom, windowTop);
+                            pushSouthSegment(x, z, windowBottom, windowTop);
+                        }
                         pushWindowBottomFill(x, z);
                         pushWindowTopFill(x, z);
                     }
