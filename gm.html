@@ -725,6 +725,11 @@
                     let textLength = u32(params.spacingAndPadding.y + 0.5);
                     let padding = vec2<f32>(params.spacingAndPadding.z, params.spacingAndPadding.w);
 
+                    let hudVisible = params.playerInfo.w;
+                    if (hudVisible <= 0.5) {
+                        return vec4<f32>(0.0, 0.0, 0.0, 0.0);
+                    }
+
                     let textLocal = screen - (panelOrigin + padding);
                     if (textLocal.x >= 0.0 && textLocal.y >= 0.0) {
                         var cursorX: u32 = 0u;
@@ -733,12 +738,12 @@
                         loop {
                             if (idx >= textLength) { break; }
                             let code = textData[idx];
-                if (code == NEWLINE_CODE) {
-                    cursorX = 0u;
-                    cursorY = cursorY + GLYPH_HEIGHT + lineSpacing;
-                    idx = idx + 1u;
-                    continue;
-                }
+                            if (code == NEWLINE_CODE) {
+                                cursorX = 0u;
+                                cursorY = cursorY + GLYPH_HEIGHT + lineSpacing;
+                                idx = idx + 1u;
+                                continue;
+                            }
 
                             let glyphOrigin = vec2<f32>(
                                 f32(cursorX) * textScale,
@@ -757,7 +762,7 @@
                                 }
                             }
 
-                cursorX = cursorX + GLYPH_WIDTH;
+                            cursorX = cursorX + GLYPH_WIDTH;
                             idx = idx + 1u;
                         }
                     }
@@ -979,7 +984,7 @@
 
             const GLYPH_WIDTH = 8;
             const GLYPH_HEIGHT = 8;
-            const GLYPH_SPACING = 2;
+            const GLYPH_SPACING = 0;
             const LINE_SPACING = 2;
             const TEXT_SCALE = 4.0;
             const PANEL_PADDING_X = 12.0;
@@ -1040,6 +1045,7 @@
             let mapArray = map;
             let mapVisible = false;
             let mapRelativeMode = false;
+            let hudVisible = true;
 
             document.addEventListener('keydown', (e) => {
                 const key = e.key.toLowerCase();
@@ -1048,6 +1054,8 @@
                         mapVisible = !mapVisible;
                     } else if (key === 'r') {
                         mapRelativeMode = !mapRelativeMode;
+                    } else if (key === 'h') {
+                        hudVisible = !hudVisible;
                     }
                 }
                 keys[key] = true;
@@ -1228,7 +1236,7 @@
 
                 const { length: textLength, maxLineLength } = buildOverlayText(lines);
                 const lineCount = lines.length;
-                const charAdvance = (GLYPH_WIDTH + GLYPH_SPACING) * TEXT_SCALE;
+                const charAdvance = GLYPH_WIDTH * TEXT_SCALE;
                 const textWidth = maxLineLength * charAdvance;
                 const textHeight = lineCount * GLYPH_HEIGHT * TEXT_SCALE + Math.max(0, (lineCount - 1)) * LINE_SPACING * TEXT_SCALE;
                 const panelOriginX = PANEL_MARGIN;
@@ -1269,7 +1277,7 @@
                 overlayParams[20] = cameraPos.x;
                 overlayParams[21] = cameraPos.z;
                 overlayParams[22] = yaw;
-                overlayParams[23] = 0;
+                overlayParams[23] = hudVisible ? 1 : 0;
 
                 device.queue.writeBuffer(overlayUniformBuffer, 0, overlayParams);
                 device.queue.writeBuffer(overlayTextBuffer, 0, overlayTextArray);
