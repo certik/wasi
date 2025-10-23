@@ -27,12 +27,13 @@
             const format = navigator.gpu.getPreferredCanvasFormat();
             context.configure({ device, format });
 
-            // Map definition (1 = wall, 0 = floor)
+            // Map definition (1 = wall, 0 = floor, 5-8 = starting position with direction)
+            // 5=North, 6=East, 7=South, 8=West
             const mapWidth = 10;
             const mapHeight = 10;
             const map = [
                 [1,1,1,1,1,1,1,1,1,1],
-                [1,0,0,0,0,0,0,0,0,1],
+                [1,7,0,0,0,0,0,0,0,1],
                 [1,0,1,0,1,0,1,0,0,1],
                 [1,0,0,0,0,0,0,1,0,1],
                 [1,0,1,0,1,0,0,0,0,1],
@@ -42,6 +43,26 @@
                 [1,0,0,0,1,0,0,1,0,1],
                 [1,1,1,1,1,1,1,1,1,1]
             ];
+
+            // Find starting position and direction
+            let startX = 1.5, startZ = 1.5, startYaw = 0;
+            for (let z = 0; z < mapHeight; z++) {
+                for (let x = 0; x < mapWidth; x++) {
+                    const cell = map[z][x];
+                    if (cell >= 5 && cell <= 8) {
+                        startX = x + 0.5;
+                        startZ = z + 0.5;
+                        // 5=North(+Z), 6=East(+X), 7=South(-Z), 8=West(-X)
+                        // Yaw: 0=+X, π/2=+Z, π=-X, 3π/2=-Z
+                        if (cell === 5) startYaw = Math.PI / 2;      // North
+                        else if (cell === 6) startYaw = 0;           // East
+                        else if (cell === 7) startYaw = -Math.PI / 2; // South
+                        else if (cell === 8) startYaw = Math.PI;     // West
+                        map[z][x] = 0; // Clear the marker
+                    }
+                }
+            }
+
             const mapData = new Uint8Array(mapWidth * mapHeight);
             for (let z = 0; z < mapHeight; z++) {
                 for (let x = 0; x < mapWidth; x++) {
@@ -344,8 +365,8 @@
             });
 
             // Camera and controls
-            let cameraPos = { x: 1.5, y: 1.5, z: 1.5 };
-            let yaw = 0.0;
+            let cameraPos = { x: startX, y: 1.5, z: startZ };
+            let yaw = startYaw;
             let pitch = 0.0;
             const fov = Math.PI / 3;
             const wallHeight = 2.0;
