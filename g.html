@@ -52,13 +52,17 @@
                     if (cell >= 5 && cell <= 8) {
                         startX = x + 0.5;
                         startZ = z + 0.5;
-                        // 5=North(+Z), 6=East(+X), 7=South(-Z), 8=West(-X)
-                        // Yaw: 0=+X, π/2=+Z, π=-X, 3π/2=-Z
-                        if (cell === 5) startYaw = Math.PI / 2;      // North
-                        else if (cell === 6) startYaw = 0;           // East
-                        else if (cell === 7) startYaw = -Math.PI / 2; // South
-                        else if (cell === 8) startYaw = Math.PI;     // West
+                        // Shader: forward = (cos(yaw), 0, sin(yaw)) when pitch=0
+                        // yaw=0: forward=(1,0,0) = +X = East
+                        // yaw=π/2: forward=(0,0,1) = +Z = South
+                        // yaw=π: forward=(-1,0,0) = -X = West  
+                        // yaw=-π/2: forward=(0,0,-1) = -Z = North
+                        if (cell === 5) startYaw = -Math.PI / 2;    // North (-Z)
+                        else if (cell === 6) startYaw = 0;          // East (+X)
+                        else if (cell === 7) startYaw = Math.PI / 2; // South (+Z)
+                        else if (cell === 8) startYaw = Math.PI;    // West (-X)
                         map[z][x] = 0; // Clear the marker
+                        console.log(`Starting at (${startX}, ${startZ}) facing ${cell===5?'North':cell===6?'East':cell===7?'South':'West'} with yaw=${startYaw}`);
                     }
                 }
             }
@@ -158,7 +162,12 @@
                 struct Uniforms {
                     viewWidth: f32,
                     viewHeight: f32,
-                    cameraPos: vec3<f32>,
+                    padding1: f32,
+                    padding2: f32,
+                    cameraPosX: f32,
+                    cameraPosY: f32,
+                    cameraPosZ: f32,
+                    padding3: f32,
                     yaw: f32,
                     pitch: f32,
                     fov: f32,
@@ -166,9 +175,6 @@
                     mapWidth: f32,
                     mapHeight: f32,
                     wallHeight: f32,
-                    padding1: f32,
-                    padding2: f32,
-                    padding3: f32,
                     padding4: f32,
                 };
 
@@ -239,7 +245,7 @@
                     let aspect = u.viewWidth / u.viewHeight;
                     let tanHalfFov = tan(u.fov * 0.5);
                     let ndcX = 2.0 * fragCoord.x / u.viewWidth - 1.0;
-                    let ndcY = 2.0 * fragCoord.y / u.viewHeight - 1.0;
+                    let ndcY = 1.0 - 2.0 * fragCoord.y / u.viewHeight;
                     let h = ndcX * tanHalfFov * aspect;
                     let v = ndcY * tanHalfFov;
 
@@ -253,10 +259,14 @@
                     let up = vec3<f32>(-sp * cy, cp, -sp * sy);
 
                     let rayDir = normalize(forward + right * h + up * v);
+                    
+                    let cameraPos = vec3<f32>(u.cameraPosX, u.cameraPosY, u.cameraPosZ);
 
-                    let t_floor = select((0.0 - u.cameraPos.y) / rayDir.y, 1e30, rayDir.y >= 0.0);
-                    let t_ceiling = select((u.wallHeight - u.cameraPos.y) / rayDir.y, 1e30, rayDir.y <= 0.0);
-                    let wallHit = raycastWalls(u.cameraPos, rayDir);
+                    // Floor: only hit if ray is going down (rayDir.y < 0)
+                    let t_floor = select((0.0 - cameraPos.y) / rayDir.y, 1e30, rayDir.y >= 0.0);
+                    // Ceiling: only hit if ray is going up (rayDir.y > 0)
+                    let t_ceiling = select((u.wallHeight - cameraPos.y) / rayDir.y, 1e30, rayDir.y <= 0.0);
+                    let wallHit = raycastWalls(cameraPos, rayDir);
                     let t_wall = wallHit.t;
 
                     let minT = min(t_wall, min(t_floor, t_ceiling));
@@ -264,7 +274,7 @@
                         return vec4<f32>(0.5, 0.7, 1.0, 1.0); // sky
                     }
 
-                    let hitPos = u.cameraPos + rayDir * minT;
+                    let hitPos = cameraPos + rayDir * minT;
                     var texU: f32;
                     var texV: f32;
                     var isWall = false;
@@ -292,18 +302,14 @@
                         texV = fract(hitPos.z);
                     }
 
-                    // Sample all textures and select the appropriate one
-                    let wallColor = textureSample(wallTex, s, vec2<f32>(texU, texV));
-                    let floorColor = textureSample(floorTex, s, vec2<f32>(texU, texV));
-                    let ceilingColor = textureSample(ceilingTex, s, vec2<f32>(texU, texV));
-
+                    // Use solid colors for debugging
                     var color: vec4<f32>;
                     if (isWall) {
-                        color = wallColor;
+                        color = vec4<f32>(1.0, 0.0, 0.0, 1.0); // Red for walls
                     } else if (isFloor) {
-                        color = floorColor;
+                        color = vec4<f32>(0.0, 0.0, 1.0, 1.0); // Blue for floor
                     } else {
-                        color = ceilingColor;
+                        color = vec4<f32>(1.0, 1.0, 0.0, 1.0); // Yellow for ceiling
                     }
                     // Simple distance fog
                     let factor = exp2(-minT * 0.05);
@@ -365,7 +371,7 @@
             });
 
             // Camera and controls
-            let cameraPos = { x: startX, y: 1.5, z: startZ };
+            let cameraPos = { x: startX, y: 1.0, z: startZ };
             let yaw = startYaw;
             let pitch = 0.0;
             const fov = Math.PI / 3;
@@ -387,8 +393,8 @@
             });
 
             function onMouseMove(e) {
-                yaw += e.movementX * 0.002;
-                pitch -= e.movementY * 0.002;
+                yaw -= e.movementX * 0.002;
+                pitch += e.movementY * 0.002;
                 pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, pitch));
             }
 
@@ -427,23 +433,46 @@
             }
 
             // Render loop
+            let frameCount = 0;
             function render() {
                 updateCamera();
+                
+                // Debug log first frame and whenever pitch changes
+                if (frameCount < 5 || Math.abs(pitch) > 0.01) {
+                    console.log(`Frame ${frameCount}: pos=(${cameraPos.x.toFixed(2)}, ${cameraPos.y.toFixed(2)}, ${cameraPos.z.toFixed(2)}), yaw=${yaw.toFixed(3)}, pitch=${pitch.toFixed(3)}`);
+                    if (frameCount === 0) {
+                        console.log(`Map at [1,1]=${map[1][1]}, [1,2]=${map[1][2]}, [2,1]=${map[2][1]}`);
+                    }
+                }
+                frameCount++;
 
                 // Pack data with proper alignment for WGSL uniforms
-                // viewWidth, viewHeight, padding (vec3 needs 16-byte alignment),
-                // cameraPos (vec3), padding after vec3,
-                // then remaining floats
-                const data = new Float32Array([
-                    canvas.width, canvas.height,
-                    0.0, 0.0, // padding for vec3 alignment
-                    cameraPos.x, cameraPos.y, cameraPos.z,
-                    0.0, // padding after vec3
-                    yaw, pitch, fov,
-                    performance.now() / 1000,
-                    mapWidth, mapHeight, wallHeight,
-                    0.0 // final padding
-                ]);
+                // WGSL alignment: vec3<f32> has size=12 but alignment=16
+                // Layout:
+                // [0-3]: viewWidth, [4-7]: viewHeight, [8-11]: padding, [12-15]: padding
+                // [16-27]: cameraPos (vec3), [28-31]: padding
+                // [32+]: yaw, pitch, fov, time, mapWidth, mapHeight, wallHeight
+                const data = new Float32Array(20); // 80 bytes
+                data[0] = canvas.width;
+                data[1] = canvas.height;
+                // data[2], data[3] = padding
+                data[4] = cameraPos.x;
+                data[5] = cameraPos.y;
+                data[6] = cameraPos.z;
+                // data[7] = padding
+                data[8] = yaw;
+                data[9] = pitch;
+                data[10] = fov;
+                data[11] = performance.now() / 1000;
+                data[12] = mapWidth;
+                data[13] = mapHeight;
+                data[14] = wallHeight;
+                // data[15-19] = padding
+                
+                if (frameCount === 1) {
+                    console.log(`data[8]=yaw=${data[8].toFixed(3)}, data[9]=pitch=${data[9].toFixed(3)}, data[10]=fov=${data[10].toFixed(3)}`);
+                }
+                
                 device.queue.writeBuffer(uniformBuffer, 0, data);
 
                 const commandEncoder = device.createCommandEncoder();
