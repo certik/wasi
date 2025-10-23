@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WebGPU 3D World from 2D Map</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <script type="module">
+        async function init() {
+            const canvas = document.getElementById('canvas');
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            if (!navigator.gpu) {
+                alert('WebGPU not supported.');
+                return;
+            }
+
+            const adapter = await navigator.gpu.requestAdapter();
+            const device = await adapter.requestDevice();
+            const context = canvas.getContext('webgpu');
+            const format = navigator.gpu.getPreferredCanvasFormat();
+            context.configure({ device, format });
+
+            // Map definition (1 = wall, 0 = floor)
+            const mapWidth = 10;
+            const mapHeight = 10;
+            const map = [
+                [1,1,1,1,1,1,1,1,1,1],
+                [1,0,0,0,0,0,0,0,0,1],
+                [1,0,1,0,1,0,1,0,0,1],
+                [1,0,0,0,0,0,0,1,0,1],
+                [1,0,1,0,1,0,0,0,0,1],
+                [1,0,0,1,0,0,1,0,0,1],
+                [1,0,0,0,0,1,0,0,1,1],
+                [1,0,1,0,0,0,0,0,0,1],
+                [1,0,0,0,1,0,0,1,0,1],
+                [1,1,1,1,1,1,1,1,1,1]
+            ];
+            const mapData = new Uint8Array(mapWidth * mapHeight);
+            for (let z = 0; z < mapHeight; z++) {
+                for (let x = 0; x < mapWidth; x++) {
+                    mapData[z * mapWidth + x] = map[z][x];
+                }
+            }
+
+            // Create map texture
+            const mapTexture = device.createTexture({
+                size: [mapWidth, mapHeight, 1],
+                format: 'r8uint',
+                usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
+            });
+            device.queue.writeTexture(
+                { texture: mapTexture },
+                mapData,
+                { bytesPerRow: mapWidth },
+                { width: mapWidth, height: mapHeight }
+            );
+            const mapView = mapTexture.createView();
+
+            // Load textures (using public URLs; replace if needed)
+            async function createTextureFromUrl(device, url, label) {
+                const response = await fetch(url);
+                const imageBitmap = await createImageBitmap(await response.blob());
+                const texture = device.createTexture({
+                    label,
+                    size: [imageBitmap.width, imageBitmap.height, 1],
+                    format: 'rgba8unorm',
+                    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
+                });
+                device.queue.copyExternalImageToTexture(
+                    { source: imageBitmap },
+                    { texture },
+                    [imageBitmap.width, imageBitmap.height, 1]
+                );
+                return texture;
+            }
+
+            const wallTexture = await createTextureFromUrl(device, 'https://threejs.org/examples/textures/brick_diffuse.jpg', 'wall');
+            const floorTexture = await createTextureFromUrl(device, 'https://threejs.org/examples/textures/hardwood2_diffuse.jpg', 'floor');
+            const ceilingTexture = await createTextureFromUrl(device, 'https://threejs.org/examples/textures/lava/cloud.png', 'ceiling'); // Placeholder; replace for better ceiling
+
+            const wallView = wallTexture.createView();
+            const floorView = floorTexture.createView();
+            const ceilingView = ceilingTexture.createView();
+
+            const sampler = device.createSampler({
+                magFilter: 'linear',
+                minFilter: 'linear'
+            });
+
+            // Quad vertices
+            const vertices = new Float32Array([
+                -1.0, -1.0,
+                 1.0, -1.0,
+                -1.0,  1.0,
+                -1.0,  1.0,
+                 1.0, -1.0,
+                 1.0,  1.0,
+            ]);
+            const vertexBuffer = device.createBuffer({
+                label: 'vertex buffer',
+                size: vertices.byteLength,
+                usage: GPUBufferUsage.VERTEX,
+                mappedAtCreation: true
+            });
+            new Float32Array(vertexBuffer.getMappedRange()).set(vertices);
+            vertexBuffer.unmap();
+
+            // Uniform buffer
+            const uniformBuffer = device.createBuffer({
+                label: 'uniform buffer',
+                size: 12 * 4, // 12 f32
+                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+            });
+
+            // Shaders
+            const vsSource = `
+                struct VertexOutput {
+                    @builtin(position) position: vec4<f32>,
+                };
+
+                @vertex
+                fn vertex_main(@location(0) position: vec2<f32>) -> VertexOutput {
+                    var output: VertexOutput;
+                    output.position = vec4<f32>(position, 0.0, 1.0);
+                    return output;
+                }
+            `;
+
+            const fsSource = `
+                struct Uniforms {
+                    viewWidth: f32,
+                    viewHeight: f32,
+                    cameraPos: vec3<f32>,
+                    yaw: f32,
+                    pitch: f32,
+                    fov: f32,
+                    time: f32,
+                    mapWidth: f32,
+                    mapHeight: f32,
+                    wallHeight: f32,
+                    padding1: f32,
+                    padding2: f32,
+                };
+
+                struct WallHit {
+                    t: f32,
+                    isXSide: bool,
+                };
+
+                @group(0) @binding(0) var<uniform> u: Uniforms;
+                @group(0) @binding(1) var mapTex: texture_2d<u32>;
+                @group(0) @binding(2) var wallTex: texture_2d<f32>;
+                @group(0) @binding(3) var s: sampler;
+                @group(0) @binding(4) var floorTex: texture_2d<f32>;
+                @group(0) @binding(5) var ceilingTex: texture_2d<f32>;
+
+                fn raycastWalls(pos: vec3<f32>, dir: vec3<f32>) -> WallHit {
+                    let eps = 1e-6;
+                    let dirX = select(dir.x, eps, abs(dir.x) < eps);
+                    let dirZ = select(dir.z, eps, abs(dir.z) < eps);
+                    let mapX = i32(floor(pos.x));
+                    let mapZ = i32(floor(pos.z));
+                    let deltaDistX = 1.0 / abs(dirX);
+                    let deltaDistZ = 1.0 / abs(dirZ);
+                    let stepX = select(-1, 1, dirX > 0.0);
+                    let stepZ = select(-1, 1, dirZ > 0.0);
+                    var sideDistX: f32;
+                    if (dirX > 0.0) {
+                        sideDistX = (f32(mapX + 1) - pos.x) / dirX;
+                    } else {
+                        sideDistX = (pos.x - f32(mapX)) / dirX;
+                    }
+                    var sideDistZ: f32;
+                    if (dirZ > 0.0) {
+                        sideDistZ = (f32(mapZ + 1) - pos.z) / dirZ;
+                    } else {
+                        sideDistZ = (pos.z - f32(mapZ)) / dirZ;
+                    }
+                    var t_hit = 1e30;
+                    var isXSide = false;
+                    loop {
+                        let t_current = min(sideDistX, sideDistZ);
+                        isXSide = sideDistX < sideDistZ;
+                        if (isXSide) {
+                            sideDistX += deltaDistX;
+                            mapX += stepX;
+                        } else {
+                            sideDistZ += deltaDistZ;
+                            mapZ += stepZ;
+                        }
+                        let texSize = vec2<i32>(i32(u.mapWidth), i32(u.mapHeight));
+                        if (mapX < 0 || mapX >= texSize.x || mapZ < 0 || mapZ >= texSize.y) {
+                            break;
+                        }
+                        let cell = textureLoad(mapTex, vec2<i32>(mapX, mapZ), 0).r;
+                        if (cell > 0u) {
+                            t_hit = t_current;
+                            break;
+                        }
+                    }
+                    var result: WallHit;
+                    result.t = t_hit;
+                    result.isXSide = isXSide;
+                    return result;
+                }
+
+                @fragment
+                fn fragment_main(@builtin(position) fragCoord: vec2<f32>) -> @location(0) vec4<f32> {
+                    let aspect = u.viewWidth / u.viewHeight;
+                    let tanHalfFov = tan(u.fov * 0.5);
+                    let ndcX = 2.0 * fragCoord.x / u.viewWidth - 1.0;
+                    let ndcY = 2.0 * fragCoord.y / u.viewHeight - 1.0;
+                    let h = ndcX * tanHalfFov * aspect;
+                    let v = ndcY * tanHalfFov;
+
+                    let cy = cos(u.yaw);
+                    let sy = sin(u.yaw);
+                    let cp = cos(u.pitch);
+                    let sp = sin(u.pitch);
+
+                    let forward = vec3<f32>(cy * cp, sp, sy * cp);
+                    let right = vec3<f32>(cy, 0.0, sy);
+                    let up = vec3<f32>(0.0, 1.0, 0.0);
+
+                    let rayDir = normalize(forward + right * h + up * v);
+
+                    let t_floor = select((0.0 - u.cameraPos.y) / rayDir.y, 1e30, rayDir.y >= 0.0);
+                    let t_ceiling = select((u.wallHeight - u.cameraPos.y) / rayDir.y, 1e30, rayDir.y <= 0.0);
+                    let wallHit = raycastWalls(u.cameraPos, rayDir);
+                    let t_wall = wallHit.t;
+
+                    let minT = min(t_wall, min(t_floor, t_ceiling));
+                    if (minT > 100.0) {
+                        return vec4<f32>(0.5, 0.7, 1.0, 1.0); // sky
+                    }
+
+                    let hitPos = u.cameraPos + rayDir * minT;
+                    var texU: f32;
+                    var texV: f32;
+                    var tex: texture_2d<f32>;
+
+                    if (minT == t_wall && t_wall < 1e29) {
+                        // Wall hit
+                        tex = wallTex;
+                        if (wallHit.isXSide) {
+                            texU = fract(hitPos.z);
+                        } else {
+                            texU = fract(hitPos.x);
+                        }
+                        texV = hitPos.y / u.wallHeight;
+                    } else if (minT == t_floor) {
+                        // Floor hit
+                        tex = floorTex;
+                        texU = fract(hitPos.x);
+                        texV = fract(hitPos.z);
+                    } else {
+                        // Ceiling hit
+                        tex = ceilingTex;
+                        texU = fract(hitPos.x);
+                        texV = fract(hitPos.z);
+                    }
+
+                    var color = textureSample(tex, s, vec2<f32>(texU, texV));
+                    // Simple distance fog
+                    color.rgb *= exp2(-minT * 0.05);
+                    return color;
+                }
+            `;
+
+            const vsModule = device.createShaderModule({ code: vsSource });
+            const fsModule = device.createShaderModule({ code: fsSource });
+
+            const bindGroupLayout = device.createBindGroupLayout({
+                entries: [
+                    { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+                    { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'uint' } },
+                    { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
+                    { binding: 3, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
+                    { binding: 4, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
+                    { binding: 5, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
+                ]
+            });
+
+            const pipeline = device.createRenderPipeline({
+                layout: device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }),
+                vertex: {
+                    module: vsModule,
+                    entryPoint: 'vertex_main',
+                    buffers: [{
+                        arrayStride: 8,
+                        attributes: [{
+                            shaderLocation: 0,
+                            offset: 0,
+                            format: 'float32x2'
+                        }]
+                    }]
+                },
+                fragment: {
+                    module: fsModule,
+                    entryPoint: 'fragment_main',
+                    targets: [{ format }]
+                },
+                primitive: {
+                    topology: 'triangle-list'
+                }
+            });
+
+            const bindGroup = device.createBindGroup({
+                layout: bindGroupLayout,
+                entries: [
+                    { binding: 0, resource: { buffer: uniformBuffer } },
+                    { binding: 1, resource: mapView },
+                    { binding: 2, resource: wallView },
+                    { binding: 3, resource: sampler },
+                    { binding: 4, resource: floorView },
+                    { binding: 5, resource: ceilingView },
+                ]
+            });
+
+            // Camera and controls
+            let cameraPos = { x: 1.5, y: 1.5, z: 1.5 };
+            let yaw = 0.0;
+            let pitch = 0.0;
+            const fov = Math.PI / 3;
+            const wallHeight = 2.0;
+            const moveSpeed = 0.1;
+            const keys = {};
+            let mapArray = map; // For JS collision
+
+            document.addEventListener('keydown', (e) => { keys[e.key.toLowerCase()] = true; });
+            document.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
+
+            canvas.addEventListener('click', () => canvas.requestPointerLock());
+            document.addEventListener('pointerlockchange', () => {
+                if (document.pointerLockElement === canvas) {
+                    document.addEventListener('mousemove', onMouseMove);
+                } else {
+                    document.removeEventListener('mousemove', onMouseMove);
+                }
+            });
+
+            function onMouseMove(e) {
+                yaw -= e.movementX * 0.002;
+                pitch -= e.movementY * 0.002;
+                pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, pitch));
+            }
+
+            function updateCamera() {
+                let dx = 0;
+                let dz = 0;
+                const sinYaw = Math.sin(yaw);
+                const cosYaw = Math.cos(yaw);
+                if (keys['w']) {
+                    dx += sinYaw * moveSpeed;
+                    dz += cosYaw * moveSpeed;
+                }
+                if (keys['s']) {
+                    dx -= sinYaw * moveSpeed;
+                    dz -= cosYaw * moveSpeed;
+                }
+                if (keys['a']) {
+                    dx += cosYaw * moveSpeed;
+                    dz -= sinYaw * moveSpeed;
+                }
+                if (keys['d']) {
+                    dx -= cosYaw * moveSpeed;
+                    dz += sinYaw * moveSpeed;
+                }
+
+                const newX = cameraPos.x + dx;
+                const newZ = cameraPos.z + dz;
+                const mapX = Math.floor(newX);
+                const mapZ = Math.floor(newZ);
+                if (mapX >= 0 && mapX < mapWidth && mapZ >= 0 && mapZ < mapHeight && mapArray[mapZ][mapX] === 0) {
+                    cameraPos.x = newX;
+                    cameraPos.z = newZ;
+                }
+            }
+
+            // Render loop
+            function render() {
+                updateCamera();
+
+                const data = new Float32Array([
+                    canvas.width, canvas.height,
+                    cameraPos.x, cameraPos.y, cameraPos.z,
+                    yaw, pitch, fov,
+                    performance.now() / 1000,
+                    mapWidth, mapHeight, wallHeight
+                ]);
+                device.queue.writeBuffer(uniformBuffer, 0, data);
+
+                const commandEncoder = device.createCommandEncoder();
+                const textureView = context.getCurrentTexture().createView();
+
+                const renderPass = commandEncoder.beginRenderPass({
+                    colorAttachments: [{
+                        view: textureView,
+                        clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
+                        loadOp: 'clear',
+                        storeOp: 'store',
+                    }]
+                });
+
+                renderPass.setPipeline(pipeline);
+                renderPass.setBindGroup(0, bindGroup);
+                renderPass.setVertexBuffer(0, vertexBuffer);
+                renderPass.draw(6);
+                renderPass.end();
+
+                device.queue.submit([commandEncoder.finish()]);
+                requestAnimationFrame(render);
+            }
+
+            render();
+
+            // Resize
+            window.addEventListener('resize', () => {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            });
+        }
+
+        init();
+    </script>
+</body>
+</html>
