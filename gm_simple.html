@@ -183,7 +183,7 @@
 
                 struct VertexOutput {
                     @builtin(position) clipPos: vec4<f32>,
-                    @location(0) uv: vec2<f32>,
+                    @location(0) worldPos: vec3<f32>,
                     @location(1) surfaceType: f32,
                     @location(2) viewDist: f32,
                 };
@@ -223,17 +223,17 @@
                     let aspect = u.viewWidth / u.viewHeight;
                     let f = tan(u.fov * 0.5);
 
-                    if (viewZ > 0.1) {
+                    if (viewZ > 0.01) {
                         let clipX = (viewX / viewZ) / (f * aspect);
                         let clipY = (viewY / viewZ) / f;
-                        let clipZ = (viewZ - 0.1) / (100.0 - 0.1);
+                        let clipZ = (viewZ - 0.01) / (100.0 - 0.01);
                         output.clipPos = vec4<f32>(clipX, clipY, clipZ, 1.0);
                     } else {
-                        // Behind camera
+                        // Behind camera - clip it
                         output.clipPos = vec4<f32>(0.0, 0.0, -1.0, 1.0);
                     }
 
-                    output.uv = uv;
+                    output.worldPos = position;
                     output.surfaceType = surfaceType;
                     output.viewDist = viewDist;
                     return output;
@@ -241,17 +241,56 @@
             `;
 
             const fsSource = `
+                struct Uniforms {
+                    cameraPosX: f32,
+                    cameraPosY: f32,
+                    cameraPosZ: f32,
+                    yaw: f32,
+                    pitch: f32,
+                    fov: f32,
+                    viewWidth: f32,
+                    viewHeight: f32,
+                };
+                @group(0) @binding(0) var<uniform> u: Uniforms;
+
                 struct VertexOutput {
                     @builtin(position) clipPos: vec4<f32>,
-                    @location(0) uv: vec2<f32>,
+                    @location(0) worldPos: vec3<f32>,
                     @location(1) surfaceType: f32,
                     @location(2) viewDist: f32,
                 };
 
                 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+                    // Calculate perspective-correct UVs from world position
+                    var texU: f32;
+                    var texV: f32;
+
+                    if (in.surfaceType > 1.5) {
+                        // Ceiling (surfaceType = 2)
+                        texU = fract(in.worldPos.x);
+                        texV = fract(in.worldPos.z);
+                    } else if (in.surfaceType > 0.5) {
+                        // Wall (surfaceType = 1)
+                        // Determine which wall by checking which coordinate is closer to boundary
+                        let absX = abs(in.worldPos.x);
+                        let absZ = abs(in.worldPos.z);
+                        if (absX > absZ) {
+                            // East or West wall (x-aligned)
+                            texU = fract(in.worldPos.z);
+                        } else {
+                            // North or South wall (z-aligned)
+                            texU = fract(in.worldPos.x);
+                        }
+                        texV = in.worldPos.y / 2.0; // wallHeight = 2.0
+                    } else {
+                        // Floor (surfaceType = 0)
+                        texU = fract(in.worldPos.x);
+                        texV = fract(in.worldPos.z);
+                    }
+
                     // Checkerboard pattern
-                    let checkerU = floor(in.uv.x * 4.0);
-                    let checkerV = floor(in.uv.y * 4.0);
+                    let checkerU = floor(texU * 4.0);
+                    let checkerV = floor(texV * 4.0);
                     let checker = (i32(checkerU) + i32(checkerV)) & 1;
                     let checkerFactor = select(0.7, 1.0, checker == 0);
 
