@@ -78,10 +78,10 @@
             const indices = [];
             let indexOffset = 0;
 
-            // Floor: one big quad
+            // Floor: one big quad (matching collision coordinate system)
             const floorPositions = [
-                -0.5, 0, -0.5,  mapWidth - 0.5, 0, -0.5,
-                -0.5, 0, mapHeight - 0.5,  mapWidth - 0.5, 0, mapHeight - 0.5
+                0, 0, 0,  mapWidth, 0, 0,
+                0, 0, mapHeight,  mapWidth, 0, mapHeight
             ];
             const floorUVs = [
                 0, 0,  mapWidth * checkerSize, 0,
@@ -93,10 +93,10 @@
             indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
             indexOffset += 4;
 
-            // Ceiling: similar but at wallHeight
+            // Ceiling: similar but at wallHeight (matching collision coordinate system)
             const ceilingPositions = [
-                -0.5, wallHeight, -0.5,  mapWidth - 0.5, wallHeight, -0.5,
-                -0.5, wallHeight, mapHeight - 0.5,  mapWidth - 0.5, wallHeight, mapHeight - 0.5
+                0, wallHeight, 0,  mapWidth, wallHeight, 0,
+                0, wallHeight, mapHeight,  mapWidth, wallHeight, mapHeight
             ];
             const ceilingUVs = floorUVs; // Same tiling
             positions.push(...ceilingPositions);
@@ -110,11 +110,11 @@
                 for (let x = 0; x < mapWidth; x++) {
                     if (map[z][x] === 1) {
                         // Check four directions for exposed faces
-                        // North face (negative Z)
+                        // North face (negative Z) - matching collision coordinate system
                         if (z === 0 || map[z - 1][x] === 0) {
                             const wallPositions = [
-                                x - 0.5, 0, z - 0.5,  x + 0.5, 0, z - 0.5,
-                                x - 0.5, wallHeight, z - 0.5,  x + 0.5, wallHeight, z - 0.5
+                                x, 0, z,  x + 1, 0, z,
+                                x, wallHeight, z,  x + 1, wallHeight, z
                             ];
                             const wallUVs = [
                                 0, 0,  1, 0,
@@ -126,11 +126,11 @@
                             indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
                             indexOffset += 4;
                         }
-                        // South face (positive Z)
+                        // South face (positive Z) - matching collision coordinate system
                         if (z === mapHeight - 1 || map[z + 1][x] === 0) {
                             const wallPositions = [
-                                x - 0.5, 0, z + 0.5,  x + 0.5, 0, z + 0.5,
-                                x - 0.5, wallHeight, z + 0.5,  x + 0.5, wallHeight, z + 0.5
+                                x, 0, z + 1,  x + 1, 0, z + 1,
+                                x, wallHeight, z + 1,  x + 1, wallHeight, z + 1
                             ];
                             const wallUVs = [
                                 0, 0,  1, 0,
@@ -142,11 +142,11 @@
                             indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
                             indexOffset += 4;
                         }
-                        // West face (negative X)
+                        // West face (negative X) - matching collision coordinate system
                         if (x === 0 || map[z][x - 1] === 0) {
                             const wallPositions = [
-                                x - 0.5, 0, z - 0.5,  x - 0.5, 0, z + 0.5,
-                                x - 0.5, wallHeight, z - 0.5,  x - 0.5, wallHeight, z + 0.5
+                                x, 0, z,  x, 0, z + 1,
+                                x, wallHeight, z,  x, wallHeight, z + 1
                             ];
                             const wallUVs = [
                                 0, 0,  1, 0,
@@ -158,11 +158,11 @@
                             indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
                             indexOffset += 4;
                         }
-                        // East face (positive X)
+                        // East face (positive X) - matching collision coordinate system
                         if (x === mapWidth - 1 || map[z][x + 1] === 0) {
                             const wallPositions = [
-                                x + 0.5, 0, z - 0.5,  x + 0.5, 0, z + 0.5,
-                                x + 0.5, wallHeight, z - 0.5,  x + 0.5, wallHeight, z + 0.5
+                                x + 1, 0, z,  x + 1, 0, z + 1,
+                                x + 1, wallHeight, z,  x + 1, wallHeight, z + 1
                             ];
                             const wallUVs = [
                                 0, 0,  1, 0,
