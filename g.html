@@ -33,11 +33,11 @@
             const mapHeight = 10;
             const map = [
                 [1,1,1,1,1,1,1,1,1,1],
-                [1,7,0,0,0,0,0,0,0,1],
+                [1,6,0,0,0,0,0,0,0,1],
                 [1,0,1,0,1,0,1,0,0,1],
-                [1,0,0,0,0,0,0,1,0,1],
+                [1,0,1,0,0,0,0,1,0,1],
                 [1,0,1,0,1,0,0,0,0,1],
-                [1,0,0,1,0,0,1,0,0,1],
+                [1,0,1,1,0,0,1,0,0,1],
                 [1,0,0,0,0,1,0,0,1,1],
                 [1,0,1,0,0,0,0,0,0,1],
                 [1,0,0,0,1,0,0,1,0,1],
@@ -255,7 +255,7 @@
                     let sp = sin(u.pitch);
 
                     let forward = vec3<f32>(cy * cp, sp, sy * cp);
-                    let right = vec3<f32>(sy, 0.0, -cy);
+                    let right = vec3<f32>(-sy, 0.0, cy);
                     let up = vec3<f32>(-sp * cy, cp, -sp * sy);
 
                     let rayDir = normalize(forward + right * h + up * v);
@@ -393,7 +393,7 @@
             });
 
             function onMouseMove(e) {
-                yaw -= e.movementX * 0.002;
+                yaw += e.movementX * 0.002;
                 pitch -= e.movementY * 0.002;
                 pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, pitch));
             }
@@ -414,12 +414,12 @@
                     dz -= sinYaw * moveSpeed;
                 }
                 if (keys['a']) {
-                    dx -= sinYaw * moveSpeed;
-                    dz += cosYaw * moveSpeed;
-                }
-                if (keys['d']) {
                     dx += sinYaw * moveSpeed;
                     dz -= cosYaw * moveSpeed;
+                }
+                if (keys['d']) {
+                    dx -= sinYaw * moveSpeed;
+                    dz += cosYaw * moveSpeed;
                 }
 
                 const newX = cameraPos.x + dx;
