@@ -366,7 +366,7 @@
             });
 
             function onMouseMove(e) {
-                yaw -= e.movementX * 0.002;
+                yaw += e.movementX * 0.002;
                 pitch -= e.movementY * 0.002;
                 pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, pitch));
             }
@@ -376,21 +376,23 @@
                 let dz = 0;
                 const sinYaw = Math.sin(yaw);
                 const cosYaw = Math.cos(yaw);
+                // Forward direction is (cos(yaw), sin(yaw)) in XZ plane
+                // Right direction is (sin(yaw), -cos(yaw)) in XZ plane
                 if (keys['w']) {
-                    dx += sinYaw * moveSpeed;
-                    dz += cosYaw * moveSpeed;
+                    dx += cosYaw * moveSpeed;
+                    dz += sinYaw * moveSpeed;
                 }
                 if (keys['s']) {
-                    dx -= sinYaw * moveSpeed;
-                    dz -= cosYaw * moveSpeed;
-                }
-                if (keys['a']) {
-                    dx += cosYaw * moveSpeed;
+                    dx -= cosYaw * moveSpeed;
                     dz -= sinYaw * moveSpeed;
                 }
+                if (keys['a']) {
+                    dx -= sinYaw * moveSpeed;
+                    dz += cosYaw * moveSpeed;
+                }
                 if (keys['d']) {
-                    dx -= cosYaw * moveSpeed;
-                    dz += sinYaw * moveSpeed;
+                    dx += sinYaw * moveSpeed;
+                    dz -= cosYaw * moveSpeed;
                 }
 
                 const newX = cameraPos.x + dx;
