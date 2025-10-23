@@ -6,22 +6,15 @@
     <style>
         body { margin: 0; overflow: hidden; }
         canvas { display: block; position: absolute; }
-        #textCanvas { pointer-events: none; z-index: 1; }
     </style>
 </head>
 <body>
     <canvas id="canvas"></canvas>
-    <canvas id="textCanvas"></canvas>
     <script type="module">
         async function init() {
             const canvas = document.getElementById('canvas');
-            const textCanvas = document.getElementById('textCanvas');
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
-            textCanvas.width = window.innerWidth;
-            textCanvas.height = window.innerHeight;
-
-            const textCtx = textCanvas.getContext('2d');
 
             if (!navigator.gpu) {
                 alert('WebGPU not supported.');
@@ -369,25 +362,6 @@
                     color.g *= factor;
                     color.b *= factor;
 
-                    // Draw crosshair (like g.html)
-                    let fragCoord = in.clipPos;
-                    let centerX = u.viewWidth * 0.5;
-                    let centerY = u.viewHeight * 0.5;
-                    let crosshairSize = 10.0;
-                    let crosshairThickness = 2.0;
-                    let dx = abs(fragCoord.x - centerX);
-                    let dy = abs(fragCoord.y - centerY);
-
-                    if ((dx < crosshairThickness && dy < crosshairSize) ||
-                        (dy < crosshairThickness && dx < crosshairSize)) {
-                        // Crosshair color: white with black outline for visibility
-                        if (dx < 1.0 || dy < 1.0) {
-                            color = vec4<f32>(1.0, 1.0, 1.0, 1.0);
-                        } else {
-                            color = vec4<f32>(0.0, 0.0, 0.0, 1.0);
-                        }
-                    }
-
                     return color;
                 }
             `;
@@ -489,6 +463,23 @@
                         fragData.frag_position.x * params.viewportAndOrigin.x,
                         (1.0 - fragData.frag_position.y) * params.viewportAndOrigin.y
                     );
+
+                    let center = vec2<f32>(
+                        params.viewportAndOrigin.x * 0.5,
+                        params.viewportAndOrigin.y * 0.5
+                    );
+                    let crosshairSize = 10.0;
+                    let crosshairThickness = 2.0;
+                    let innerThickness = 1.0;
+                    let dx = abs(screen.x - center.x);
+                    let dy = abs(screen.y - center.y);
+                    if ((dx < crosshairThickness && dy < crosshairSize) ||
+                        (dy < crosshairThickness && dx < crosshairSize)) {
+                        if (dx < innerThickness || dy < innerThickness) {
+                            return vec4<f32>(1.0, 1.0, 1.0, 1.0);
+                        }
+                        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+                    }
 
                     let panelMax = panelOrigin + panelSize;
                     if (screen.x < panelOrigin.x || screen.x > panelMax.x || screen.y < panelOrigin.y || screen.y > panelMax.y) {
@@ -929,7 +920,7 @@
                 const panelWidth = PANEL_PADDING_X * 2 + maxLineLength * charAdvance;
                 const panelHeight = PANEL_PADDING_Y * 2 + lineCount * GLYPH_HEIGHT * TEXT_SCALE + Math.max(0, (lineCount - 1)) * LINE_SPACING * TEXT_SCALE;
                 const panelOriginX = PANEL_MARGIN;
-                const panelOriginY = Math.max(PANEL_MARGIN, canvas.height - panelHeight - PANEL_MARGIN);
+                const panelOriginY = PANEL_MARGIN;
 
                 overlayParams[0] = canvas.width;
                 overlayParams[1] = canvas.height;
@@ -985,20 +976,6 @@
 
                 device.queue.submit([commandEncoder.finish()]);
 
-                // Text overlay
-                textCtx.clearRect(0, 0, textCanvas.width, textCanvas.height);
-                textCtx.font = '16px monospace';
-                textCtx.fillStyle = 'white';
-                textCtx.strokeStyle = 'black';
-                textCtx.lineWidth = 3;
-
-                let y = 20;
-                for (const line of lines) {
-                    textCtx.strokeText(line, 10, y);
-                    textCtx.fillText(line, 10, y);
-                    y += 20;
-                }
-
                 requestAnimationFrame(render);
             }
 
@@ -1008,8 +985,6 @@
             window.addEventListener('resize', () => {
                 canvas.width = window.innerWidth;
                 canvas.height = window.innerHeight;
-                textCanvas.width = window.innerWidth;
-                textCanvas.height = window.innerHeight;
                 // Recreate depth texture
                 depthTexture.destroy();
                 depthTexture = device.createTexture({
