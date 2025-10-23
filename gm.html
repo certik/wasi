@@ -171,6 +171,13 @@
                 }
             }
 
+            const mapDataArray = new Uint32Array(mapWidth * mapHeight);
+            for (let z = 0; z < mapHeight; z++) {
+                for (let x = 0; x < mapWidth; x++) {
+                    mapDataArray[z * mapWidth + x] = map[z][x];
+                }
+            }
+
             // Buffers
             const positionBuffer = device.createBuffer({
                 size: positions.length * 4,
@@ -390,6 +397,9 @@
                     viewportAndOrigin: vec4<f32>,
                     sizeAndMetrics: vec4<f32>,
                     spacingAndPadding: vec4<f32>,
+                    mapRect: vec4<f32>,
+                    mapMeta: vec4<f32>,
+                    playerInfo: vec4<f32>,
                 };
 
                 @group(0) @binding(0)
@@ -397,6 +407,9 @@
 
                 @group(0) @binding(1)
                 var<storage, read> textData: array<u32>;
+
+                @group(0) @binding(2)
+                var<storage, read> mapData: array<u32>;
 
                 const font = array<array<u32, 7>, 5>(
                     array<u32, 7>(0xebfbe7fcu, 0x7dffddfcu, 0xb2d7dffcu, 0xb6dbc404u, 0x04446200u, 0x00008000u, 0x01200000u),
@@ -451,23 +464,17 @@
 
                 @fragment
                 fn fragment_main(fragData: FragIn) -> @location(0) vec4<f32> {
+                    let viewportSize = vec2<f32>(params.viewportAndOrigin.x, params.viewportAndOrigin.y);
                     let panelOrigin = vec2<f32>(params.viewportAndOrigin.z, params.viewportAndOrigin.w);
                     let panelSize = vec2<f32>(params.sizeAndMetrics.x, params.sizeAndMetrics.y);
-                    let scale = params.sizeAndMetrics.z;
-                    let glyphSpacing = u32(params.sizeAndMetrics.w + 0.5);
-                    let lineSpacing = u32(params.spacingAndPadding.x + 0.5);
-                    let textLength = u32(params.spacingAndPadding.y + 0.5);
-                    let padding = vec2<f32>(params.spacingAndPadding.z, params.spacingAndPadding.w);
+                    let panelMax = panelOrigin + panelSize;
 
                     let screen = vec2<f32>(
-                        fragData.frag_position.x * params.viewportAndOrigin.x,
-                        (1.0 - fragData.frag_position.y) * params.viewportAndOrigin.y
+                        fragData.frag_position.x * viewportSize.x,
+                        (1.0 - fragData.frag_position.y) * viewportSize.y
                     );
 
-                    let center = vec2<f32>(
-                        params.viewportAndOrigin.x * 0.5,
-                        params.viewportAndOrigin.y * 0.5
-                    );
+                    let center = viewportSize * 0.5;
                     let crosshairSize = 10.0;
                     let crosshairThickness = 2.0;
                     let innerThickness = 1.0;
@@ -481,50 +488,120 @@
                         return vec4<f32>(0.0, 0.0, 0.0, 1.0);
                     }
 
-                    let panelMax = panelOrigin + panelSize;
-                    if (screen.x < panelOrigin.x || screen.x > panelMax.x || screen.y < panelOrigin.y || screen.y > panelMax.y) {
+                    if (screen.x < panelOrigin.x || screen.x > panelMax.x ||
+                        screen.y < panelOrigin.y || screen.y > panelMax.y) {
                         return vec4<f32>(0.0, 0.0, 0.0, 0.0);
                     }
 
                     var color = vec4<f32>(0.0, 1.0, 0.0, 0.3);
 
+                    let textScale = params.sizeAndMetrics.z;
+                    let glyphSpacing = u32(params.sizeAndMetrics.w + 0.5);
+                    let lineSpacing = u32(params.spacingAndPadding.x + 0.5);
+                    let textLength = u32(params.spacingAndPadding.y + 0.5);
+                    let padding = vec2<f32>(params.spacingAndPadding.z, params.spacingAndPadding.w);
+
                     let textLocal = screen - (panelOrigin + padding);
-                    if (textLocal.x < 0.0 || textLocal.y < 0.0) {
-                        return color;
-                    }
+                    if (textLocal.x >= 0.0 && textLocal.y >= 0.0) {
+                        var cursorX: u32 = 0u;
+                        var cursorY: u32 = 0u;
+                        var idx: u32 = 0u;
+                        loop {
+                            if (idx >= textLength) { break; }
+                            let code = textData[idx];
+                            if (code == NEWLINE_CODE) {
+                                cursorX = 0u;
+                                cursorY = cursorY + GLYPH_HEIGHT + lineSpacing;
+                                idx = idx + 1u;
+                                continue;
+                            }
 
-                    var cursorX: u32 = 0u;
-                    var cursorY: u32 = 0u;
-                    var idx: u32 = 0u;
-                    loop {
-                        if (idx >= textLength) { break; }
-                        let code = textData[idx];
-                        if (code == NEWLINE_CODE) {
-                            cursorX = 0u;
-                            cursorY = cursorY + GLYPH_HEIGHT + lineSpacing;
-                            idx = idx + 1u;
-                            continue;
-                        }
-
-                        let glyphOrigin = vec2<f32>(
-                            f32(cursorX) * scale,
-                            f32(cursorY) * scale
-                        );
-                        let glyphLocal = textLocal - glyphOrigin;
-                        if (glyphLocal.x >= 0.0 && glyphLocal.y >= 0.0 &&
-                            glyphLocal.x < scale * f32(GLYPH_WIDTH) &&
-                            glyphLocal.y < scale * f32(GLYPH_HEIGHT)) {
-                            let column = u32(floor(glyphLocal.x / scale));
-                            let row = u32(floor(glyphLocal.y / scale));
-                            if (column < GLYPH_WIDTH && row < GLYPH_HEIGHT) {
-                                if (glyph_on(code, column, row)) {
-                                    return vec4<f32>(1.0, 0.0, 0.0, 1.0);
+                            let glyphOrigin = vec2<f32>(
+                                f32(cursorX) * textScale,
+                                f32(cursorY) * textScale
+                            );
+                            let glyphLocal = textLocal - glyphOrigin;
+                            if (glyphLocal.x >= 0.0 && glyphLocal.y >= 0.0 &&
+                                glyphLocal.x < textScale * f32(GLYPH_WIDTH) &&
+                                glyphLocal.y < textScale * f32(GLYPH_HEIGHT)) {
+                                let column = u32(floor(glyphLocal.x / textScale));
+                                let row = u32(floor(glyphLocal.y / textScale));
+                                if (column < GLYPH_WIDTH && row < GLYPH_HEIGHT) {
+                                    if (glyph_on(code, column, row)) {
+                                        return vec4<f32>(1.0, 0.0, 0.0, 1.0);
+                                    }
                                 }
                             }
-                        }
 
-                        cursorX = cursorX + GLYPH_WIDTH + glyphSpacing;
-                        idx = idx + 1u;
+                            cursorX = cursorX + GLYPH_WIDTH + glyphSpacing;
+                            idx = idx + 1u;
+                        }
+                    }
+
+                    let mapVisible = params.mapRect.w;
+                    if (mapVisible > 0.5) {
+                        let mapOrigin = vec2<f32>(params.mapRect.x, params.mapRect.y);
+                        let mapScale = params.mapRect.z;
+                        let mapMode = params.mapMeta.x;
+                        let mapWidth = u32(params.mapMeta.y + 0.5);
+                        let mapHeight = u32(params.mapMeta.z + 0.5);
+                        let playerPos = vec2<f32>(params.playerInfo.x, params.playerInfo.y);
+                        let playerYaw = params.playerInfo.z;
+                        let mapSize = vec2<f32>(f32(mapWidth) * mapScale, f32(mapHeight) * mapScale);
+                        let mapMax = mapOrigin + mapSize;
+
+                        if (screen.x >= mapOrigin.x && screen.x <= mapMax.x &&
+                            screen.y >= mapOrigin.y && screen.y <= mapMax.y) {
+                            let local = screen - mapOrigin;
+                            var worldPos = vec2<f32>(local.x / mapScale, local.y / mapScale);
+                            var playerScreen = mapOrigin + playerPos * mapScale;
+
+                            if (mapMode > 0.5) {
+                                let mapCenter = mapOrigin + mapSize * 0.5;
+                                let offsetScaled = (screen - mapCenter) / mapScale;
+                                let forward = vec2<f32>(cos(playerYaw), sin(playerYaw));
+                                let right = vec2<f32>(-forward.y, forward.x);
+                                worldPos = playerPos + right * offsetScaled.x - forward * offsetScaled.y;
+                                playerScreen = mapCenter;
+                            }
+
+                            let tileX = i32(floor(worldPos.x));
+                            let tileY = i32(floor(worldPos.y));
+                            var tileColor = vec4<f32>(0.02, 0.05, 0.08, 0.6);
+
+                            if (tileX >= 0 && tileX < i32(mapWidth) && tileY >= 0 && tileY < i32(mapHeight)) {
+                                let idx = u32(tileY) * mapWidth + u32(tileX);
+                                let cell = mapData[idx];
+                                if (cell == 1u) {
+                                    tileColor = vec4<f32>(0.7, 0.1, 0.1, 0.9);
+                                } else {
+                                    tileColor = vec4<f32>(0.1, 0.2, 0.35, 0.7);
+                                }
+                            }
+
+                            let markerOffset = screen - playerScreen;
+                            let markerDist = length(markerOffset);
+                            let markerRadius = mapScale * 0.25;
+                            if (markerDist < markerRadius) {
+                                tileColor = vec4<f32>(1.0, 1.0, 1.0, 1.0);
+                            } else {
+                                if (mapMode < 0.5) {
+                                    let dir = vec2<f32>(cos(playerYaw), sin(playerYaw));
+                                    let forward = markerOffset.x * dir.x + markerOffset.y * dir.y;
+                                    let perpendicular = abs(markerOffset.x * dir.y - markerOffset.y * dir.x);
+                                    if (forward > 0.0 && forward < mapScale && perpendicular < mapScale * 0.18) {
+                                        tileColor = vec4<f32>(1.0, 0.8, 0.2, 1.0);
+                                    }
+                                } else {
+                                    let offsetNorm = markerOffset / mapScale;
+                                    if (-offsetNorm.y > 0.0 && -offsetNorm.y < 1.0 && abs(offsetNorm.x) < 0.2) {
+                                        tileColor = vec4<f32>(1.0, 0.8, 0.2, 1.0);
+                                    }
+                                }
+                            }
+
+                            return tileColor;
+                        }
                     }
 
                     return color;
@@ -545,7 +622,8 @@
             const overlayBindGroupLayout = device.createBindGroupLayout({
                 entries: [
                     { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-                    { binding: 1, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } }
+                    { binding: 1, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+                    { binding: 2, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } }
                 ]
             });
 
@@ -631,8 +709,9 @@
             });
             console.log('Pipeline and bind group created successfully');
 
+            const overlayUniformFloatCount = 24;
             const overlayUniformBuffer = device.createBuffer({
-                size: 64,
+                size: overlayUniformFloatCount * 4,
                 usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
             });
 
@@ -642,11 +721,18 @@
                 usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
             });
 
+            const overlayMapBuffer = device.createBuffer({
+                size: mapDataArray.byteLength,
+                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+            });
+            device.queue.writeBuffer(overlayMapBuffer, 0, mapDataArray);
+
             const overlayBindGroup = device.createBindGroup({
                 layout: overlayBindGroupLayout,
                 entries: [
                     { binding: 0, resource: { buffer: overlayUniformBuffer } },
-                    { binding: 1, resource: { buffer: overlayTextBuffer } }
+                    { binding: 1, resource: { buffer: overlayTextBuffer } },
+                    { binding: 2, resource: { buffer: overlayMapBuffer } }
                 ]
             });
 
@@ -665,7 +751,7 @@
             new Float32Array(overlayVertexBuffer.getMappedRange()).set(overlayVertexData);
             overlayVertexBuffer.unmap();
 
-            const overlayParams = new Float32Array(16);
+            const overlayParams = new Float32Array(overlayUniformFloatCount);
             const overlayTextArray = new Uint32Array(overlayTextCapacity);
 
             const GLYPH_WIDTH = 3;
@@ -676,6 +762,8 @@
             const PANEL_PADDING_X = 12.0;
             const PANEL_PADDING_Y = 12.0;
             const PANEL_MARGIN = 10.0;
+            const MAP_SCALE = 12.0;
+            const MAP_GAP = 12.0;
             const NEWLINE_CODE = 255;
             const COLON_CODE = 66;
             const PERIOD_CODE = 67;
@@ -739,8 +827,20 @@
             const collisionRadius = 0.2;
             const keys = {};
             let mapArray = map;
+            let mapVisible = false;
+            let mapRelativeMode = false;
 
-            document.addEventListener('keydown', (e) => { keys[e.key.toLowerCase()] = true; });
+            document.addEventListener('keydown', (e) => {
+                const key = e.key.toLowerCase();
+                if (!e.repeat) {
+                    if (key === 'm') {
+                        mapVisible = !mapVisible;
+                    } else if (key === 'r') {
+                        mapRelativeMode = !mapRelativeMode;
+                    }
+                }
+                keys[key] = true;
+            });
             document.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
             canvas.addEventListener('click', () => canvas.requestPointerLock());
@@ -917,10 +1017,22 @@
                 const { length: textLength, maxLineLength } = buildOverlayText(lines);
                 const lineCount = lines.length;
                 const charAdvance = (GLYPH_WIDTH + GLYPH_SPACING) * TEXT_SCALE;
-                const panelWidth = PANEL_PADDING_X * 2 + maxLineLength * charAdvance;
-                const panelHeight = PANEL_PADDING_Y * 2 + lineCount * GLYPH_HEIGHT * TEXT_SCALE + Math.max(0, (lineCount - 1)) * LINE_SPACING * TEXT_SCALE;
+                const textWidth = maxLineLength * charAdvance;
+                const textHeight = lineCount * GLYPH_HEIGHT * TEXT_SCALE + Math.max(0, (lineCount - 1)) * LINE_SPACING * TEXT_SCALE;
                 const panelOriginX = PANEL_MARGIN;
                 const panelOriginY = PANEL_MARGIN;
+                const mapWidthPixels = mapWidth * MAP_SCALE;
+                const mapHeightPixels = mapHeight * MAP_SCALE;
+                let panelWidth = PANEL_PADDING_X * 2 + textWidth;
+                if (mapVisible) {
+                    panelWidth = Math.max(panelWidth, PANEL_PADDING_X * 2 + mapWidthPixels);
+                }
+                let panelHeight = PANEL_PADDING_Y * 2 + textHeight;
+                const mapOriginX = panelOriginX + PANEL_PADDING_X;
+                const mapOriginY = panelOriginY + PANEL_PADDING_Y + textHeight + (mapVisible ? MAP_GAP : 0);
+                if (mapVisible) {
+                    panelHeight += MAP_GAP + mapHeightPixels;
+                }
 
                 overlayParams[0] = canvas.width;
                 overlayParams[1] = canvas.height;
@@ -934,10 +1046,18 @@
                 overlayParams[9] = textLength;
                 overlayParams[10] = PANEL_PADDING_X;
                 overlayParams[11] = PANEL_PADDING_Y;
-                overlayParams[12] = 0;
-                overlayParams[13] = 0;
-                overlayParams[14] = 0;
-                overlayParams[15] = 0;
+                overlayParams[12] = mapOriginX;
+                overlayParams[13] = mapOriginY;
+                overlayParams[14] = MAP_SCALE;
+                overlayParams[15] = mapVisible ? 1 : 0;
+                overlayParams[16] = mapRelativeMode ? 1 : 0;
+                overlayParams[17] = mapWidth;
+                overlayParams[18] = mapHeight;
+                overlayParams[19] = 0;
+                overlayParams[20] = cameraPos.x;
+                overlayParams[21] = cameraPos.z;
+                overlayParams[22] = yaw;
+                overlayParams[23] = 0;
 
                 device.queue.writeBuffer(overlayUniformBuffer, 0, overlayParams);
                 device.queue.writeBuffer(overlayTextBuffer, 0, overlayTextArray);
