@@ -106,114 +106,104 @@
             const indices = [];
             let indexOffset = 0;
 
-            const windowBottom = 0.5;
-            const windowTop = 1.5;
+            const windowBottom = wallHeight * 0.3;
+            const windowTop = wallHeight - windowBottom;
+            const windowMargin = 0.15;
             const invWallHeight = 1.0 / wallHeight;
 
-            function pushNorthSegment(x, z, y0, y1) {
+            function pushNorthSegmentRange(x0, x1, z, y0, y1, normalizeU = false, surfaceType = 1) {
                 const v0 = y0 * invWallHeight;
                 const v1 = y1 * invWallHeight;
+                const uSpan = normalizeU ? 1.0 : (x1 - x0);
                 positions.push(
-                    x, y0, z,
-                    x + 1, y0, z,
-                    x, y1, z,
-                    x + 1, y1, z
+                    x0, y0, z,
+                    x1, y0, z,
+                    x0, y1, z,
+                    x1, y1, z
                 );
-                uvs.push(0, v0, 1, v0, 0, v1, 1, v1);
-                surfaceTypes.push(1, 1, 1, 1);
+                uvs.push(0, v0, uSpan, v0, 0, v1, uSpan, v1);
+                surfaceTypes.push(surfaceType, surfaceType, surfaceType, surfaceType);
                 indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
                 indexOffset += 4;
+            }
+
+            function pushSouthSegmentRange(x0, x1, z, y0, y1, normalizeU = false, surfaceType = 1) {
+                const v0 = y0 * invWallHeight;
+                const v1 = y1 * invWallHeight;
+                const uSpan = normalizeU ? 1.0 : (x1 - x0);
+                positions.push(
+                    x0, y0, z + 1,
+                    x1, y0, z + 1,
+                    x0, y1, z + 1,
+                    x1, y1, z + 1
+                );
+                uvs.push(0, v0, uSpan, v0, 0, v1, uSpan, v1);
+                surfaceTypes.push(surfaceType, surfaceType, surfaceType, surfaceType);
+                indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
+                indexOffset += 4;
+            }
+
+            function pushWestSegmentRange(x, z0, z1, y0, y1, normalizeU = false, surfaceType = 1) {
+                const v0 = y0 * invWallHeight;
+                const v1 = y1 * invWallHeight;
+                const uSpan = normalizeU ? 1.0 : (z1 - z0);
+                positions.push(
+                    x, y0, z0,
+                    x, y0, z1,
+                    x, y1, z0,
+                    x, y1, z1
+                );
+                uvs.push(0, v0, uSpan, v0, 0, v1, uSpan, v1);
+                surfaceTypes.push(surfaceType, surfaceType, surfaceType, surfaceType);
+                indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
+                indexOffset += 4;
+            }
+
+            function pushEastSegmentRange(x, z0, z1, y0, y1, normalizeU = false, surfaceType = 1) {
+                const v0 = y0 * invWallHeight;
+                const v1 = y1 * invWallHeight;
+                const uSpan = normalizeU ? 1.0 : (z1 - z0);
+                positions.push(
+                    x, y0, z0,
+                    x, y0, z1,
+                    x, y1, z0,
+                    x, y1, z1
+                );
+                uvs.push(0, v0, uSpan, v0, 0, v1, uSpan, v1);
+                surfaceTypes.push(surfaceType, surfaceType, surfaceType, surfaceType);
+                indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
+                indexOffset += 4;
+            }
+
+            function pushHorizontalFill(x0, x1, z0, z1, y, surfaceType) {
+                const uSpan = x1 - x0;
+                const vSpan = z1 - z0;
+                positions.push(
+                    x0, y, z0,
+                    x1, y, z0,
+                    x0, y, z1,
+                    x1, y, z1
+                );
+                uvs.push(0, 0, uSpan, 0, 0, vSpan, uSpan, vSpan);
+                surfaceTypes.push(surfaceType, surfaceType, surfaceType, surfaceType);
+                indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
+                indexOffset += 4;
+            }
+
+            function pushNorthSegment(x, z, y0, y1) {
+                pushNorthSegmentRange(x, x + 1, z, y0, y1);
             }
 
             function pushSouthSegment(x, z, y0, y1) {
-                const v0 = y0 * invWallHeight;
-                const v1 = y1 * invWallHeight;
-                positions.push(
-                    x, y0, z + 1,
-                    x + 1, y0, z + 1,
-                    x, y1, z + 1,
-                    x + 1, y1, z + 1
-                );
-                uvs.push(0, v0, 1, v0, 0, v1, 1, v1);
-                surfaceTypes.push(1, 1, 1, 1);
-                indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
-                indexOffset += 4;
+                pushSouthSegmentRange(x, x + 1, z, y0, y1);
             }
 
             function pushWestSegment(x, z, y0, y1) {
-                const v0 = y0 * invWallHeight;
-                const v1 = y1 * invWallHeight;
-                positions.push(
-                    x, y0, z,
-                    x, y0, z + 1,
-                    x, y1, z,
-                    x, y1, z + 1
-                );
-                uvs.push(0, v0, 1, v0, 0, v1, 1, v1);
-                surfaceTypes.push(1, 1, 1, 1);
-                indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
-                indexOffset += 4;
+                pushWestSegmentRange(x, z, z + 1, y0, y1);
             }
 
             function pushEastSegment(x, z, y0, y1) {
-                const v0 = y0 * invWallHeight;
-                const v1 = y1 * invWallHeight;
-                positions.push(
-                    x + 1, y0, z,
-                    x + 1, y0, z + 1,
-                    x + 1, y1, z,
-                    x + 1, y1, z + 1
-                );
-                uvs.push(0, v0, 1, v0, 0, v1, 1, v1);
-                surfaceTypes.push(1, 1, 1, 1);
-                indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
-                indexOffset += 4;
-            }
-
-            function pushWindowNorthSegments(x, z) {
-                if (windowBottom > 0) pushNorthSegment(x, z, 0, windowBottom);
-                if (windowTop < wallHeight) pushNorthSegment(x, z, windowTop, wallHeight);
-            }
-
-            function pushWindowSouthSegments(x, z) {
-                if (windowBottom > 0) pushSouthSegment(x, z, 0, windowBottom);
-                if (windowTop < wallHeight) pushSouthSegment(x, z, windowTop, wallHeight);
-            }
-
-            function pushWindowWestSegments(x, z) {
-                if (windowBottom > 0) pushWestSegment(x, z, 0, windowBottom);
-                if (windowTop < wallHeight) pushWestSegment(x, z, windowTop, wallHeight);
-            }
-
-            function pushWindowEastSegments(x, z) {
-                if (windowBottom > 0) pushEastSegment(x, z, 0, windowBottom);
-                if (windowTop < wallHeight) pushEastSegment(x, z, windowTop, wallHeight);
-            }
-
-            function pushWindowBottomFill(x, z) {
-                positions.push(
-                    x, windowBottom, z,
-                    x + 1, windowBottom, z,
-                    x, windowBottom, z + 1,
-                    x + 1, windowBottom, z + 1
-                );
-                uvs.push(0, 0, 1, 0, 0, 1, 1, 1);
-                surfaceTypes.push(0, 0, 0, 0);
-                indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
-                indexOffset += 4;
-            }
-
-            function pushWindowTopFill(x, z) {
-                positions.push(
-                    x, windowTop, z,
-                    x + 1, windowTop, z,
-                    x, windowTop, z + 1,
-                    x + 1, windowTop, z + 1
-                );
-                uvs.push(0, 0, 1, 0, 0, 1, 1, 1);
-                surfaceTypes.push(2, 2, 2, 2);
-                indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
-                indexOffset += 4;
+                pushEastSegmentRange(x + 1, z, z + 1, y0, y1);
             }
 
             // Floor: one big quad (matching collision coordinate system)
@@ -256,10 +246,18 @@
                     const isWindowNS = cell === 2;
                     const isWindowEW = cell === 3;
 
+                    const xInner0 = x + windowMargin;
+                    const xInner1 = x + 1 - windowMargin;
+                    const zInner0 = z + windowMargin;
+                    const zInner1 = z + 1 - windowMargin;
+
                     // North face (negative Z)
                     if (z === 0 || !isSolidCell(map[z - 1][x])) {
                         if (isWindowNS) {
-                            pushWindowNorthSegments(x, z);
+                            pushNorthSegmentRange(x, x + 1, z, 0, windowBottom);
+                            pushNorthSegmentRange(x, x + 1, z, windowTop, wallHeight);
+                            pushNorthSegmentRange(x, xInner0, z, windowBottom, windowTop, false, 3);
+                            pushNorthSegmentRange(xInner1, x + 1, z, windowBottom, windowTop, false, 3);
                         } else {
                             pushNorthSegment(x, z, 0, wallHeight);
                         }
@@ -267,7 +265,10 @@
                     // South face (positive Z)
                     if (z === mapHeight - 1 || !isSolidCell(map[z + 1][x])) {
                         if (isWindowNS) {
-                            pushWindowSouthSegments(x, z);
+                            pushSouthSegmentRange(x, x + 1, z, 0, windowBottom);
+                            pushSouthSegmentRange(x, x + 1, z, windowTop, wallHeight);
+                            pushSouthSegmentRange(x, xInner0, z, windowBottom, windowTop, false, 3);
+                            pushSouthSegmentRange(xInner1, x + 1, z, windowBottom, windowTop, false, 3);
                         } else {
                             pushSouthSegment(x, z, 0, wallHeight);
                         }
@@ -275,7 +276,10 @@
                     // West face (negative X)
                     if (x === 0 || !isSolidCell(map[z][x - 1])) {
                         if (isWindowEW) {
-                            pushWindowWestSegments(x, z);
+                            pushWestSegmentRange(x, z, z + 1, 0, windowBottom);
+                            pushWestSegmentRange(x, z, z + 1, windowTop, wallHeight);
+                            pushWestSegmentRange(x, z, zInner0, windowBottom, windowTop, false, 3);
+                            pushWestSegmentRange(x, zInner1, z + 1, windowBottom, windowTop, false, 3);
                         } else {
                             pushWestSegment(x, z, 0, wallHeight);
                         }
@@ -283,22 +287,25 @@
                     // East face (positive X)
                     if (x === mapWidth - 1 || !isSolidCell(map[z][x + 1])) {
                         if (isWindowEW) {
-                            pushWindowEastSegments(x, z);
+                            pushEastSegmentRange(x + 1, z, z + 1, 0, windowBottom);
+                            pushEastSegmentRange(x + 1, z, z + 1, windowTop, wallHeight);
+                            pushEastSegmentRange(x + 1, z, zInner0, windowBottom, windowTop, false, 3);
+                            pushEastSegmentRange(x + 1, zInner1, z + 1, windowBottom, windowTop, false, 3);
                         } else {
                             pushEastSegment(x, z, 0, wallHeight);
                         }
                     }
 
-                    if (isWindowNS || isWindowEW) {
-                        if (isWindowNS) {
-                            pushWestSegment(x, z, windowBottom, windowTop);
-                            pushEastSegment(x, z, windowBottom, windowTop);
-                        } else {
-                            pushNorthSegment(x, z, windowBottom, windowTop);
-                            pushSouthSegment(x, z, windowBottom, windowTop);
-                        }
-                        pushWindowBottomFill(x, z);
-                        pushWindowTopFill(x, z);
+                    if (isWindowNS) {
+                        pushWestSegmentRange(xInner0, z, z + 1, windowBottom, windowTop, true, 3);
+                        pushEastSegmentRange(xInner1, z, z + 1, windowBottom, windowTop, true, 3);
+                        pushHorizontalFill(xInner0, xInner1, z, z + 1, windowBottom, 0);
+                        pushHorizontalFill(xInner0, xInner1, z, z + 1, windowTop, 2);
+                    } else if (isWindowEW) {
+                        pushNorthSegmentRange(x, x + 1, zInner0, windowBottom, windowTop, true, 3);
+                        pushSouthSegmentRange(x, x + 1, zInner1 - 1, windowBottom, windowTop, true, 3);
+                        pushHorizontalFill(x, x + 1, zInner0, zInner1, windowBottom, 0);
+                        pushHorizontalFill(x, x + 1, zInner0, zInner1, windowTop, 2);
                     }
                 }
             }
@@ -374,6 +381,7 @@
                     @location(0) worldPos: vec3<f32>,
                     @location(1) surfaceType: f32,
                     @location(2) viewDist: f32,
+                    @location(3) materialUV: vec2<f32>,
                 };
 
                 @vertex fn vs_main(
@@ -424,6 +432,7 @@
                     output.worldPos = position;
                     output.surfaceType = surfaceType;
                     output.viewDist = viewDist;
+                    output.materialUV = uv;
                     return output;
                 }
             `;
@@ -454,6 +463,7 @@
                     @location(0) worldPos: vec3<f32>,
                     @location(1) surfaceType: f32,
                     @location(2) viewDist: f32,
+                    @location(3) materialUV: vec2<f32>,
                 };
 
                 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
@@ -461,43 +471,46 @@
                     var texU: f32;
                     var texV: f32;
 
-                    if (in.surfaceType > 1.5) {
+                    if (in.surfaceType > 1.5 && in.surfaceType < 2.5) {
                         // Ceiling (surfaceType = 2)
                         texU = fract(in.worldPos.x);
                         texV = fract(in.worldPos.z);
-                    } else if (in.surfaceType > 0.5) {
+                    } else if (in.surfaceType > 0.5 && in.surfaceType < 2.5) {
                         // Wall (surfaceType = 1)
-                        // Determine orientation by measuring which axis is closest to an integer grid line
                         let fx = fract(in.worldPos.x);
                         let fz = fract(in.worldPos.z);
                         let distX = min(fx, 1.0 - fx);
                         let distZ = min(fz, 1.0 - fz);
                         if (distX < distZ) {
-                            // East or West wall (plane perpendicular to X axis)
                             texU = fz;
                         } else {
-                            // North or South wall (plane perpendicular to Z axis)
                             texU = fx;
                         }
                         texV = in.worldPos.y / 2.0; // wallHeight = 2.0
                     } else {
-                        // Floor (surfaceType = 0)
+                        // Floor (surfaceType = 0) or window frames (3) initial default
                         texU = fract(in.worldPos.x);
                         texV = fract(in.worldPos.z);
+                    }
+
+                    let isFrame = in.surfaceType > 2.5;
+                    if (isFrame) {
+                        texU = in.materialUV.x;
+                        texV = in.materialUV.y;
                     }
 
                     var tileScale = 4.0;
                     var baseColor: vec4<f32>;
                     if (u.useTextures > 0.5) {
-                        if (in.surfaceType > 1.5) {
+                        if (in.surfaceType > 1.5 && in.surfaceType < 2.5) {
                             tileScale = 4.0 / 3.0; // Ceiling texture 3x larger
                         } else if (in.surfaceType > 0.5) {
-                            tileScale = 4.0 / 5.0; // Wall texture 5x larger
+                            tileScale = 4.0 / 5.0; // Wall/window texture 5x larger
                         } else {
                             tileScale = 4.0 / 5.0; // Floor texture 5x larger
                         }
                         let sampleUV = vec2<f32>(texU, texV) * tileScale;
-                        if (in.surfaceType > 1.5) {
+                        if (in.surfaceType > 1.5 && in.surfaceType < 2.5) {
                             baseColor = textureSample(ceilingTexture, s, sampleUV);
                         } else if (in.surfaceType > 0.5) {
                             baseColor = textureSample(wallTexture, s, sampleUV);
@@ -505,20 +518,16 @@
                             baseColor = textureSample(floorTexture, s, sampleUV);
                         }
                     } else {
-                        // Checkerboard pattern (4x4 per unit)
                         let checkerU = floor(texU * 4.0);
                         let checkerV = floor(texV * 4.0);
                         let checker = (i32(checkerU) + i32(checkerV)) & 1;
                         let checkerFactor = select(0.7, 1.0, checker == 0);
 
-                        if (in.surfaceType > 1.5) {
-                            // Ceiling
+                        if (in.surfaceType > 1.5 && in.surfaceType < 2.5) {
                             baseColor = vec4<f32>(1.0, 1.0, 0.0, 1.0); // Yellow ceiling
                         } else if (in.surfaceType > 0.5) {
-                            // Wall
                             baseColor = vec4<f32>(1.0, 0.0, 0.0, 1.0); // Red walls
                         } else {
-                            // Floor
                             baseColor = vec4<f32>(0.0, 0.0, 1.0, 1.0); // Blue floor
                         }
 
