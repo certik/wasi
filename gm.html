@@ -323,15 +323,17 @@
                         texV = fract(in.worldPos.z);
                     } else if (in.surfaceType > 0.5) {
                         // Wall (surfaceType = 1)
-                        // Determine which wall by checking which coordinate is closer to boundary
-                        let absX = abs(in.worldPos.x);
-                        let absZ = abs(in.worldPos.z);
-                        if (absX > absZ) {
-                            // East or West wall (x-aligned)
-                            texU = fract(in.worldPos.z);
+                        // Determine orientation by measuring which axis is closest to an integer grid line
+                        let fx = fract(in.worldPos.x);
+                        let fz = fract(in.worldPos.z);
+                        let distX = min(fx, 1.0 - fx);
+                        let distZ = min(fz, 1.0 - fz);
+                        if (distX < distZ) {
+                            // East or West wall (plane perpendicular to X axis)
+                            texU = fz;
                         } else {
-                            // North or South wall (z-aligned)
-                            texU = fract(in.worldPos.x);
+                            // North or South wall (plane perpendicular to Z axis)
+                            texU = fx;
                         }
                         texV = in.worldPos.y / 2.0; // wallHeight = 2.0
                     } else {
@@ -461,6 +463,7 @@
             let pitch = 0.0;
             const fov = Math.PI / 3;
             const moveSpeed = 0.1;
+            const collisionRadius = 0.2;
             const keys = {};
             let mapArray = map;
 
@@ -482,18 +485,45 @@
                 pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, pitch));
             }
 
+            function isWalkable(x, z) {
+                const minX = Math.floor(x - collisionRadius);
+                const maxX = Math.floor(x + collisionRadius);
+                const minZ = Math.floor(z - collisionRadius);
+                const maxZ = Math.floor(z + collisionRadius);
+
+                for (let tz = minZ; tz <= maxZ; tz++) {
+                    if (tz < 0 || tz >= mapHeight) {
+                        return false;
+                    }
+                    for (let tx = minX; tx <= maxX; tx++) {
+                        if (tx < 0 || tx >= mapWidth || mapArray[tz][tx] !== 0) {
+                            return false;
+                        }
+                    }
+                }
+                return true;
+            }
+
             function updateCamera() {
                 let dx = 0;
+                let dy = 0;
                 let dz = 0;
                 const cosYaw = Math.cos(yaw);
                 const sinYaw = Math.sin(yaw);
+                const cosPitch = Math.cos(pitch);
+                const sinPitch = Math.sin(pitch);
+                const forwardX = cosPitch * cosYaw;
+                const forwardY = sinPitch;
+                const forwardZ = cosPitch * sinYaw;
                 if (keys['w']) {
-                    dx += cosYaw * moveSpeed;
-                    dz += sinYaw * moveSpeed;
+                    dx += forwardX * moveSpeed;
+                    dy += forwardY * moveSpeed;
+                    dz += forwardZ * moveSpeed;
                 }
                 if (keys['s']) {
-                    dx -= cosYaw * moveSpeed;
-                    dz -= sinYaw * moveSpeed;
+                    dx -= forwardX * moveSpeed;
+                    dy -= forwardY * moveSpeed;
+                    dz -= forwardZ * moveSpeed;
                 }
                 if (keys['a']) {
                     dx += sinYaw * moveSpeed;
@@ -504,14 +534,17 @@
                     dz += cosYaw * moveSpeed;
                 }
 
-                const newX = cameraPos.x + dx;
-                const newZ = cameraPos.z + dz;
-                const mapX = Math.floor(newX);
-                const mapZ = Math.floor(newZ);
-                if (mapX >= 0 && mapX < mapWidth && mapZ >= 0 && mapZ < mapHeight && mapArray[mapZ][mapX] === 0) {
-                    cameraPos.x = newX;
-                    cameraPos.z = newZ;
+                const newY = cameraPos.y + dy;
+                const candidateX = cameraPos.x + dx;
+                const candidateZ = cameraPos.z + dz;
+
+                if (isWalkable(candidateX, cameraPos.z)) {
+                    cameraPos.x = candidateX;
                 }
+                if (isWalkable(cameraPos.x, candidateZ)) {
+                    cameraPos.z = candidateZ;
+                }
+                cameraPos.y = Math.min(Math.max(newY, 0.1), wallHeight - 0.1);
             }
 
             // Render loop
