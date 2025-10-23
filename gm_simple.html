@@ -77,8 +77,9 @@
             indexOffset = 4;
 
             // North wall (z = -1) - facing inward (+Z direction)
+            // Vertices ordered: bottom-left, bottom-right, top-left, top-right (as seen from inside)
             positionsArray.push(
-                1, 0, -1,  -1, 0, -1,  1, wallHeight, -1,  -1, wallHeight, -1
+                -1, 0, -1,  1, 0, -1,  -1, wallHeight, -1,  1, wallHeight, -1
             );
             uvsArray.push(0, 0,  1, 0,  0, 1,  1, 1);
             surfaceTypeArray.push(1, 1, 1, 1); // wall
@@ -87,7 +88,7 @@
 
             // South wall (z = 1) - facing inward (-Z direction)
             positionsArray.push(
-                -1, 0, 1,  1, 0, 1,  -1, wallHeight, 1,  1, wallHeight, 1
+                1, 0, 1,  -1, 0, 1,  1, wallHeight, 1,  -1, wallHeight, 1
             );
             uvsArray.push(0, 0,  1, 0,  0, 1,  1, 1);
             surfaceTypeArray.push(1, 1, 1, 1); // wall
@@ -96,7 +97,7 @@
 
             // West wall (x = -1) - facing inward (+X direction)
             positionsArray.push(
-                -1, 0, 1,  -1, 0, -1,  -1, wallHeight, 1,  -1, wallHeight, -1
+                -1, 0, -1,  -1, 0, 1,  -1, wallHeight, -1,  -1, wallHeight, 1
             );
             uvsArray.push(0, 0,  1, 0,  0, 1,  1, 1);
             surfaceTypeArray.push(1, 1, 1, 1); // wall
@@ -105,7 +106,7 @@
 
             // East wall (x = 1) - facing inward (-X direction)
             positionsArray.push(
-                1, 0, -1,  1, 0, 1,  1, wallHeight, -1,  1, wallHeight, 1
+                1, 0, 1,  1, 0, -1,  1, wallHeight, 1,  1, wallHeight, -1
             );
             uvsArray.push(0, 0,  1, 0,  0, 1,  1, 1);
             surfaceTypeArray.push(1, 1, 1, 1); // wall
@@ -205,14 +206,15 @@
                     let dy = position.y - u.cameraPosY;
                     let dz = position.z - u.cameraPosZ;
 
-                    // Rotate by yaw (around Y axis)
-                    let rotX = dx * cy - dz * sy;
-                    let rotZ = dx * sy + dz * cy;
+                    // Transform to view space
+                    // Forward direction is (cos(yaw), 0, sin(yaw)) in world space
+                    // Right direction is (-sin(yaw), 0, cos(yaw)) in world space
+                    let viewX = -dx * sy + dz * cy;
+                    let viewZ_noPitch = dx * cy + dz * sy;
 
-                    // Rotate by pitch (around X axis)
-                    let viewX = rotX;
-                    let viewY = dy * cp - rotZ * sp;
-                    let viewZ = dy * sp + rotZ * cp;
+                    // Rotate by pitch (around X axis in view space)
+                    let viewY = dy * cp - viewZ_noPitch * sp;
+                    let viewZ = dy * sp + viewZ_noPitch * cp;
 
                     // Calculate distance from camera for fog
                     let viewDist = sqrt(viewX * viewX + viewY * viewY + viewZ * viewZ);
@@ -330,7 +332,12 @@
                     entryPoint: 'fs_main',
                     targets: [{ format }]
                 },
-                primitive: { topology: 'triangle-list', cullMode: 'none' }  // No culling
+                primitive: { topology: 'triangle-list', cullMode: 'none' },
+                depthStencil: {
+                    format: 'depth24plus',
+                    depthWriteEnabled: true,
+                    depthCompare: 'less'
+                }
             });
 
             console.log('Pipeline created with explicit layout');
@@ -483,7 +490,13 @@
                         clearValue: { r: 0.5, g: 0.7, b: 1.0, a: 1.0 },
                         loadOp: 'clear',
                         storeOp: 'store'
-                    }]
+                    }],
+                    depthStencilAttachment: {
+                        view: depthTexture.createView(),
+                        depthClearValue: 1.0,
+                        depthLoadOp: 'clear',
+                        depthStoreOp: 'store'
+                    }
                 });
 
                 pass.setPipeline(pipeline);
