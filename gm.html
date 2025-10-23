@@ -1237,6 +1237,7 @@
             let mapRelativeMode = false;
             let hudVisible = true;
             let texturesEnabled = false;
+            let horizontalMovement = true;
 
             document.addEventListener('keydown', (e) => {
                 const key = e.key.toLowerCase();
@@ -1249,6 +1250,11 @@
                         texturesEnabled = !texturesEnabled;
                     } else if (key === 'h') {
                         hudVisible = !hudVisible;
+                    } else if (key === 'f') {
+                        horizontalMovement = !horizontalMovement;
+                        if (horizontalMovement) {
+                            cameraPos.y = personHeight;
+                        }
                     }
                 }
                 keys[key] = true;
@@ -1340,9 +1346,18 @@
                 let dy = 0;
                 let dz = 0;
 
-                const forwardX = cosPitch * cosYaw;
-                const forwardY = sinPitch;
-                const forwardZ = cosPitch * sinYaw;
+                let forwardX, forwardY, forwardZ;
+                if (horizontalMovement) {
+                    // Person movement: horizontal plane only
+                    forwardX = cosYaw;
+                    forwardY = 0;
+                    forwardZ = sinYaw;
+                } else {
+                    // Flying mode: arbitrary direction
+                    forwardX = cosPitch * cosYaw;
+                    forwardY = sinPitch;
+                    forwardZ = cosPitch * sinYaw;
+                }
                 if (keys['w']) {
                     dx += forwardX * moveSpeed;
                     dy += forwardY * moveSpeed;
@@ -1428,7 +1443,7 @@
                     `FPS: ${fps}`,
                     `Pos: (${cameraPos.x.toFixed(2)}, ${cameraPos.y.toFixed(2)}, ${cameraPos.z.toFixed(2)})`,
                     `Dir: ${direction} (yaw: ${(yaw * 180 / Math.PI).toFixed(1)}°, pitch: ${(pitch * 180 / Math.PI).toFixed(1)}°)`,
-                    `HUD: ${hudVisible ? 'ON' : 'OFF'} (h)  Map: ${mapVisible ? 'ON' : 'OFF'} (m/r)  Textures: ${texturesEnabled ? 'ON' : 'OFF'} (t)`
+                    `Movement: ${horizontalMovement ? 'Person' : 'Flying'} (f)  HUD: ${hudVisible ? 'ON' : 'OFF'} (h)  Map: ${mapVisible ? 'ON' : 'OFF'} (m/r)  Textures: ${texturesEnabled ? 'ON' : 'OFF'} (t)`
                 ];
 
                 const { length: textLength, maxLineLength } = buildOverlayText(lines);
