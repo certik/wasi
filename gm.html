@@ -458,7 +458,9 @@
             console.log(`Mesh generated: ${positions.length/3} vertices, ${indices.length/3} triangles`);
 
             // Camera and controls
-            let cameraPos = { x: startX, y: 1.0, z: startZ };
+            const personHeight = 1.0;
+            const turnSpeed = 0.03;
+            let cameraPos = { x: startX, y: personHeight, z: startZ };
             let yaw = startYaw;
             let pitch = 0.0;
             const fov = Math.PI / 3;
@@ -505,13 +507,43 @@
             }
 
             function updateCamera() {
-                let dx = 0;
-                let dy = 0;
-                let dz = 0;
+                let arrowUsed = false;
+                let yawDelta = 0;
+                if (keys['arrowleft']) {
+                    yawDelta -= turnSpeed;
+                    arrowUsed = true;
+                }
+                if (keys['arrowright']) {
+                    yawDelta += turnSpeed;
+                    arrowUsed = true;
+                }
+                if (yawDelta !== 0) {
+                    yaw += yawDelta;
+                }
+
+                let arrowForward = 0;
+                if (keys['arrowup']) {
+                    arrowForward += moveSpeed;
+                    arrowUsed = true;
+                }
+                if (keys['arrowdown']) {
+                    arrowForward -= moveSpeed;
+                    arrowUsed = true;
+                }
+
+                if (arrowUsed) {
+                    pitch = 0;
+                }
+
                 const cosYaw = Math.cos(yaw);
                 const sinYaw = Math.sin(yaw);
                 const cosPitch = Math.cos(pitch);
                 const sinPitch = Math.sin(pitch);
+
+                let dx = 0;
+                let dy = 0;
+                let dz = 0;
+
                 const forwardX = cosPitch * cosYaw;
                 const forwardY = sinPitch;
                 const forwardZ = cosPitch * sinYaw;
@@ -534,7 +566,13 @@
                     dz += cosYaw * moveSpeed;
                 }
 
-                const newY = cameraPos.y + dy;
+                if (arrowForward !== 0) {
+                    dx += cosYaw * arrowForward;
+                    dz += sinYaw * arrowForward;
+                }
+
+                const baseY = arrowUsed ? personHeight : cameraPos.y;
+                const newY = baseY + dy;
                 const candidateX = cameraPos.x + dx;
                 const candidateZ = cameraPos.z + dz;
 
@@ -545,6 +583,9 @@
                     cameraPos.z = candidateZ;
                 }
                 cameraPos.y = Math.min(Math.max(newY, 0.1), wallHeight - 0.1);
+                if (arrowUsed) {
+                    cameraPos.y = personHeight;
+                }
             }
 
             // Render loop
