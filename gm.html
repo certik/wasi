@@ -460,9 +460,13 @@
             // Camera and controls
             const personHeight = 1.0;
             const turnSpeed = 0.03;
+            const mouseSensitivity = 0.002;
+            const orientationSmoothing = 0.35;
             let cameraPos = { x: startX, y: personHeight, z: startZ };
             let yaw = startYaw;
             let pitch = 0.0;
+            let targetYaw = yaw;
+            let targetPitch = pitch;
             const fov = Math.PI / 3;
             const moveSpeed = 0.1;
             const collisionRadius = 0.2;
@@ -481,10 +485,13 @@
                 }
             });
 
+            function clampPitch(value) {
+                return Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, value));
+            }
+
             function onMouseMove(e) {
-                yaw += e.movementX * 0.002;
-                pitch -= e.movementY * 0.002;
-                pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, pitch));
+                targetYaw += e.movementX * mouseSensitivity;
+                targetPitch = clampPitch(targetPitch - e.movementY * mouseSensitivity);
             }
 
             function isWalkable(x, z) {
@@ -507,6 +514,11 @@
             }
 
             function updateCamera() {
+                const yawDeltaFromMouse = targetYaw - yaw;
+                const pitchDeltaFromMouse = targetPitch - pitch;
+                yaw += yawDeltaFromMouse * orientationSmoothing;
+                pitch += pitchDeltaFromMouse * orientationSmoothing;
+
                 let arrowUsed = false;
                 let yawDelta = 0;
                 if (keys['arrowleft']) {
@@ -519,6 +531,7 @@
                 }
                 if (yawDelta !== 0) {
                     yaw += yawDelta;
+                    targetYaw = yaw;
                 }
 
                 let arrowForward = 0;
@@ -533,7 +546,11 @@
 
                 if (arrowUsed) {
                     pitch = 0;
+                    targetPitch = 0;
                 }
+
+                pitch = clampPitch(pitch);
+                targetPitch = clampPitch(targetPitch);
 
                 const cosYaw = Math.cos(yaw);
                 const sinYaw = Math.sin(yaw);
