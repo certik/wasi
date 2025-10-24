@@ -41,6 +41,67 @@
             return format;
         }
 
+        function createWasmWebGPUHost(adapter, device) {
+            let memory = null;
+            let nextHandle = 1;
+            const buffers = new Map();
+            const devices = new Map();
+            const queues = new Map();
+
+            const deviceHandle = nextHandle++;
+            devices.set(deviceHandle, device);
+            const queueHandle = nextHandle++;
+            queues.set(queueHandle, device.queue);
+
+            const imports = {
+                create_instance() {
+                    return 1;
+                },
+                surface_get_preferred_format() {
+                    const preferred = navigator.gpu.getPreferredCanvasFormat();
+                    const value = enumFromTextureFormat(preferred);
+                    console.log('[WebGPU] Preferred canvas format (JS):', preferred, '-> enum', value);
+                    return value;
+                },
+                device_create_buffer(deviceHandleParam, sizeLow, sizeHigh, usage, mapped) {
+                    const targetDevice = devices.get(deviceHandleParam);
+                    const size = sizeLow + sizeHigh * 4294967296;
+                    const buffer = targetDevice.createBuffer({
+                        size,
+                        usage,
+                        mappedAtCreation: !!mapped,
+                    });
+                    const handle = nextHandle++;
+                    buffers.set(handle, buffer);
+                    return handle;
+                },
+                queue_write_buffer(queueHandleParam, bufferHandle, offsetLow, offsetHigh, dataPtr, size) {
+                    if (!memory) {
+                        throw new Error('WebGPU memory not registered');
+                    }
+                    const queue = queues.get(queueHandleParam);
+                    const buffer = buffers.get(bufferHandle);
+                    const offset = offsetLow + offsetHigh * 4294967296;
+                    const source = new Uint8Array(memory.buffer, dataPtr, size);
+                    queue.writeBuffer(buffer, offset, source);
+                },
+            };
+
+            return {
+                imports,
+                setMemory(mem) {
+                    memory = mem;
+                },
+                handles: {
+                    device: deviceHandle,
+                    queue: queueHandle,
+                },
+                getBuffer(handle) {
+                    return buffers.get(handle);
+                },
+            };
+        }
+
         async function init() {
             const canvas = document.getElementById('canvas');
             canvas.width = window.innerWidth;
@@ -128,18 +189,7 @@
             const wasmResponse = await fetch('gm.wasm');
             const wasmBytes = await wasmResponse.arrayBuffer();
 
-            const webgpuImports = {
-                create_instance(descriptorPtr) {
-                    console.log('[WebGPU] wasm requested instance (stub)', descriptorPtr);
-                    return 1;
-                },
-                surface_get_preferred_format() {
-                    const preferred = navigator.gpu.getPreferredCanvasFormat();
-                    const value = enumFromTextureFormat(preferred);
-                    console.log('[WebGPU] Preferred canvas format (JS):', preferred, '-> enum', value);
-                    return value;
-                }
-            };
+            const webgpuHost = createWasmWebGPUHost(adapter, device);
 
             const wasmModule = await WebAssembly.instantiate(wasmBytes, {
                 wasi_snapshot_preview1: {
@@ -156,14 +206,20 @@
                     args_get: () => 0,
                 */
                 },
-                webgpu: webgpuImports,
+                webgpu: webgpuHost.imports,
             });
 
             const wasmInstance = wasmModule.instance;
             const memory = wasmInstance.exports.memory;
+            webgpuHost.setMemory(memory);
             const find_start_position = wasmInstance.exports.find_start_position;
             const generate_mesh = wasmInstance.exports.generate_mesh;
             const gm_get_preferred_canvas_format = wasmInstance.exports.gm_get_preferred_canvas_format;
+            const gm_register_webgpu_handles = wasmInstance.exports.gm_register_webgpu_handles;
+            const gm_create_gpu_buffers = wasmInstance.exports.gm_create_gpu_buffers;
+            const gm_get_gpu_buffer_table = wasmInstance.exports.gm_get_gpu_buffer_table;
+            const gm_get_uniform_float_count = wasmInstance.exports.gm_get_uniform_float_count;
+            gm_register_webgpu_handles(webgpuHost.handles.device, webgpuHost.handles.queue);
 
             const preferredFormatEnum = gm_get_preferred_canvas_format();
             const format = textureFormatFromEnum(preferredFormatEnum);
@@ -258,62 +314,22 @@
                 }
             }
 
-            // Buffers
-            const positionBuffer = device.createBuffer({
-                size: positions.length * 4,
-                usage: GPUBufferUsage.VERTEX,
-                mappedAtCreation: true
-            });
-            new Float32Array(positionBuffer.getMappedRange()).set(positions);
-            positionBuffer.unmap();
+            const bufferInitResult = gm_create_gpu_buffers();
+            if (bufferInitResult !== 0) {
+                throw new Error(`gm_create_gpu_buffers failed with code ${bufferInitResult}`);
+            }
 
-            const uvBuffer = device.createBuffer({
-                size: uvs.length * 4,
-                usage: GPUBufferUsage.VERTEX,
-                mappedAtCreation: true
-            });
-            new Float32Array(uvBuffer.getMappedRange()).set(uvs);
-            uvBuffer.unmap();
-
-            const surfaceTypeBuffer = device.createBuffer({
-                size: surfaceTypes.length * 4,
-                usage: GPUBufferUsage.VERTEX,
-                mappedAtCreation: true
-            });
-            new Float32Array(surfaceTypeBuffer.getMappedRange()).set(surfaceTypes);
-            surfaceTypeBuffer.unmap();
-
-            const triangleIDBuffer = device.createBuffer({
-                size: triangleIDs.length * 4,
-                usage: GPUBufferUsage.VERTEX,
-                mappedAtCreation: true
-            });
-            new Float32Array(triangleIDBuffer.getMappedRange()).set(triangleIDs);
-            triangleIDBuffer.unmap();
-
-            const normalBuffer = device.createBuffer({
-                size: normals.length * 4,
-                usage: GPUBufferUsage.VERTEX,
-                mappedAtCreation: true
-            });
-            new Float32Array(normalBuffer.getMappedRange()).set(normals);
-            normalBuffer.unmap();
-
-            const indexBuffer = device.createBuffer({
-                size: indices.length * 2,
-                usage: GPUBufferUsage.INDEX,
-                mappedAtCreation: true
-            });
-            new Uint16Array(indexBuffer.getMappedRange()).set(indices);
-            indexBuffer.unmap();
-
-            // Uniform buffer - use individual floats to avoid vec/matrix alignment issues
-            // Layout: cameraPosX, cameraPosY, cameraPosZ, yaw, pitch, fov, viewWidth, viewHeight, useTextures, padding0..2
-            const uniformFloatCount = 12;
-            const uniformBuffer = device.createBuffer({
-                size: uniformFloatCount * 4,
-                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
-            });
+            const bufferHandleCount = 7;
+            const bufferTablePtr = gm_get_gpu_buffer_table();
+            const bufferHandleView = new Uint32Array(memory.buffer, bufferTablePtr, bufferHandleCount);
+            const positionBuffer = webgpuHost.getBuffer(bufferHandleView[0]);
+            const uvBuffer = webgpuHost.getBuffer(bufferHandleView[1]);
+            const surfaceTypeBuffer = webgpuHost.getBuffer(bufferHandleView[2]);
+            const triangleIDBuffer = webgpuHost.getBuffer(bufferHandleView[3]);
+            const normalBuffer = webgpuHost.getBuffer(bufferHandleView[4]);
+            const indexBuffer = webgpuHost.getBuffer(bufferHandleView[5]);
+            const uniformBuffer = webgpuHost.getBuffer(bufferHandleView[6]);
+            const uniformFloatCount = gm_get_uniform_float_count();
 
             // Shaders
             const vsSource = `

@@ -47,3 +47,10 @@ MeshData* generate_mesh(int *map, int width, int height);
 
 // Returns the preferred WebGPU canvas texture format for the current platform.
 uint32_t gm_get_preferred_canvas_format(void);
+
+// WebGPU integration helpers
+void gm_register_webgpu_handles(uint32_t device_handle, uint32_t queue_handle);
+int gm_create_gpu_buffers(void);
+uint32_t gm_get_gpu_buffer_table(void);
+uint32_t gm_get_uniform_float_count(void);
+uint32_t gm_get_uniform_buffer_size(void);

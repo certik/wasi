@@ -1,6 +1,23 @@
 #include <gm.h>
 #include <webgpu/webgpu.h>
 
+#define GM_UNIFORM_FLOAT_COUNT 12
+
+typedef enum {
+    GM_BUFFER_POSITIONS = 0,
+    GM_BUFFER_UVS,
+    GM_BUFFER_SURFACE_TYPES,
+    GM_BUFFER_TRIANGLE_IDS,
+    GM_BUFFER_NORMALS,
+    GM_BUFFER_INDICES,
+    GM_BUFFER_UNIFORM,
+    GM_BUFFER_COUNT
+} GMBufferSlot;
+
+static WGPUDevice g_wgpu_device = NULL;
+static WGPUQueue g_wgpu_queue = NULL;
+static WGPUBuffer g_gpu_buffers[GM_BUFFER_COUNT];
+
 // Find starting position and direction in the map
 // Returns: 1 if found, 0 if not found
 // Outputs: startX, startZ (position), startYaw (direction in radians), and modifies map
@@ -546,4 +563,110 @@ uint32_t gm_get_preferred_canvas_format(void) {
     uint32_t preferred = (uint32_t)caps.formats[0];
     wgpuSurfaceCapabilitiesFreeMembers(caps);
     return preferred;
+}
+
+void gm_register_webgpu_handles(uint32_t device_handle, uint32_t queue_handle) {
+    g_wgpu_device = (WGPUDevice)(uintptr_t)device_handle;
+    g_wgpu_queue = (WGPUQueue)(uintptr_t)queue_handle;
+}
+
+static WGPUBuffer gm_create_buffer_with_data(const void *data, size_t size,
+        WGPUBufferUsage usage) {
+    if (size == 0) {
+        return NULL;
+    }
+
+    WGPUBufferDescriptor desc = {
+        .nextInChain = NULL,
+        .label = WGPU_STRING_VIEW_INIT,
+        .usage = usage | WGPUBufferUsage_CopyDst,
+        .size = size,
+        .mappedAtCreation = WGPU_FALSE,
+    };
+
+    WGPUBuffer buffer = wgpuDeviceCreateBuffer(g_wgpu_device, &desc);
+    if (buffer != NULL && data != NULL) {
+        wgpuQueueWriteBuffer(g_wgpu_queue, buffer, 0, data, size);
+    }
+    return buffer;
+}
+
+int gm_create_gpu_buffers(void) {
+    if (g_wgpu_device == NULL || g_wgpu_queue == NULL) {
+        return -1;
+    }
+    if (g_mesh_data.positions == NULL || g_mesh_data.indices == NULL) {
+        return -2;
+    }
+
+    g_gpu_buffers[GM_BUFFER_POSITIONS] = gm_create_buffer_with_data(
+            g_mesh_data.positions,
+            (size_t)g_mesh_data.position_count * sizeof(float),
+            WGPUBufferUsage_Vertex);
+    if (g_gpu_buffers[GM_BUFFER_POSITIONS] == NULL) {
+        return -3;
+    }
+
+    g_gpu_buffers[GM_BUFFER_UVS] = gm_create_buffer_with_data(
+            g_mesh_data.uvs,
+            (size_t)g_mesh_data.uv_count * sizeof(float),
+            WGPUBufferUsage_Vertex);
+    if (g_gpu_buffers[GM_BUFFER_UVS] == NULL) {
+        return -4;
+    }
+
+    g_gpu_buffers[GM_BUFFER_SURFACE_TYPES] = gm_create_buffer_with_data(
+            g_mesh_data.surface_types,
+            (size_t)g_mesh_data.vertex_count * sizeof(float),
+            WGPUBufferUsage_Vertex);
+    if (g_gpu_buffers[GM_BUFFER_SURFACE_TYPES] == NULL) {
+        return -5;
+    }
+
+    g_gpu_buffers[GM_BUFFER_TRIANGLE_IDS] = gm_create_buffer_with_data(
+            g_mesh_data.triangle_ids,
+            (size_t)g_mesh_data.vertex_count * sizeof(float),
+            WGPUBufferUsage_Vertex);
+    if (g_gpu_buffers[GM_BUFFER_TRIANGLE_IDS] == NULL) {
+        return -6;
+    }
+
+    g_gpu_buffers[GM_BUFFER_NORMALS] = gm_create_buffer_with_data(
+            g_mesh_data.normals,
+            (size_t)g_mesh_data.normal_count * sizeof(float),
+            WGPUBufferUsage_Vertex);
+    if (g_gpu_buffers[GM_BUFFER_NORMALS] == NULL) {
+        return -7;
+    }
+
+    g_gpu_buffers[GM_BUFFER_INDICES] = gm_create_buffer_with_data(
+            g_mesh_data.indices,
+            (size_t)g_mesh_data.index_count * sizeof(uint16_t),
+            WGPUBufferUsage_Index);
+    if (g_gpu_buffers[GM_BUFFER_INDICES] == NULL) {
+        return -8;
+    }
+
+    static float uniform_init[GM_UNIFORM_FLOAT_COUNT] = {0};
+    g_gpu_buffers[GM_BUFFER_UNIFORM] = gm_create_buffer_with_data(
+            uniform_init,
+            sizeof(uniform_init),
+            WGPUBufferUsage_Uniform);
+    if (g_gpu_buffers[GM_BUFFER_UNIFORM] == NULL) {
+        return -9;
+    }
+
+    return 0;
+}
+
+uint32_t gm_get_gpu_buffer_table(void) {
+    return (uint32_t)(uintptr_t)g_gpu_buffers;
+}
+
+uint32_t gm_get_uniform_float_count(void) {
+    return GM_UNIFORM_FLOAT_COUNT;
+}
+
+uint32_t gm_get_uniform_buffer_size(void) {
+    return GM_UNIFORM_FLOAT_COUNT * (uint32_t)sizeof(float);
 }

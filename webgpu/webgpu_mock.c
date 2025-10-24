@@ -21,3 +21,21 @@ WGPUStatus wgpuSurfaceGetCapabilities(WGPUSurface surface,
 void wgpuSurfaceCapabilitiesFreeMembers(WGPUSurfaceCapabilities surfaceCapabilities) {
     (void)surfaceCapabilities;
 }
+
+WGPUBuffer wgpuDeviceCreateBuffer(WGPUDevice device,
+        WGPUBufferDescriptor const * descriptor) {
+    (void)device;
+    (void)descriptor;
+    FATAL_ERROR("WebGPU is not supported on this platform build.");
+    return NULL;
+}
+
+void wgpuQueueWriteBuffer(WGPUQueue queue, WGPUBuffer buffer, uint64_t bufferOffset,
+        void const * data, size_t size) {
+    (void)queue;
+    (void)buffer;
+    (void)bufferOffset;
+    (void)data;
+    (void)size;
+    FATAL_ERROR("WebGPU is not supported on this platform build.");
+}
