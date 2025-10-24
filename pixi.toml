@@ -128,6 +128,11 @@ clang \
     -Wl,--export=find_start_position \
     -Wl,--export=generate_mesh \
     -Wl,--export=gm_get_preferred_canvas_format \
+    -Wl,--export=gm_register_webgpu_handles \
+    -Wl,--export=gm_create_gpu_buffers \
+    -Wl,--export=gm_get_gpu_buffer_table \
+    -Wl,--export=gm_get_uniform_float_count \
+    -Wl,--export=gm_get_uniform_buffer_size \
     -Wl,--initial-memory=262144 \
     -o gm.wasm \
     gm.c \
