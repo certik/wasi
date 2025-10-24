@@ -706,6 +706,13 @@
 
             const webgpuHost = createWasmWebGPUHost(adapter, device);
 
+            // Variables that will be initialized later but used in platformAPI
+            let indexCount, uniformFloatCount, overlayUniformFloatCount;
+            let positionBuffer, uvBuffer, surfaceTypeBuffer, triangleIDBuffer, normalBuffer, indexBuffer;
+            let uniformBuffer, overlayUniformBuffer, overlayTextBuffer, overlayVertexBuffer;
+            let pipeline, overlayPipeline, bindGroup, overlayBindGroup;
+            let depthTexture;
+
             // Platform API implementation
             const platformAPI = {
                 get_canvas_size: (widthPtr, heightPtr) => {
@@ -767,7 +774,7 @@
                     renderPass.setVertexBuffer(3, triangleIDBuffer);
                     renderPass.setVertexBuffer(4, normalBuffer);
                     renderPass.setIndexBuffer(indexBuffer, 'uint16');
-                    renderPass.drawIndexed(indices.length);
+                    renderPass.drawIndexed(indexCount);
 
                     // Overlay pass
                     renderPass.setPipeline(overlayPipeline);
@@ -923,7 +930,7 @@
             const uvCount = meshDataView[7];
             const normalCount = meshDataView[8];
             const vertexCount = meshDataView[9];
-            const indexCount = meshDataView[10];
+            indexCount = meshDataView[10];
 
             console.log(`Mesh: ${vertexCount} vertices, ${indexCount} indices, ${indexCount/3} triangles`);
 
@@ -951,18 +958,18 @@
             const bufferHandleCount = gm_get_gpu_buffer_count();
             const bufferTablePtr = gm_get_gpu_buffer_table();
             const bufferHandleView = new Uint32Array(memory.buffer, bufferTablePtr, bufferHandleCount);
-            const positionBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.POSITIONS]);
-            const uvBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.UVS]);
-            const surfaceTypeBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.SURFACE_TYPES]);
-            const triangleIDBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.TRIANGLE_IDS]);
-            const normalBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.NORMALS]);
-            const indexBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.INDICES]);
-            const uniformBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.UNIFORM]);
-            const overlayUniformBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.OVERLAY_UNIFORM]);
-            const overlayTextBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.OVERLAY_TEXT]);
+            positionBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.POSITIONS]);
+            uvBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.UVS]);
+            surfaceTypeBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.SURFACE_TYPES]);
+            triangleIDBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.TRIANGLE_IDS]);
+            normalBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.NORMALS]);
+            indexBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.INDICES]);
+            uniformBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.UNIFORM]);
+            overlayUniformBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.OVERLAY_UNIFORM]);
+            overlayTextBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.OVERLAY_TEXT]);
             const overlayMapBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.OVERLAY_MAP]);
-            const overlayVertexBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.OVERLAY_VERTEX]);
-            const uniformFloatCount = gm_get_uniform_float_count();
+            overlayVertexBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.OVERLAY_VERTEX]);
+            uniformFloatCount = gm_get_uniform_float_count();
 
             const shaderInitResult = gm_create_shader_modules();
             if (shaderInitResult !== 0) {
@@ -1026,23 +1033,23 @@
             const bindGroupHandleCount = gm_get_bind_group_count();
             const bindGroupTablePtr = gm_get_bind_group_table();
             const bindGroupHandleView = new Uint32Array(memory.buffer, bindGroupTablePtr, bindGroupHandleCount);
-            const bindGroup = webgpuHost.getBindGroup(bindGroupHandleView[0]);
-            const overlayBindGroup = webgpuHost.getBindGroup(bindGroupHandleView[1]);
+            bindGroup = webgpuHost.getBindGroup(bindGroupHandleView[0]);
+            overlayBindGroup = webgpuHost.getBindGroup(bindGroupHandleView[1]);
 
             const pipelineHandleCount = gm_get_render_pipeline_count();
             const pipelineTablePtr = gm_get_render_pipeline_table();
             const pipelineHandleView = new Uint32Array(memory.buffer, pipelineTablePtr, pipelineHandleCount);
-            const pipeline = webgpuHost.getRenderPipeline(pipelineHandleView[0]);
-            const overlayPipeline = webgpuHost.getRenderPipeline(pipelineHandleView[1]);
+            pipeline = webgpuHost.getRenderPipeline(pipelineHandleView[0]);
+            overlayPipeline = webgpuHost.getRenderPipeline(pipelineHandleView[1]);
 
             console.log('Pipelines and bind groups created successfully via WASM');
 
-            const overlayUniformFloatCount = 24;
+            overlayUniformFloatCount = 24;
             const overlayTextCapacity = 256;
             device.queue.writeBuffer(overlayMapBuffer, 0, mapDataArray);
 
             // Depth texture
-            let depthTexture = device.createTexture({
+            depthTexture = device.createTexture({
                 size: [canvas.width, canvas.height, 1],
                 format: 'depth24plus',
                 usage: GPUTextureUsage.RENDER_ATTACHMENT
