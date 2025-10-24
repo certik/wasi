@@ -8,7 +8,16 @@ WGPUInstance wgpuCreateInstance(WGPUInstanceDescriptor const * descriptor) {
     return NULL;
 }
 
-uint32_t wasm_webgpu_get_preferred_canvas_format(void) {
+WGPUStatus wgpuSurfaceGetCapabilities(WGPUSurface surface,
+        WGPUAdapter adapter,
+        WGPUSurfaceCapabilities *capabilities) {
+    (void)surface;
+    (void)adapter;
+    (void)capabilities;
     FATAL_ERROR("WebGPU is not supported on this platform build.");
-    return 0;
+    return WGPUStatus_Error;
+}
+
+void wgpuSurfaceCapabilitiesFreeMembers(WGPUSurfaceCapabilities surfaceCapabilities) {
+    (void)surfaceCapabilities;
 }

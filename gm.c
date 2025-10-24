@@ -536,8 +536,14 @@ MeshData* generate_mesh(int *map, int width, int height) {
 
 // Query the preferred canvas texture format via the WebGPU bridge.
 uint32_t gm_get_preferred_canvas_format(void) {
-    WGPUInstance instance = wgpuCreateInstance(NULL);
-    (void)instance;  // Instance is currently unused but proves the linkage works.
-    extern uint32_t wasm_webgpu_get_preferred_canvas_format(void);
-    return wasm_webgpu_get_preferred_canvas_format();
+    WGPUSurfaceCapabilities caps = WGPU_SURFACE_CAPABILITIES_INIT;
+
+    WGPUStatus status = wgpuSurfaceGetCapabilities(NULL, NULL, &caps);
+    if (status != WGPUStatus_Success || caps.formatCount == 0 || caps.formats == NULL) {
+        return (uint32_t)WGPUTextureFormat_BGRA8Unorm;
+    }
+
+    uint32_t preferred = (uint32_t)caps.formats[0];
+    wgpuSurfaceCapabilitiesFreeMembers(caps);
+    return preferred;
 }
