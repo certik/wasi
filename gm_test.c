@@ -138,10 +138,10 @@ static int test_mesh_data_integrity(const MeshData *mesh) {
     const uint32_t EXPECTED_NORMALS_HASH = 279143128u;
 
     // Print hashes
-    println(str_lit("  Indices hash:   {}"), (int64_t)indices_hash);
-    println(str_lit("  Positions hash: {}"), (int64_t)positions_hash);
-    println(str_lit("  UVs hash:       {}"), (int64_t)uvs_hash);
-    println(str_lit("  Normals hash:   {}"), (int64_t)normals_hash);
+    println(str_lit("  Indices hash:   {}"), indices_hash);
+    println(str_lit("  Positions hash: {}"), positions_hash);
+    println(str_lit("  UVs hash:       {}"), uvs_hash);
+    println(str_lit("  Normals hash:   {}"), normals_hash);
 
     // Validate hashes
     int hashes_ok = 1;

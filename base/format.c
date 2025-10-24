@@ -110,7 +110,7 @@ string format_explicit_varg(Arena *arena, string fmt, size_t arg_count,
             }
             case ARG_UINT8: {
                 uint8_t value = (uint8_t)va_arg(ap, int);
-                s = int_to_string(scratch.arena, value);
+                s = uint_to_string(scratch.arena, value);
                 break;
             }
             case ARG_INT16: {
@@ -120,7 +120,7 @@ string format_explicit_varg(Arena *arena, string fmt, size_t arg_count,
             }
             case ARG_UINT16: {
                 uint16_t value = (uint16_t)va_arg(ap, int);
-                s = int_to_string(scratch.arena, value);
+                s = uint_to_string(scratch.arena, value);
                 break;
             }
             case ARG_INT32: {
@@ -130,7 +130,7 @@ string format_explicit_varg(Arena *arena, string fmt, size_t arg_count,
             }
             case ARG_UINT32: {
                 uint32_t value = va_arg(ap, uint32_t);
-                s = int_to_string(scratch.arena, value);
+                s = uint_to_string(scratch.arena, value);
                 break;
             }
             case ARG_INT64: {
@@ -140,7 +140,7 @@ string format_explicit_varg(Arena *arena, string fmt, size_t arg_count,
             }
             case ARG_UINT64: {
                 uint64_t value = va_arg(ap, uint64_t);
-                s = int_to_string(scratch.arena, value);
+                s = uint_to_string(scratch.arena, value);
                 break;
             }
             case ARG_DOUBLE: {
@@ -171,7 +171,7 @@ string format_explicit_varg(Arena *arena, string fmt, size_t arg_count,
             }
             case ARG_POINTER: {
                 void* value = va_arg(ap, void*);
-                s = int_to_string(scratch.arena, (uint64_t)value);
+                s = uint_to_string(scratch.arena, (uint64_t)value);
                 break;
             }
             case ARG_VECTOR_INT64: {

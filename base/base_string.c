@@ -38,6 +38,14 @@ string int_to_string(Arena *arena, int value) {
     return (string){str, len};
 }
 
+string uint_to_string(Arena *arena, uint64_t value) {
+    char buf[32];
+    size_t len = uint64_to_str(value, buf);
+    char *str = arena_alloc_array(arena, char, len);
+    memcpy(str, buf, len);
+    return (string){str, len};
+}
+
 string double_to_string(Arena *arena, double value, int precision) {
     char buf[32];
     size_t len = double_to_str(value, buf, precision);
