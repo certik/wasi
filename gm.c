@@ -1,5 +1,9 @@
 #include <gm.h>
 #include <webgpu/webgpu.h>
+#include <platform.h>
+#include <base/scratch.h>
+#include <base/format.h>
+#include <base/base_string.h>
 
 // Math functions (from libSystem on macOS, libm elsewhere, or WASM imports from JS)
 #ifdef __wasm__
@@ -1444,6 +1448,8 @@ void gm_init_game_state(GameState *state, int *map, int width, int height,
     state->avg_gpu_copy_time = 0.0f;
     state->avg_gpu_render_time = 0.0f;
     state->frame_count = 0;
+    state->last_fps_update_time = 0.0;
+    state->fps_frame_count = 0;
 }
 
 // Set key state
@@ -1609,31 +1615,61 @@ const float* gm_get_uniform_data(const GameState *state, float canvas_width, flo
 static OverlayTextResult g_overlay_text_result;
 
 const OverlayTextResult* gm_build_overlay_text(const GameState *state) {
-    // Build HUD lines (we'll use simple string building)
-    // For now, simplified version without full string formatting
+    Scratch scratch = scratch_begin();
 
-    // Just fill with test pattern for now
-    // TODO: Proper text formatting with sprintf-like functionality
+    // Calculate direction from yaw
+    const char *direction_names[] = {"E", "SE", "S", "SW", "W", "NW", "N", "NE"};
+    int direction_index = (int)((state->yaw / PI * 4.0f) + 8.5f) % 8;
+    const char *direction = direction_names[direction_index];
+
+    // Convert angles to degrees
+    double yaw_deg = state->yaw * 180.0 / PI;
+    double pitch_deg = state->pitch * 180.0 / PI;
+
+    // Format text lines
+    string lines[6];
+    lines[0] = format(scratch.arena, str_lit("FPS: {}  Frame: {:.2}ms"),
+                     (int64_t)state->fps, (double)state->avg_frame_time);
+    lines[1] = format(scratch.arena, str_lit("JS: {:.2}ms  GPU Copy: {:.2}ms  GPU Render: {:.2}ms"),
+                     (double)state->avg_js_time, (double)state->avg_gpu_copy_time, (double)state->avg_gpu_render_time);
+    lines[2] = format(scratch.arena, str_lit("Pos: ({:.2}, {:.2}, {:.2})"),
+                     (double)state->camera_x, (double)state->camera_y, (double)state->camera_z);
+    lines[3] = format(scratch.arena, str_lit("Dir: {} (yaw: {:.1}°, pitch: {:.1}°)"),
+                     str_from_cstr_view((char*)direction), yaw_deg, pitch_deg);
+    lines[4] = format(scratch.arena, str_lit("Movement: {} (f)  HUD: {} (h)  Map: {} (m/r)"),
+                     str_from_cstr_view(state->horizontal_movement ? "Person" : "Flying"),
+                     str_from_cstr_view(state->hud_visible ? "ON" : "OFF"),
+                     str_from_cstr_view(state->map_visible ? "ON" : "OFF"));
+    lines[5] = format(scratch.arena, str_lit("Textures: {} (t)  Triangles: {} (v)  Debug: {} (b)"),
+                     str_from_cstr_view(state->textures_enabled ? "ON" : "OFF"),
+                     str_from_cstr_view(state->triangle_mode ? "ON" : "OFF"),
+                     str_from_cstr_view(state->debug_mode ? "ON" : "OFF"));
+
+    // Build overlay text buffer
     uint32_t index = 0;
+    uint32_t max_line_length = 0;
 
-    // Fill with spaces initially
     for (uint32_t i = 0; i < GM_OVERLAY_TEXT_CAPACITY; i++) {
         g_overlay_text_buffer[i] = SPACE_CODE;
     }
 
-    // Simple placeholder text
-    const char *test_text = "FPS: 60  Frame: 16.67ms\nPos: (1.50, 1.00, 1.50)\nHUD: ON";
-    for (const char *p = test_text; *p && index < GM_OVERLAY_TEXT_CAPACITY; p++) {
-        if (*p == '\n') {
+    for (int i = 0; i < 6; i++) {
+        if (lines[i].size > max_line_length) {
+            max_line_length = lines[i].size;
+        }
+        for (uint32_t j = 0; j < lines[i].size && index < GM_OVERLAY_TEXT_CAPACITY; j++) {
+            g_overlay_text_buffer[index++] = char_to_glyph_code(lines[i].str[j]);
+        }
+        if (i < 5 && index < GM_OVERLAY_TEXT_CAPACITY) {
             g_overlay_text_buffer[index++] = NEWLINE_CODE;
-        } else {
-            g_overlay_text_buffer[index++] = char_to_glyph_code(*p);
         }
     }
 
+    scratch_end(scratch);
+
     g_overlay_text_result.glyph_data = g_overlay_text_buffer;
     g_overlay_text_result.length = index;
-    g_overlay_text_result.max_line_length = 30;  // Approximate for now
+    g_overlay_text_result.max_line_length = max_line_length;
     return &g_overlay_text_result;
 }
 
@@ -1703,4 +1739,76 @@ void gm_update_perf_metrics(GameState *state, float frame_time, float js_time,
     state->avg_js_time = state->avg_js_time * PERF_SMOOTHING + js_time * (1.0f - PERF_SMOOTHING);
     state->avg_gpu_copy_time = state->avg_gpu_copy_time * PERF_SMOOTHING + gpu_copy_time * (1.0f - PERF_SMOOTHING);
     state->avg_gpu_render_time = state->avg_gpu_render_time * PERF_SMOOTHING + gpu_render_time * (1.0f - PERF_SMOOTHING);
+}
+
+// ============================================================================
+// Main Render Loop
+// ============================================================================
+
+static GameState *g_game_state = NULL;
+
+// Main render frame function - called every frame
+void gm_render_frame(GameState *state) {
+    double frame_start_time = platform_get_time();
+
+    // Calculate FPS every 500ms
+    state->fps_frame_count++;
+    double time_since_fps_update = frame_start_time - state->last_fps_update_time;
+    if (time_since_fps_update >= 500.0) {
+        state->fps = (float)(state->fps_frame_count * 1000.0 / time_since_fps_update);
+        state->fps_frame_count = 0;
+        state->last_fps_update_time = frame_start_time;
+    }
+
+    // Get canvas size
+    int canvas_width, canvas_height;
+    platform_get_canvas_size(&canvas_width, &canvas_height);
+
+    // Update game state
+    gm_update_frame(state, (float)canvas_width, (float)canvas_height);
+
+    // Get uniform data
+    const float *uniform_data = gm_get_uniform_data(state, (float)canvas_width, (float)canvas_height);
+
+    // Build overlay text
+    const OverlayTextResult *overlay_text = gm_build_overlay_text(state);
+
+    // Get overlay uniform data
+    const float *overlay_uniform_data = gm_get_overlay_uniform_data(
+        state, (float)canvas_width, (float)canvas_height,
+        overlay_text->length, overlay_text->max_line_length);
+
+    // Render via platform and get timing
+    double js_time, gpu_copy_time, gpu_render_time;
+    double total_frame_time = platform_render_frame(
+        (uint32_t)(uintptr_t)uniform_data,
+        (uint32_t)(uintptr_t)overlay_uniform_data,
+        (uint32_t)(uintptr_t)overlay_text->glyph_data,
+        overlay_text->length,
+        &js_time, &gpu_copy_time, &gpu_render_time);
+
+    // Update performance metrics
+    gm_update_perf_metrics(state, (float)total_frame_time, (float)js_time,
+                          (float)gpu_copy_time, (float)gpu_render_time);
+
+    // Request next frame
+    platform_request_animation_frame();
+}
+
+// Callback for platform to call on each frame
+void gm_on_animation_frame(void) {
+    if (g_game_state) {
+        gm_render_frame(g_game_state);
+    }
+}
+
+// Set the active game state
+void gm_set_active_game_state(GameState *state) {
+    g_game_state = state;
+}
+
+// Main entry point
+void gm_main(void) {
+    // TODO: Implement full initialization here
+    // For now, this will be called from JavaScript after initialization
 }

@@ -706,11 +706,98 @@
 
             const webgpuHost = createWasmWebGPUHost(adapter, device);
 
+            // Platform API implementation
+            const platformAPI = {
+                get_canvas_size: (widthPtr, heightPtr) => {
+                    const view = new Int32Array(memory.buffer);
+                    view[widthPtr / 4] = canvas.width;
+                    view[heightPtr / 4] = canvas.height;
+                },
+                get_time: () => performance.now(),
+                request_animation_frame: () => {
+                    requestAnimationFrame(() => {
+                        wasmInstance.exports.gm_on_animation_frame();
+                    });
+                },
+                render_frame: (uniformDataPtr, overlayUniformDataPtr, overlayTextDataPtr, overlayTextLength,
+                              jsTimeOutPtr, gpuCopyTimeOutPtr, gpuRenderTimeOutPtr) => {
+                    const frameStartTime = performance.now();
+
+                    // Get data from WASM memory
+                    const uniformData = new Float32Array(memory.buffer, uniformDataPtr, uniformFloatCount);
+                    const overlayUniformData = new Float32Array(memory.buffer, overlayUniformDataPtr, overlayUniformFloatCount);
+                    const overlayTextData = new Uint32Array(memory.buffer, overlayTextDataPtr, overlayTextLength);
+
+                    // Upload uniform buffers
+                    device.queue.writeBuffer(uniformBuffer, 0, uniformData);
+                    device.queue.writeBuffer(overlayUniformBuffer, 0, overlayUniformData);
+                    device.queue.writeBuffer(overlayTextBuffer, 0, overlayTextData);
+
+                    const jsEndTime = performance.now();
+                    const jsTime = jsEndTime - frameStartTime;
+
+                    const gpuCopyEndTime = performance.now();
+                    const gpuCopyTime = gpuCopyEndTime - jsEndTime;
+
+                    // Encode GPU commands
+                    const commandEncoder = device.createCommandEncoder();
+                    const textureView = context.getCurrentTexture().createView();
+
+                    const renderPass = commandEncoder.beginRenderPass({
+                        colorAttachments: [{
+                            view: textureView,
+                            clearValue: { r: 0.5, g: 0.7, b: 1.0, a: 1.0 },
+                            loadOp: 'clear',
+                            storeOp: 'store',
+                        }],
+                        depthStencilAttachment: {
+                            view: depthTexture.createView(),
+                            depthClearValue: 1.0,
+                            depthLoadOp: 'clear',
+                            depthStoreOp: 'store'
+                        }
+                    });
+
+                    // Main geometry pass
+                    renderPass.setPipeline(pipeline);
+                    renderPass.setBindGroup(0, bindGroup);
+                    renderPass.setVertexBuffer(0, positionBuffer);
+                    renderPass.setVertexBuffer(1, uvBuffer);
+                    renderPass.setVertexBuffer(2, surfaceTypeBuffer);
+                    renderPass.setVertexBuffer(3, triangleIDBuffer);
+                    renderPass.setVertexBuffer(4, normalBuffer);
+                    renderPass.setIndexBuffer(indexBuffer, 'uint16');
+                    renderPass.drawIndexed(indices.length);
+
+                    // Overlay pass
+                    renderPass.setPipeline(overlayPipeline);
+                    renderPass.setBindGroup(0, overlayBindGroup);
+                    renderPass.setVertexBuffer(0, overlayVertexBuffer);
+                    renderPass.draw(4);
+                    renderPass.end();
+
+                    device.queue.submit([commandEncoder.finish()]);
+
+                    const gpuRenderEndTime = performance.now();
+                    const gpuRenderTime = gpuRenderEndTime - gpuCopyEndTime;
+                    const totalFrameTime = gpuRenderEndTime - frameStartTime;
+
+                    // Write timing data back to WASM
+                    const floatView = new Float64Array(memory.buffer);
+                    floatView[jsTimeOutPtr / 8] = jsTime;
+                    floatView[gpuCopyTimeOutPtr / 8] = gpuCopyTime;
+                    floatView[gpuRenderTimeOutPtr / 8] = gpuRenderTime;
+
+                    return totalFrameTime;
+                },
+            };
+
             const wasmModule = await WebAssembly.instantiate(wasmBytes, {
                 env: {
                     cosf: (x) => Math.cos(x),
                     sinf: (x) => Math.sin(x),
                 },
+                platform: platformAPI,
                 wasi_snapshot_preview1: {
                 // Not needed right now:
                 /*
@@ -1056,156 +1143,12 @@
                 }
             });
 
-            // Render loop
-            let fps = 0;
-            let fpsUpdateTime = performance.now();
-            let fpsFrameCount = 0;
+            // Start render loop - C will drive the loop via platform API
+            const gm_set_active_game_state = wasmInstance.exports.gm_set_active_game_state;
+            const gm_on_animation_frame = wasmInstance.exports.gm_on_animation_frame;
 
-            function render() {
-                const frameStartTime = performance.now();
-
-                // Update game state in WASM
-                gm_update_frame(gameStatePtr, canvas.width, canvas.height);
-
-                // FPS calc
-                const currentTime = performance.now();
-                fpsFrameCount++;
-                if (currentTime - fpsUpdateTime >= 500) {
-                    fps = Math.round(fpsFrameCount * 1000 / (currentTime - fpsUpdateTime));
-                    fpsFrameCount = 0;
-                    fpsUpdateTime = currentTime;
-                }
-
-                // Get uniform data from WASM
-                const uniformDataPtr = gm_get_uniform_data(gameStatePtr, canvas.width, canvas.height);
-                const uniformData = new Float32Array(memory.buffer, uniformDataPtr, uniformFloatCount);
-
-                if (uniformData[8] !== lastLoggedTextureState) {
-                    console.log('[Texture] Uniform buffer useTextures value:', uniformData[8]);
-                    lastLoggedTextureState = uniformData[8];
-                }
-
-                device.queue.writeBuffer(uniformBuffer, 0, uniformData);
-
-                const jsEndTime = performance.now();
-                const jsTime = jsEndTime - frameStartTime;
-
-                // Read camera state from uniform data for HUD
-                const cameraX = uniformData[0];
-                const cameraY = uniformData[1];
-                const cameraZ = uniformData[2];
-                const yaw = uniformData[3];
-                const pitch = uniformData[4];
-
-                // Read game state flags
-                const gameStateView = new Int32Array(memory.buffer, gameStatePtr, 128);
-                const mapVisible = gameStateView[GameStateOffsets.map_visible / 4];
-                const mapRelativeMode = gameStateView[GameStateOffsets.map_relative_mode / 4];
-                const hudVisible = gameStateView[GameStateOffsets.hud_visible / 4];
-                const texturesEnabled = gameStateView[GameStateOffsets.textures_enabled / 4];
-                const triangleMode = gameStateView[GameStateOffsets.triangle_mode / 4];
-                const debugMode = gameStateView[GameStateOffsets.debug_mode / 4];
-                const horizontalMovement = gameStateView[GameStateOffsets.horizontal_movement / 4];
-
-                // Read performance metrics from game state
-                // Offset calculation: 7*4 (camera) + 7*4 (params) + 7*4 (flags) + 256 (keys) + 2*4 (mouse) + 4 (ptr) + 2*4 (map dims) = 360
-                const perfView = new Float32Array(memory.buffer, gameStatePtr + 360, 5); // fps and 4 avg times
-                const stateFps = perfView[0];
-                const avgFrameTime = perfView[1];
-                const avgJsTime = perfView[2];
-                const avgGpuCopyTime = perfView[3];
-                const avgGpuRenderTime = perfView[4];
-
-                // Build HUD text in JavaScript
-                const directionNames = ['E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE'];
-                const directionIndex = Math.round(((yaw / Math.PI * 4) + 8) % 8);
-                const direction = directionNames[directionIndex];
-
-                const lines = [
-                    `FPS: ${fps}  Frame: ${avgFrameTime.toFixed(2)}ms`,
-                    `JS: ${avgJsTime.toFixed(2)}ms  GPU Copy: ${avgGpuCopyTime.toFixed(2)}ms  GPU Render: ${avgGpuRenderTime.toFixed(2)}ms`,
-                    `Pos: (${cameraX.toFixed(2)}, ${cameraY.toFixed(2)}, ${cameraZ.toFixed(2)})`,
-                    `Dir: ${direction} (yaw: ${(yaw * 180 / Math.PI).toFixed(1)}°, pitch: ${(pitch * 180 / Math.PI).toFixed(1)}°)`,
-                    `Movement: ${horizontalMovement ? 'Person' : 'Flying'} (f)  HUD: ${hudVisible ? 'ON' : 'OFF'} (h)  Map: ${mapVisible ? 'ON' : 'OFF'} (m/r)`,
-                    `Textures: ${texturesEnabled ? 'ON' : 'OFF'} (t)  Triangles: ${triangleMode ? 'ON' : 'OFF'} (v)  Debug: ${debugMode ? 'ON' : 'OFF'} (b)`
-                ];
-
-                // Build overlay text array
-                const overlayTextArray = new Uint32Array(overlayTextCapacity);
-                overlayTextArray.fill(32); // SPACE_CODE
-                let index = 0;
-                let maxLineLength = 0;
-                const NEWLINE_CODE = 255;
-
-                for (let i = 0; i < lines.length; i++) {
-                    const line = lines[i];
-                    maxLineLength = Math.max(maxLineLength, line.length);
-                    for (let j = 0; j < line.length && index < overlayTextCapacity; j++) {
-                        overlayTextArray[index++] = line.charCodeAt(j);
-                    }
-                    if (i < lines.length - 1 && index < overlayTextCapacity) {
-                        overlayTextArray[index++] = NEWLINE_CODE;
-                    }
-                }
-                const textLength = index;
-
-                // Get overlay uniform data from WASM
-                const overlayUniformDataPtr = gm_get_overlay_uniform_data(gameStatePtr, canvas.width, canvas.height, textLength, maxLineLength);
-                const overlayUniformData = new Float32Array(memory.buffer, overlayUniformDataPtr, overlayUniformFloatCount);
-
-                device.queue.writeBuffer(overlayUniformBuffer, 0, overlayUniformData);
-                device.queue.writeBuffer(overlayTextBuffer, 0, overlayTextArray);
-
-                const gpuCopyEndTime = performance.now();
-                const gpuCopyTime = gpuCopyEndTime - jsEndTime;
-
-                const commandEncoder = device.createCommandEncoder();
-                const textureView = context.getCurrentTexture().createView();
-
-                const renderPass = commandEncoder.beginRenderPass({
-                    colorAttachments: [{
-                        view: textureView,
-                        clearValue: { r: 0.5, g: 0.7, b: 1.0, a: 1.0 }, // Sky blue clear
-                        loadOp: 'clear',
-                        storeOp: 'store',
-                    }],
-                    depthStencilAttachment: {
-                        view: depthTexture.createView(),
-                        depthClearValue: 1.0,
-                        depthLoadOp: 'clear',
-                        depthStoreOp: 'store'
-                    }
-                });
-
-                renderPass.setPipeline(pipeline);
-                renderPass.setBindGroup(0, bindGroup);
-                renderPass.setVertexBuffer(0, positionBuffer);
-                renderPass.setVertexBuffer(1, uvBuffer);
-                renderPass.setVertexBuffer(2, surfaceTypeBuffer);
-                renderPass.setVertexBuffer(3, triangleIDBuffer);
-                renderPass.setVertexBuffer(4, normalBuffer);
-                renderPass.setIndexBuffer(indexBuffer, 'uint16');
-                renderPass.drawIndexed(indices.length);
-
-                renderPass.setPipeline(overlayPipeline);
-                renderPass.setBindGroup(0, overlayBindGroup);
-                renderPass.setVertexBuffer(0, overlayVertexBuffer);
-                renderPass.draw(4);
-                renderPass.end();
-
-                device.queue.submit([commandEncoder.finish()]);
-
-                const gpuRenderEndTime = performance.now();
-                const gpuRenderTime = gpuRenderEndTime - gpuCopyEndTime;
-                const totalFrameTime = gpuRenderEndTime - frameStartTime;
-
-                // Update performance metrics in WASM
-                gm_update_perf_metrics(gameStatePtr, totalFrameTime, jsTime, gpuCopyTime, gpuRenderTime);
-
-                requestAnimationFrame(render);
-            }
-
-            render();
+            gm_set_active_game_state(gameStatePtr);
+            gm_on_animation_frame();  // Start the render loop
 
             // Resize
             window.addEventListener('resize', () => {

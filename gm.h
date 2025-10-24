@@ -111,6 +111,8 @@ typedef struct {
     float avg_gpu_copy_time;
     float avg_gpu_render_time;
     uint32_t frame_count;
+    double last_fps_update_time;  // Time of last FPS calculation
+    uint32_t fps_frame_count;     // Frames since last FPS calculation
 } GameState;
 
 // Initialize game state with starting position and map
@@ -144,3 +146,15 @@ const float* gm_get_overlay_uniform_data(const GameState *state, float canvas_wi
 // Update performance metrics
 void gm_update_perf_metrics(GameState *state, float frame_time, float js_time,
                            float gpu_copy_time, float gpu_render_time);
+
+// Main render loop function - call this every frame
+void gm_render_frame(GameState *state);
+
+// Set the active game state (must be called before gm_on_animation_frame)
+void gm_set_active_game_state(GameState *state);
+
+// Animation frame callback - called by platform on each frame
+void gm_on_animation_frame(void);
+
+// Main entry point - call this to start the game
+void gm_main(void);

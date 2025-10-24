@@ -154,10 +154,25 @@ clang \
     -Wl,--export=gm_build_overlay_text \
     -Wl,--export=gm_get_overlay_uniform_data \
     -Wl,--export=gm_update_perf_metrics \
+    -Wl,--export=gm_set_active_game_state \
+    -Wl,--export=gm_on_animation_frame \
+    -Wl,--export=gm_main \
     -Wl,--export=__heap_base \
     -Wl,--initial-memory=262144 \
     -o gm.wasm \
     gm.c \
+    base/buddy.c \
+    base/arena.c \
+    base/scratch.c \
+    base/format.c \
+    base/base_string.c \
+    base/numconv.c \
+    base/mem.c \
+    base/io.c \
+    base/base_io.c \
+    base/assert.c \
+    base/exit.c \
+    native/wasi_wasm.c \
     webgpu/webgpu_wasm.c
 """
 
