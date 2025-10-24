@@ -681,29 +681,9 @@
                 }
             }
 
-            // Map definition (1 = wall, 2 = wall with north/south window, 3 = wall with east/west window, 0 = floor, 5-8 = starting position with direction)
-            const mapWidth = 10;
-            const mapHeight = 10;
-            const map = [
-                [1,1,1,1,1,1,1,1,1,1],
-                [1,7,0,0,0,0,0,0,0,1],
-                [1,0,1,2,1,0,2,0,0,1],
-                [1,0,1,0,0,0,0,1,0,1],
-                [1,0,1,0,1,0,0,0,0,1],
-                [1,0,1,0,3,0,1,0,0,1],
-                [1,0,3,0,1,1,0,0,1,1],
-                [1,0,1,0,1,0,0,0,0,1],
-                [1,0,0,0,1,0,0,1,0,1],
-                [1,1,1,1,1,1,1,1,1,1]
-            ];
-
-            // Find starting position and direction using WASM
-            let startX = 1.5, startZ = 1.5, startYaw = 0;
-
-            // Load and use WASM module for finding start position
-            const wasmResponse = await fetch('gm.wasm');
+            // Load WASM module (with cache busting)
+            const wasmResponse = await fetch('gm.wasm?v=' + Date.now());
             const wasmBytes = await wasmResponse.arrayBuffer();
-
             const webgpuHost = createWasmWebGPUHost(adapter, device);
 
             // Variables that will be initialized later but used in platformAPI
@@ -835,6 +815,27 @@
             const wasmInstance = wasmModule.instance;
             memory = wasmInstance.exports.memory;
             webgpuHost.setMemory(memory);
+            
+            // Get map data from WASM instead of hardcoding in JavaScript
+            const gm_get_default_map = wasmInstance.exports.gm_get_default_map;
+            const gm_get_map_width = wasmInstance.exports.gm_get_map_width;
+            const gm_get_map_height = wasmInstance.exports.gm_get_map_height;
+            const mapWidth = gm_get_map_width();
+            const mapHeight = gm_get_map_height();
+            const mapPtr = gm_get_default_map();
+            
+            // Read map from WASM memory
+            const flatMapView = new Int32Array(memory.buffer, mapPtr, mapWidth * mapHeight);
+            const map = [];
+            for (let z = 0; z < mapHeight; z++) {
+                const row = [];
+                for (let x = 0; x < mapWidth; x++) {
+                    row.push(flatMapView[z * mapWidth + x]);
+                }
+                map.push(row);
+            }
+            
+            // Get other WASM exports
             const find_start_position = wasmInstance.exports.find_start_position;
             const generate_mesh = wasmInstance.exports.generate_mesh;
             const gm_get_preferred_canvas_format = wasmInstance.exports.gm_get_preferred_canvas_format;
@@ -867,28 +868,17 @@
             });
             console.log('[WebGPU] Canvas configured');
 
-            // Flatten the 2D map into 1D array
-            const flatMap = new Int32Array(mapWidth * mapHeight);
-            for (let z = 0; z < mapHeight; z++) {
-                for (let x = 0; x < mapWidth; x++) {
-                    flatMap[z * mapWidth + x] = map[z][x];
-                }
-            }
-
-            // Allocate memory in WASM for map, startX, startZ, startYaw
-            // Note: offset 1024 contains .rodata (PI constants), globals start around 1036
-            // Globals take ~52KB (g_positions, g_uvs, etc.), so use offset 60000 to be safe
-            const mapPtr = 60000;
-            const startXPtr = mapPtr + flatMap.length * 4 + 4;
+            // Find starting position using WASM (mapPtr already points to flattened map in WASM memory)
+            // Allocate memory for output parameters startX, startZ, startYaw
+            const startParamsPtr = mapPtr + mapWidth * mapHeight * 4 + 4;
+            const startXPtr = startParamsPtr;
             const startZPtr = startXPtr + 4;
             const startYawPtr = startZPtr + 4;
-
-            // Copy map to WASM memory
-            new Int32Array(memory.buffer).set(flatMap, mapPtr / 4);
 
             // Call WASM function
             const found = find_start_position(mapPtr, mapWidth, mapHeight, startXPtr, startZPtr, startYawPtr);
 
+            let startX, startZ, startYaw;
             if (found) {
                 // Read results from WASM memory (get fresh buffer reference after call)
                 const floatView = new Float32Array(memory.buffer);
@@ -896,7 +886,7 @@
                 startZ = floatView[startZPtr / 4];
                 startYaw = floatView[startYawPtr / 4];
 
-                // Update JavaScript map with cleared marker (get fresh buffer reference)
+                // Update JavaScript map array with cleared marker (get fresh buffer reference)
                 const wasmMemory = new Int32Array(memory.buffer);
                 for (let z = 0; z < mapHeight; z++) {
                     for (let x = 0; x < mapWidth; x++) {
@@ -909,9 +899,6 @@
             } else {
                 throw new Error('Starting position not found in map!');
             }
-
-            const wallHeight = 2.0;
-            const checkerSize = 4.0; // For 4x4 checker per unit
 
             // Generate meshes using WASM
 

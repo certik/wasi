@@ -1821,8 +1821,56 @@ void gm_set_active_game_state(GameState *state) {
     g_game_state = state;
 }
 
-// Main entry point
+// Default map definition
+// 1 = wall, 2 = wall with north/south window, 3 = wall with east/west window
+// 0 = floor, 5-8 = starting position with direction
+static const int g_default_map[MAP_HEIGHT][MAP_WIDTH] = {
+    {1,1,1,1,1,1,1,1,1,1},
+    {1,7,0,0,0,0,0,0,0,1},
+    {1,0,1,2,1,0,2,0,0,1},
+    {1,0,1,0,0,0,0,1,0,1},
+    {1,0,1,0,1,0,0,0,0,1},
+    {1,0,1,0,3,0,1,0,0,1},
+    {1,0,3,0,1,1,0,0,1,1},
+    {1,0,1,0,1,0,0,0,0,1},
+    {1,0,0,0,1,0,0,1,0,1},
+    {1,1,1,1,1,1,1,1,1,1}
+};
+
+// Flatten the default map to 1D array  
+static int g_default_map_flattened[MAP_HEIGHT * MAP_WIDTH];
+
+// Export the default map data for JavaScript to use
+__attribute__((export_name("gm_get_default_map")))
+int* gm_get_default_map(void) {
+    // Flatten the map on first call
+    static int initialized = 0;
+    if (!initialized) {
+        for (int z = 0; z < MAP_HEIGHT; z++) {
+            for (int x = 0; x < MAP_WIDTH; x++) {
+                g_default_map_flattened[z * MAP_WIDTH + x] = g_default_map[z][x];
+            }
+        }
+        initialized = 1;
+    }
+    return g_default_map_flattened;
+}
+
+// Export map dimensions
+__attribute__((export_name("gm_get_map_width")))
+int gm_get_map_width(void) {
+    return MAP_WIDTH;
+}
+
+__attribute__((export_name("gm_get_map_height")))
+int gm_get_map_height(void) {
+    return MAP_HEIGHT;
+}
+
+// Main entry point - called from JavaScript after WASM is loaded
 void gm_main(void) {
-    // TODO: Implement full initialization here
-    // For now, this will be called from JavaScript after initialization
+    // Initialize the default map
+    gm_get_default_map();  // Ensure it's flattened
+    // The rest of initialization happens in JavaScript via exported functions
+    // since it needs to interact with WebGPU
 }

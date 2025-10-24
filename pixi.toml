@@ -158,7 +158,7 @@ clang \
     -Wl,--export=gm_on_animation_frame \
     -Wl,--export=gm_main \
     -Wl,--export=__heap_base \
-    -Wl,--initial-memory=262144 \
+    -Wl,--initial-memory=1048576 \
     -o gm.wasm \
     gm.c \
     base/buddy.c \
