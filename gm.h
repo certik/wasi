@@ -58,3 +58,13 @@ uint32_t gm_get_uniform_buffer_size(void);
 int gm_create_shader_modules(void);
 uint32_t gm_get_shader_module_table(void);
 uint32_t gm_get_shader_module_count(void);
+void gm_register_texture_views(uint32_t wall_view_handle, uint32_t floor_view_handle,
+        uint32_t ceiling_view_handle);
+int gm_create_bind_group_layouts(void);
+int gm_create_pipeline_layouts(void);
+int gm_create_render_pipelines(uint32_t color_format);
+int gm_create_bind_groups(void);
+uint32_t gm_get_bind_group_table(void);
+uint32_t gm_get_bind_group_count(void);
+uint32_t gm_get_render_pipeline_table(void);
+uint32_t gm_get_render_pipeline_count(void);

@@ -47,3 +47,43 @@ void wgpuQueueWriteBuffer(WGPUQueue queue, WGPUBuffer buffer, uint64_t bufferOff
     (void)size;
     FATAL_ERROR("WebGPU is not supported on this platform build.");
 }
+
+WGPUBindGroup wgpuDeviceCreateBindGroup(WGPUDevice device,
+        WGPUBindGroupDescriptor const * descriptor) {
+    (void)device;
+    (void)descriptor;
+    FATAL_ERROR("WebGPU is not supported on this platform build.");
+    return NULL;
+}
+
+WGPUBindGroupLayout wgpuDeviceCreateBindGroupLayout(WGPUDevice device,
+        WGPUBindGroupLayoutDescriptor const * descriptor) {
+    (void)device;
+    (void)descriptor;
+    FATAL_ERROR("WebGPU is not supported on this platform build.");
+    return NULL;
+}
+
+WGPUPipelineLayout wgpuDeviceCreatePipelineLayout(WGPUDevice device,
+        WGPUPipelineLayoutDescriptor const * descriptor) {
+    (void)device;
+    (void)descriptor;
+    FATAL_ERROR("WebGPU is not supported on this platform build.");
+    return NULL;
+}
+
+WGPURenderPipeline wgpuDeviceCreateRenderPipeline(WGPUDevice device,
+        WGPURenderPipelineDescriptor const * descriptor) {
+    (void)device;
+    (void)descriptor;
+    FATAL_ERROR("WebGPU is not supported on this platform build.");
+    return NULL;
+}
+
+WGPUSampler wgpuDeviceCreateSampler(WGPUDevice device,
+        WGPUSamplerDescriptor const * descriptor) {
+    (void)device;
+    (void)descriptor;
+    FATAL_ERROR("WebGPU is not supported on this platform build.");
+    return NULL;
+}

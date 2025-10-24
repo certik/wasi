@@ -4,6 +4,9 @@
 #include "gm_shaders.inc"
 
 #define GM_UNIFORM_FLOAT_COUNT 12
+#define GM_OVERLAY_UNIFORM_FLOAT_COUNT 24
+#define GM_OVERLAY_TEXT_CAPACITY 256
+#define GM_MAP_CELL_COUNT (MAP_WIDTH * MAP_HEIGHT)
 
 typedef enum {
     GM_BUFFER_POSITIONS = 0,
@@ -13,6 +16,10 @@ typedef enum {
     GM_BUFFER_NORMALS,
     GM_BUFFER_INDICES,
     GM_BUFFER_UNIFORM,
+    GM_BUFFER_OVERLAY_UNIFORM,
+    GM_BUFFER_OVERLAY_TEXT,
+    GM_BUFFER_OVERLAY_MAP,
+    GM_BUFFER_OVERLAY_VERTEX,
     GM_BUFFER_COUNT
 } GMBufferSlot;
 
@@ -29,6 +36,46 @@ typedef enum {
 } GMShaderSlot;
 
 static WGPUShaderModule g_shader_modules[GM_SHADER_COUNT];
+
+typedef enum {
+    GM_BIND_GROUP_LAYOUT_MAIN = 0,
+    GM_BIND_GROUP_LAYOUT_OVERLAY,
+    GM_BIND_GROUP_LAYOUT_COUNT
+} GMBindGroupLayoutSlot;
+
+typedef enum {
+    GM_PIPELINE_LAYOUT_MAIN = 0,
+    GM_PIPELINE_LAYOUT_OVERLAY,
+    GM_PIPELINE_LAYOUT_COUNT
+} GMPipelineLayoutSlot;
+
+typedef enum {
+    GM_RENDER_PIPELINE_MAIN = 0,
+    GM_RENDER_PIPELINE_OVERLAY,
+    GM_RENDER_PIPELINE_COUNT
+} GMRenderPipelineSlot;
+
+typedef enum {
+    GM_BIND_GROUP_MAIN = 0,
+    GM_BIND_GROUP_OVERLAY,
+    GM_BIND_GROUP_COUNT
+} GMBindGroupSlot;
+
+static WGPUBindGroupLayout g_bind_group_layouts[GM_BIND_GROUP_LAYOUT_COUNT];
+static WGPUPipelineLayout g_pipeline_layouts[GM_PIPELINE_LAYOUT_COUNT];
+static WGPURenderPipeline g_render_pipelines[GM_RENDER_PIPELINE_COUNT];
+static WGPUBindGroup g_bind_groups[GM_BIND_GROUP_COUNT];
+static WGPUTextureView g_wall_texture_view = NULL;
+static WGPUTextureView g_floor_texture_view = NULL;
+static WGPUTextureView g_ceiling_texture_view = NULL;
+static WGPUSampler g_main_sampler = NULL;
+
+static const float g_overlay_vertex_data[] = {
+    -1.0f, -1.0f,
+     1.0f, -1.0f,
+    -1.0f,  1.0f,
+     1.0f,  1.0f,
+};
 
 // Find starting position and direction in the map
 // Returns: 1 if found, 0 if not found
@@ -582,6 +629,13 @@ void gm_register_webgpu_handles(uint32_t device_handle, uint32_t queue_handle) {
     g_wgpu_queue = (WGPUQueue)(uintptr_t)queue_handle;
 }
 
+void gm_register_texture_views(uint32_t wall_view_handle, uint32_t floor_view_handle,
+        uint32_t ceiling_view_handle) {
+    g_wall_texture_view = (WGPUTextureView)(uintptr_t)wall_view_handle;
+    g_floor_texture_view = (WGPUTextureView)(uintptr_t)floor_view_handle;
+    g_ceiling_texture_view = (WGPUTextureView)(uintptr_t)ceiling_view_handle;
+}
+
 static WGPUShaderModule gm_create_shader_module_from_source(const char *source, size_t length) {
     if (source == NULL || length == 0 || g_wgpu_device == NULL) {
         return NULL;
@@ -681,6 +735,39 @@ int gm_create_gpu_buffers(void) {
         return -9;
     }
 
+    static float overlay_uniform_init[GM_OVERLAY_UNIFORM_FLOAT_COUNT] = {0};
+    g_gpu_buffers[GM_BUFFER_OVERLAY_UNIFORM] = gm_create_buffer_with_data(
+            overlay_uniform_init,
+            sizeof(overlay_uniform_init),
+            WGPUBufferUsage_Uniform);
+    if (g_gpu_buffers[GM_BUFFER_OVERLAY_UNIFORM] == NULL) {
+        return -10;
+    }
+
+    g_gpu_buffers[GM_BUFFER_OVERLAY_TEXT] = gm_create_buffer_with_data(
+            NULL,
+            (size_t)GM_OVERLAY_TEXT_CAPACITY * sizeof(uint32_t),
+            WGPUBufferUsage_Storage);
+    if (g_gpu_buffers[GM_BUFFER_OVERLAY_TEXT] == NULL) {
+        return -11;
+    }
+
+    g_gpu_buffers[GM_BUFFER_OVERLAY_MAP] = gm_create_buffer_with_data(
+            NULL,
+            (size_t)GM_MAP_CELL_COUNT * sizeof(uint32_t),
+            WGPUBufferUsage_Storage);
+    if (g_gpu_buffers[GM_BUFFER_OVERLAY_MAP] == NULL) {
+        return -12;
+    }
+
+    g_gpu_buffers[GM_BUFFER_OVERLAY_VERTEX] = gm_create_buffer_with_data(
+            g_overlay_vertex_data,
+            sizeof(g_overlay_vertex_data),
+            WGPUBufferUsage_Vertex);
+    if (g_gpu_buffers[GM_BUFFER_OVERLAY_VERTEX] == NULL) {
+        return -13;
+    }
+
     return 0;
 }
 
@@ -738,4 +825,494 @@ uint32_t gm_get_shader_module_table(void) {
 
 uint32_t gm_get_shader_module_count(void) {
     return GM_SHADER_COUNT;
+}
+
+int gm_create_bind_group_layouts(void) {
+    if (g_wgpu_device == NULL) {
+        return -1;
+    }
+
+    WGPUBindGroupLayoutEntry main_entries[5] = {
+        {
+            .binding = 0,
+            .visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment,
+            .buffer = {
+                .type = WGPUBufferBindingType_Uniform,
+                .hasDynamicOffset = WGPU_FALSE,
+                .minBindingSize = gm_get_uniform_buffer_size(),
+            },
+        },
+        {
+            .binding = 1,
+            .visibility = WGPUShaderStage_Fragment,
+            .sampler = {
+                .type = WGPUSamplerBindingType_Filtering,
+            },
+        },
+        {
+            .binding = 2,
+            .visibility = WGPUShaderStage_Fragment,
+            .texture = {
+                .sampleType = WGPUTextureSampleType_Float,
+                .viewDimension = WGPUTextureViewDimension_2D,
+                .multisampled = WGPU_FALSE,
+            },
+        },
+        {
+            .binding = 3,
+            .visibility = WGPUShaderStage_Fragment,
+            .texture = {
+                .sampleType = WGPUTextureSampleType_Float,
+                .viewDimension = WGPUTextureViewDimension_2D,
+                .multisampled = WGPU_FALSE,
+            },
+        },
+        {
+            .binding = 4,
+            .visibility = WGPUShaderStage_Fragment,
+            .texture = {
+                .sampleType = WGPUTextureSampleType_Float,
+                .viewDimension = WGPUTextureViewDimension_2D,
+                .multisampled = WGPU_FALSE,
+            },
+        },
+    };
+
+    WGPUBindGroupLayoutDescriptor main_desc = {
+        .entryCount = 5,
+        .entries = main_entries,
+    };
+
+    g_bind_group_layouts[GM_BIND_GROUP_LAYOUT_MAIN] = wgpuDeviceCreateBindGroupLayout(
+            g_wgpu_device, &main_desc);
+    if (g_bind_group_layouts[GM_BIND_GROUP_LAYOUT_MAIN] == NULL) {
+        return -2;
+    }
+
+    const uint64_t overlay_uniform_size = (uint64_t)GM_OVERLAY_UNIFORM_FLOAT_COUNT * sizeof(float);
+    const uint64_t overlay_text_size = (uint64_t)GM_OVERLAY_TEXT_CAPACITY * sizeof(uint32_t);
+    const uint64_t overlay_map_size = (uint64_t)GM_MAP_CELL_COUNT * sizeof(uint32_t);
+
+    WGPUBindGroupLayoutEntry overlay_entries[3] = {
+        {
+            .binding = 0,
+            .visibility = WGPUShaderStage_Fragment,
+            .buffer = {
+                .type = WGPUBufferBindingType_Uniform,
+                .hasDynamicOffset = WGPU_FALSE,
+                .minBindingSize = overlay_uniform_size,
+            },
+        },
+        {
+            .binding = 1,
+            .visibility = WGPUShaderStage_Fragment,
+            .buffer = {
+                .type = WGPUBufferBindingType_ReadOnlyStorage,
+                .hasDynamicOffset = WGPU_FALSE,
+                .minBindingSize = overlay_text_size,
+            },
+        },
+        {
+            .binding = 2,
+            .visibility = WGPUShaderStage_Fragment,
+            .buffer = {
+                .type = WGPUBufferBindingType_ReadOnlyStorage,
+                .hasDynamicOffset = WGPU_FALSE,
+                .minBindingSize = overlay_map_size,
+            },
+        },
+    };
+
+    WGPUBindGroupLayoutDescriptor overlay_desc = {
+        .entryCount = 3,
+        .entries = overlay_entries,
+    };
+
+    g_bind_group_layouts[GM_BIND_GROUP_LAYOUT_OVERLAY] = wgpuDeviceCreateBindGroupLayout(
+            g_wgpu_device, &overlay_desc);
+    if (g_bind_group_layouts[GM_BIND_GROUP_LAYOUT_OVERLAY] == NULL) {
+        return -3;
+    }
+
+    return 0;
+}
+
+int gm_create_pipeline_layouts(void) {
+    if (g_wgpu_device == NULL) {
+        return -1;
+    }
+    if (g_bind_group_layouts[GM_BIND_GROUP_LAYOUT_MAIN] == NULL ||
+            g_bind_group_layouts[GM_BIND_GROUP_LAYOUT_OVERLAY] == NULL) {
+        return -2;
+    }
+
+    WGPUPipelineLayoutDescriptor main_desc = {
+        .bindGroupLayoutCount = 1,
+        .bindGroupLayouts = &g_bind_group_layouts[GM_BIND_GROUP_LAYOUT_MAIN],
+    };
+    g_pipeline_layouts[GM_PIPELINE_LAYOUT_MAIN] = wgpuDeviceCreatePipelineLayout(
+            g_wgpu_device, &main_desc);
+    if (g_pipeline_layouts[GM_PIPELINE_LAYOUT_MAIN] == NULL) {
+        return -3;
+    }
+
+    WGPUPipelineLayoutDescriptor overlay_desc = {
+        .bindGroupLayoutCount = 1,
+        .bindGroupLayouts = &g_bind_group_layouts[GM_BIND_GROUP_LAYOUT_OVERLAY],
+    };
+    g_pipeline_layouts[GM_PIPELINE_LAYOUT_OVERLAY] = wgpuDeviceCreatePipelineLayout(
+            g_wgpu_device, &overlay_desc);
+    if (g_pipeline_layouts[GM_PIPELINE_LAYOUT_OVERLAY] == NULL) {
+        return -4;
+    }
+
+    return 0;
+}
+
+int gm_create_render_pipelines(uint32_t color_format_enum) {
+    if (g_wgpu_device == NULL) {
+        return -1;
+    }
+    if (g_pipeline_layouts[GM_PIPELINE_LAYOUT_MAIN] == NULL ||
+            g_pipeline_layouts[GM_PIPELINE_LAYOUT_OVERLAY] == NULL) {
+        return -2;
+    }
+    if (g_shader_modules[GM_SHADER_MAIN_VS] == NULL ||
+            g_shader_modules[GM_SHADER_MAIN_FS] == NULL ||
+            g_shader_modules[GM_SHADER_OVERLAY_VS] == NULL ||
+            g_shader_modules[GM_SHADER_OVERLAY_FS] == NULL) {
+        return -3;
+    }
+
+    WGPUTextureFormat color_format = (WGPUTextureFormat)color_format_enum;
+
+    const char *main_vs_entry = "vs_main";
+    const char *main_fs_entry = "fs_main";
+
+    WGPUVertexAttribute main_vertex_attributes[5] = {
+        {
+            .format = WGPUVertexFormat_Float32x3,
+            .offset = 0,
+            .shaderLocation = 0,
+        },
+        {
+            .format = WGPUVertexFormat_Float32x2,
+            .offset = 0,
+            .shaderLocation = 1,
+        },
+        {
+            .format = WGPUVertexFormat_Float32,
+            .offset = 0,
+            .shaderLocation = 2,
+        },
+        {
+            .format = WGPUVertexFormat_Float32,
+            .offset = 0,
+            .shaderLocation = 3,
+        },
+        {
+            .format = WGPUVertexFormat_Float32x3,
+            .offset = 0,
+            .shaderLocation = 4,
+        },
+    };
+
+    WGPUVertexBufferLayout main_vertex_buffers[5] = {
+        {
+            .arrayStride = sizeof(float) * 3,
+            .stepMode = WGPUVertexStepMode_Vertex,
+            .attributeCount = 1,
+            .attributes = &main_vertex_attributes[0],
+        },
+        {
+            .arrayStride = sizeof(float) * 2,
+            .stepMode = WGPUVertexStepMode_Vertex,
+            .attributeCount = 1,
+            .attributes = &main_vertex_attributes[1],
+        },
+        {
+            .arrayStride = sizeof(float),
+            .stepMode = WGPUVertexStepMode_Vertex,
+            .attributeCount = 1,
+            .attributes = &main_vertex_attributes[2],
+        },
+        {
+            .arrayStride = sizeof(float),
+            .stepMode = WGPUVertexStepMode_Vertex,
+            .attributeCount = 1,
+            .attributes = &main_vertex_attributes[3],
+        },
+        {
+            .arrayStride = sizeof(float) * 3,
+            .stepMode = WGPUVertexStepMode_Vertex,
+            .attributeCount = 1,
+            .attributes = &main_vertex_attributes[4],
+        },
+    };
+
+    WGPUVertexState main_vertex_state = {
+        .module = g_shader_modules[GM_SHADER_MAIN_VS],
+        .entryPoint = {
+            .data = main_vs_entry,
+            .length = WGPU_STRLEN,
+        },
+        .bufferCount = 5,
+        .buffers = main_vertex_buffers,
+    };
+
+    WGPUColorTargetState main_color_target = {
+        .format = color_format,
+        .writeMask = WGPUColorWriteMask_All,
+    };
+
+    WGPUFragmentState main_fragment_state = {
+        .module = g_shader_modules[GM_SHADER_MAIN_FS],
+        .entryPoint = {
+            .data = main_fs_entry,
+            .length = WGPU_STRLEN,
+        },
+        .targetCount = 1,
+        .targets = &main_color_target,
+    };
+
+    WGPUPrimitiveState main_primitive_state = {
+        .topology = WGPUPrimitiveTopology_TriangleList,
+        .stripIndexFormat = WGPUIndexFormat_Undefined,
+        .frontFace = WGPUFrontFace_CCW,
+        .cullMode = WGPUCullMode_None,
+    };
+
+    WGPUMultisampleState multisample_state = {
+        .count = 1,
+        .mask = 0xFFFFFFFFu,
+        .alphaToCoverageEnabled = WGPU_FALSE,
+    };
+
+    WGPUDepthStencilState main_depth_state = {
+        .format = WGPUTextureFormat_Depth24Plus,
+        .depthWriteEnabled = WGPU_TRUE,
+        .depthCompare = WGPUCompareFunction_Less,
+    };
+
+    WGPURenderPipelineDescriptor main_desc = {
+        .layout = g_pipeline_layouts[GM_PIPELINE_LAYOUT_MAIN],
+        .vertex = main_vertex_state,
+        .primitive = main_primitive_state,
+        .depthStencil = &main_depth_state,
+        .multisample = multisample_state,
+        .fragment = &main_fragment_state,
+    };
+
+    g_render_pipelines[GM_RENDER_PIPELINE_MAIN] = wgpuDeviceCreateRenderPipeline(
+            g_wgpu_device, &main_desc);
+    if (g_render_pipelines[GM_RENDER_PIPELINE_MAIN] == NULL) {
+        return -4;
+    }
+
+    const char *overlay_vs_entry = "vertex_main";
+    const char *overlay_fs_entry = "fragment_main";
+
+    WGPUVertexAttribute overlay_attribute = {
+        .format = WGPUVertexFormat_Float32x2,
+        .offset = 0,
+        .shaderLocation = 0,
+    };
+
+    WGPUVertexBufferLayout overlay_buffer_layout = {
+        .arrayStride = sizeof(float) * 2,
+        .stepMode = WGPUVertexStepMode_Vertex,
+        .attributeCount = 1,
+        .attributes = &overlay_attribute,
+    };
+
+    WGPUVertexState overlay_vertex_state = {
+        .module = g_shader_modules[GM_SHADER_OVERLAY_VS],
+        .entryPoint = {
+            .data = overlay_vs_entry,
+            .length = WGPU_STRLEN,
+        },
+        .bufferCount = 1,
+        .buffers = &overlay_buffer_layout,
+    };
+
+    WGPUBlendState overlay_blend = {
+        .color = {
+            .srcFactor = WGPUBlendFactor_SrcAlpha,
+            .dstFactor = WGPUBlendFactor_OneMinusSrcAlpha,
+            .operation = WGPUBlendOperation_Add,
+        },
+        .alpha = {
+            .srcFactor = WGPUBlendFactor_One,
+            .dstFactor = WGPUBlendFactor_OneMinusSrcAlpha,
+            .operation = WGPUBlendOperation_Add,
+        },
+    };
+
+    WGPUColorTargetState overlay_target = {
+        .format = color_format,
+        .blend = &overlay_blend,
+        .writeMask = WGPUColorWriteMask_All,
+    };
+
+    WGPUFragmentState overlay_fragment_state = {
+        .module = g_shader_modules[GM_SHADER_OVERLAY_FS],
+        .entryPoint = {
+            .data = overlay_fs_entry,
+            .length = WGPU_STRLEN,
+        },
+        .targetCount = 1,
+        .targets = &overlay_target,
+    };
+
+    WGPUPrimitiveState overlay_primitive_state = {
+        .topology = WGPUPrimitiveTopology_TriangleStrip,
+        .stripIndexFormat = WGPUIndexFormat_Undefined,
+        .frontFace = WGPUFrontFace_CCW,
+        .cullMode = WGPUCullMode_None,
+    };
+
+    WGPUDepthStencilState overlay_depth_state = {
+        .format = WGPUTextureFormat_Depth24Plus,
+        .depthWriteEnabled = WGPU_FALSE,
+        .depthCompare = WGPUCompareFunction_Always,
+    };
+
+    WGPURenderPipelineDescriptor overlay_desc = {
+        .layout = g_pipeline_layouts[GM_PIPELINE_LAYOUT_OVERLAY],
+        .vertex = overlay_vertex_state,
+        .primitive = overlay_primitive_state,
+        .depthStencil = &overlay_depth_state,
+        .multisample = multisample_state,
+        .fragment = &overlay_fragment_state,
+    };
+
+    g_render_pipelines[GM_RENDER_PIPELINE_OVERLAY] = wgpuDeviceCreateRenderPipeline(
+            g_wgpu_device, &overlay_desc);
+    if (g_render_pipelines[GM_RENDER_PIPELINE_OVERLAY] == NULL) {
+        return -5;
+    }
+
+    return 0;
+}
+
+int gm_create_bind_groups(void) {
+    if (g_wgpu_device == NULL) {
+        return -1;
+    }
+    if (g_bind_group_layouts[GM_BIND_GROUP_LAYOUT_MAIN] == NULL ||
+            g_bind_group_layouts[GM_BIND_GROUP_LAYOUT_OVERLAY] == NULL) {
+        return -2;
+    }
+    if (g_wall_texture_view == NULL || g_floor_texture_view == NULL ||
+            g_ceiling_texture_view == NULL) {
+        return -3;
+    }
+
+    if (g_main_sampler == NULL) {
+        WGPUSamplerDescriptor sampler_desc = {
+            .magFilter = WGPUFilterMode_Linear,
+            .minFilter = WGPUFilterMode_Linear,
+            .mipmapFilter = WGPUMipmapFilterMode_Linear,
+            .addressModeU = WGPUAddressMode_Repeat,
+            .addressModeV = WGPUAddressMode_Repeat,
+            .addressModeW = WGPUAddressMode_Repeat,
+        };
+        g_main_sampler = wgpuDeviceCreateSampler(g_wgpu_device, &sampler_desc);
+        if (g_main_sampler == NULL) {
+            return -4;
+        }
+    }
+
+    const uint64_t uniform_buffer_size = gm_get_uniform_buffer_size();
+    WGPUBindGroupEntry main_entries[5] = {
+        {
+            .binding = 0,
+            .buffer = g_gpu_buffers[GM_BUFFER_UNIFORM],
+            .offset = 0,
+            .size = uniform_buffer_size,
+        },
+        {
+            .binding = 1,
+            .sampler = g_main_sampler,
+        },
+        {
+            .binding = 2,
+            .textureView = g_wall_texture_view,
+        },
+        {
+            .binding = 3,
+            .textureView = g_floor_texture_view,
+        },
+        {
+            .binding = 4,
+            .textureView = g_ceiling_texture_view,
+        },
+    };
+
+    WGPUBindGroupDescriptor main_desc = {
+        .layout = g_bind_group_layouts[GM_BIND_GROUP_LAYOUT_MAIN],
+        .entryCount = 5,
+        .entries = main_entries,
+    };
+
+    g_bind_groups[GM_BIND_GROUP_MAIN] = wgpuDeviceCreateBindGroup(
+            g_wgpu_device, &main_desc);
+    if (g_bind_groups[GM_BIND_GROUP_MAIN] == NULL) {
+        return -5;
+    }
+
+    const uint64_t overlay_uniform_size = (uint64_t)GM_OVERLAY_UNIFORM_FLOAT_COUNT * sizeof(float);
+    const uint64_t overlay_text_size = (uint64_t)GM_OVERLAY_TEXT_CAPACITY * sizeof(uint32_t);
+    const uint64_t overlay_map_size = (uint64_t)GM_MAP_CELL_COUNT * sizeof(uint32_t);
+
+    WGPUBindGroupEntry overlay_entries[3] = {
+        {
+            .binding = 0,
+            .buffer = g_gpu_buffers[GM_BUFFER_OVERLAY_UNIFORM],
+            .offset = 0,
+            .size = overlay_uniform_size,
+        },
+        {
+            .binding = 1,
+            .buffer = g_gpu_buffers[GM_BUFFER_OVERLAY_TEXT],
+            .offset = 0,
+            .size = overlay_text_size,
+        },
+        {
+            .binding = 2,
+            .buffer = g_gpu_buffers[GM_BUFFER_OVERLAY_MAP],
+            .offset = 0,
+            .size = overlay_map_size,
+        },
+    };
+
+    WGPUBindGroupDescriptor overlay_desc = {
+        .layout = g_bind_group_layouts[GM_BIND_GROUP_LAYOUT_OVERLAY],
+        .entryCount = 3,
+        .entries = overlay_entries,
+    };
+
+    g_bind_groups[GM_BIND_GROUP_OVERLAY] = wgpuDeviceCreateBindGroup(
+            g_wgpu_device, &overlay_desc);
+    if (g_bind_groups[GM_BIND_GROUP_OVERLAY] == NULL) {
+        return -6;
+    }
+
+    return 0;
+}
+
+uint32_t gm_get_bind_group_table(void) {
+    return (uint32_t)(uintptr_t)g_bind_groups;
+}
+
+uint32_t gm_get_bind_group_count(void) {
+    return GM_BIND_GROUP_COUNT;
+}
+
+uint32_t gm_get_render_pipeline_table(void) {
+    return (uint32_t)(uintptr_t)g_render_pipelines;
+}
+
+uint32_t gm_get_render_pipeline_count(void) {
+    return GM_RENDER_PIPELINE_COUNT;
 }

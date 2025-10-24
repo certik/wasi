@@ -22,6 +22,155 @@ WASM_IMPORT("webgpu", "device_create_shader_module")
 uint32_t webgpu_host_device_create_shader_module(uint32_t device_handle,
         uint32_t code_ptr, uint32_t code_length);
 
+WASM_IMPORT("webgpu", "device_create_bind_group_layout")
+uint32_t webgpu_host_device_create_bind_group_layout(uint32_t device_handle,
+        uint32_t entries_ptr, uint32_t entry_count);
+
+WASM_IMPORT("webgpu", "device_create_pipeline_layout")
+uint32_t webgpu_host_device_create_pipeline_layout(uint32_t device_handle,
+        uint32_t layouts_ptr, uint32_t layout_count);
+
+WASM_IMPORT("webgpu", "device_create_render_pipeline")
+uint32_t webgpu_host_device_create_render_pipeline(uint32_t device_handle,
+        uint32_t descriptor_ptr);
+
+WASM_IMPORT("webgpu", "device_create_bind_group")
+uint32_t webgpu_host_device_create_bind_group(uint32_t device_handle,
+        uint32_t descriptor_ptr);
+
+WASM_IMPORT("webgpu", "device_create_sampler")
+uint32_t webgpu_host_device_create_sampler(uint32_t device_handle,
+        uint32_t descriptor_ptr);
+
+typedef enum {
+    GM_WASM_RESOURCE_BUFFER = 0,
+    GM_WASM_RESOURCE_SAMPLER = 1,
+    GM_WASM_RESOURCE_TEXTURE_VIEW = 2,
+    GM_WASM_RESOURCE_STORAGE_TEXTURE = 3,
+} GMWasmResourceType;
+
+typedef struct __attribute__((packed)) {
+    uint32_t binding;
+    uint32_t visibility;
+    uint32_t resource_type;
+    uint32_t buffer_type;
+    uint32_t buffer_has_dynamic_offset;
+    uint64_t buffer_min_binding_size;
+    uint32_t sampler_type;
+    uint32_t texture_sample_type;
+    uint32_t texture_view_dimension;
+    uint32_t texture_multisampled;
+    uint32_t storage_texture_access;
+    uint32_t storage_texture_format;
+    uint32_t storage_texture_view_dimension;
+} GMWasmBindGroupLayoutEntry;
+
+typedef struct __attribute__((packed)) {
+    uint32_t binding;
+    uint32_t resource_type;
+    uint32_t handle;
+    uint64_t offset;
+    uint64_t size;
+} GMWasmBindGroupEntry;
+
+typedef struct __attribute__((packed)) {
+    uint32_t layout_handle;
+    uint32_t entry_count;
+    uint32_t entries_ptr;
+} GMWasmBindGroupDescriptor;
+
+typedef struct __attribute__((packed)) {
+    uint32_t module_handle;
+    uint32_t entry_point_ptr;
+    uint32_t entry_point_length;
+} GMWasmProgrammableStage;
+
+typedef struct __attribute__((packed)) {
+    uint32_t shader_location;
+    uint32_t offset;
+    uint32_t format;
+} GMWasmVertexAttribute;
+
+typedef struct __attribute__((packed)) {
+    uint32_t array_stride;
+    uint32_t step_mode;
+    uint32_t attribute_count;
+    uint32_t attributes_ptr;
+} GMWasmVertexBufferLayout;
+
+typedef struct __attribute__((packed)) {
+    uint32_t stage_ptr;
+    uint32_t buffer_count;
+    uint32_t buffers_ptr;
+} GMWasmVertexState;
+
+typedef struct __attribute__((packed)) {
+    uint32_t stage_ptr;
+    uint32_t target_count;
+    uint32_t targets_ptr;
+} GMWasmFragmentState;
+
+typedef struct __attribute__((packed)) {
+    uint32_t format;
+    uint32_t blend_enabled;
+    uint32_t color_src_factor;
+    uint32_t color_dst_factor;
+    uint32_t color_operation;
+    uint32_t alpha_src_factor;
+    uint32_t alpha_dst_factor;
+    uint32_t alpha_operation;
+    uint32_t write_mask;
+} GMWasmColorTargetState;
+
+typedef struct __attribute__((packed)) {
+    uint32_t format;
+    uint32_t depth_write_enabled;
+    uint32_t depth_compare;
+} GMWasmDepthStencilState;
+
+typedef struct __attribute__((packed)) {
+    uint32_t topology;
+    uint32_t cull_mode;
+    uint32_t front_face;
+    uint32_t strip_index_format;
+} GMWasmPrimitiveState;
+
+typedef struct __attribute__((packed)) {
+    uint32_t layout_handle;
+    uint32_t vertex_state_ptr;
+    uint32_t fragment_state_ptr;
+    uint32_t primitive_state_ptr;
+    uint32_t depth_stencil_state_ptr;
+    uint32_t multisample_count;
+    uint32_t alpha_to_coverage_enabled;
+} GMWasmRenderPipelineDescriptor;
+
+typedef struct __attribute__((packed)) {
+    uint32_t mag_filter;
+    uint32_t min_filter;
+    uint32_t mipmap_filter;
+    uint32_t address_mode_u;
+    uint32_t address_mode_v;
+    uint32_t address_mode_w;
+    float lod_min_clamp;
+    float lod_max_clamp;
+    uint32_t compare;
+} GMWasmSamplerDescriptor;
+
+static uint32_t gm_wasm_string_length(WGPUStringView view) {
+    if (view.data == NULL) {
+        return 0;
+    }
+    if (view.length == WGPU_STRLEN) {
+        uint32_t len = 0;
+        while (view.data[len] != '\0') {
+            len++;
+        }
+        return len;
+    }
+    return (uint32_t)view.length;
+}
+
 WGPUInstance wgpuCreateInstance(WGPUInstanceDescriptor const * descriptor) {
     uint32_t desc_ptr = (uint32_t)(uintptr_t)descriptor;
     uint32_t handle = webgpu_host_create_instance(desc_ptr);
@@ -111,4 +260,260 @@ void wgpuQueueWriteBuffer(WGPUQueue queue, WGPUBuffer buffer, uint64_t bufferOff
             offset_high,
             (uint32_t)(uintptr_t)data,
             (uint32_t)size);
+}
+
+WGPUBindGroupLayout wgpuDeviceCreateBindGroupLayout(WGPUDevice device,
+        WGPUBindGroupLayoutDescriptor const * descriptor) {
+    if (descriptor == NULL || descriptor->entries == NULL || descriptor->entryCount == 0) {
+        return NULL;
+    }
+
+    uint32_t count = descriptor->entryCount;
+    GMWasmBindGroupLayoutEntry entries[count];
+    for (uint32_t i = 0; i < count; i++) {
+        const WGPUBindGroupLayoutEntry *src = &descriptor->entries[i];
+        GMWasmBindGroupLayoutEntry *dst = &entries[i];
+        *dst = (GMWasmBindGroupLayoutEntry){0};
+        dst->binding = src->binding;
+        dst->visibility = (uint32_t)src->visibility;
+
+        if (src->buffer.type != WGPUBufferBindingType_Undefined &&
+                src->buffer.type != WGPUBufferBindingType_BindingNotUsed) {
+            dst->resource_type = GM_WASM_RESOURCE_BUFFER;
+            dst->buffer_type = (uint32_t)src->buffer.type;
+            dst->buffer_has_dynamic_offset = src->buffer.hasDynamicOffset ? 1u : 0u;
+            dst->buffer_min_binding_size = src->buffer.minBindingSize;
+        } else if (src->sampler.type != WGPUSamplerBindingType_Undefined &&
+                src->sampler.type != WGPUSamplerBindingType_BindingNotUsed) {
+            dst->resource_type = GM_WASM_RESOURCE_SAMPLER;
+            dst->sampler_type = (uint32_t)src->sampler.type;
+        } else if (src->texture.sampleType != WGPUTextureSampleType_Undefined) {
+            dst->resource_type = GM_WASM_RESOURCE_TEXTURE_VIEW;
+            dst->texture_sample_type = (uint32_t)src->texture.sampleType;
+            dst->texture_view_dimension = (uint32_t)src->texture.viewDimension;
+            dst->texture_multisampled = src->texture.multisampled ? 1u : 0u;
+        } else if (src->storageTexture.access != WGPUStorageTextureAccess_Undefined) {
+            dst->resource_type = GM_WASM_RESOURCE_STORAGE_TEXTURE;
+            dst->storage_texture_access = (uint32_t)src->storageTexture.access;
+            dst->storage_texture_format = (uint32_t)src->storageTexture.format;
+            dst->storage_texture_view_dimension = (uint32_t)src->storageTexture.viewDimension;
+        }
+    }
+
+    uint32_t handle = webgpu_host_device_create_bind_group_layout(
+            (uint32_t)(uintptr_t)device,
+            (uint32_t)(uintptr_t)entries,
+            count);
+    return (WGPUBindGroupLayout)(uintptr_t)handle;
+}
+
+WGPUPipelineLayout wgpuDeviceCreatePipelineLayout(WGPUDevice device,
+        WGPUPipelineLayoutDescriptor const * descriptor) {
+    if (descriptor == NULL || descriptor->bindGroupLayouts == NULL ||
+            descriptor->bindGroupLayoutCount == 0) {
+        return NULL;
+    }
+
+    uint32_t count = descriptor->bindGroupLayoutCount;
+    uint32_t handles[count];
+    for (uint32_t i = 0; i < count; i++) {
+        handles[i] = (uint32_t)(uintptr_t)descriptor->bindGroupLayouts[i];
+    }
+
+    uint32_t handle = webgpu_host_device_create_pipeline_layout(
+            (uint32_t)(uintptr_t)device,
+            (uint32_t)(uintptr_t)handles,
+            count);
+    return (WGPUPipelineLayout)(uintptr_t)handle;
+}
+
+WGPUSampler wgpuDeviceCreateSampler(WGPUDevice device,
+        WGPUSamplerDescriptor const * descriptor) {
+    if (descriptor == NULL) {
+        return NULL;
+    }
+
+    GMWasmSamplerDescriptor desc = {
+        .mag_filter = (uint32_t)descriptor->magFilter,
+        .min_filter = (uint32_t)descriptor->minFilter,
+        .mipmap_filter = (uint32_t)descriptor->mipmapFilter,
+        .address_mode_u = (uint32_t)descriptor->addressModeU,
+        .address_mode_v = (uint32_t)descriptor->addressModeV,
+        .address_mode_w = (uint32_t)descriptor->addressModeW,
+        .lod_min_clamp = descriptor->lodMinClamp,
+        .lod_max_clamp = descriptor->lodMaxClamp,
+        .compare = (uint32_t)descriptor->compare,
+    };
+
+    uint32_t handle = webgpu_host_device_create_sampler(
+            (uint32_t)(uintptr_t)device,
+            (uint32_t)(uintptr_t)&desc);
+    return (WGPUSampler)(uintptr_t)handle;
+}
+
+WGPUBindGroup wgpuDeviceCreateBindGroup(WGPUDevice device,
+        WGPUBindGroupDescriptor const * descriptor) {
+    if (descriptor == NULL || descriptor->layout == NULL ||
+            descriptor->entries == NULL || descriptor->entryCount == 0) {
+        return NULL;
+    }
+
+    uint32_t count = descriptor->entryCount;
+    GMWasmBindGroupEntry entries[count];
+    for (uint32_t i = 0; i < count; i++) {
+        const WGPUBindGroupEntry *src = &descriptor->entries[i];
+        GMWasmBindGroupEntry *dst = &entries[i];
+        *dst = (GMWasmBindGroupEntry){0};
+        dst->binding = src->binding;
+
+        if (src->buffer != NULL) {
+            dst->resource_type = GM_WASM_RESOURCE_BUFFER;
+            dst->handle = (uint32_t)(uintptr_t)src->buffer;
+            dst->offset = src->offset;
+            dst->size = src->size;
+        } else if (src->sampler != NULL) {
+            dst->resource_type = GM_WASM_RESOURCE_SAMPLER;
+            dst->handle = (uint32_t)(uintptr_t)src->sampler;
+        } else if (src->textureView != NULL) {
+            dst->resource_type = GM_WASM_RESOURCE_TEXTURE_VIEW;
+            dst->handle = (uint32_t)(uintptr_t)src->textureView;
+        }
+    }
+
+    GMWasmBindGroupDescriptor desc = {
+        .layout_handle = (uint32_t)(uintptr_t)descriptor->layout,
+        .entry_count = count,
+        .entries_ptr = (uint32_t)(uintptr_t)entries,
+    };
+
+    uint32_t handle = webgpu_host_device_create_bind_group(
+            (uint32_t)(uintptr_t)device,
+            (uint32_t)(uintptr_t)&desc);
+    return (WGPUBindGroup)(uintptr_t)handle;
+}
+
+WGPURenderPipeline wgpuDeviceCreateRenderPipeline(WGPUDevice device,
+        WGPURenderPipelineDescriptor const * descriptor) {
+    if (descriptor == NULL) {
+        return NULL;
+    }
+
+    GMWasmProgrammableStage vertex_stage = {
+        .module_handle = (uint32_t)(uintptr_t)descriptor->vertex.module,
+        .entry_point_ptr = (uint32_t)(uintptr_t)descriptor->vertex.entryPoint.data,
+        .entry_point_length = gm_wasm_string_length(descriptor->vertex.entryPoint),
+    };
+
+    size_t vertex_buffer_count = descriptor->vertex.bufferCount;
+    if (vertex_buffer_count == 0) {
+        vertex_buffer_count = 1;
+    }
+    GMWasmVertexBufferLayout vertex_buffers[vertex_buffer_count];
+
+    size_t total_vertex_attributes = 0;
+    for (size_t i = 0; i < descriptor->vertex.bufferCount; i++) {
+        total_vertex_attributes += descriptor->vertex.buffers[i].attributeCount;
+    }
+    if (total_vertex_attributes == 0) {
+        total_vertex_attributes = 1;
+    }
+    GMWasmVertexAttribute vertex_attributes[total_vertex_attributes];
+
+    size_t attr_index = 0;
+    for (size_t i = 0; i < descriptor->vertex.bufferCount; i++) {
+        const WGPUVertexBufferLayout *src = &descriptor->vertex.buffers[i];
+        GMWasmVertexBufferLayout *dst = &vertex_buffers[i];
+        dst->array_stride = (uint32_t)src->arrayStride;
+        dst->step_mode = (uint32_t)src->stepMode;
+        dst->attribute_count = (uint32_t)src->attributeCount;
+        dst->attributes_ptr = (uint32_t)(uintptr_t)&vertex_attributes[attr_index];
+
+        for (size_t j = 0; j < src->attributeCount; j++) {
+            const WGPUVertexAttribute *attr = &src->attributes[j];
+            GMWasmVertexAttribute *out = &vertex_attributes[attr_index++];
+            out->shader_location = attr->shaderLocation;
+            out->offset = (uint32_t)attr->offset;
+            out->format = (uint32_t)attr->format;
+        }
+    }
+
+    // If there were no buffers defined, zero out the placeholder entry.
+    if (descriptor->vertex.bufferCount == 0) {
+        vertex_buffers[0] = (GMWasmVertexBufferLayout){0};
+        vertex_attributes[0] = (GMWasmVertexAttribute){0};
+        vertex_buffers[0].attributes_ptr = (uint32_t)(uintptr_t)&vertex_attributes[0];
+    }
+
+    GMWasmVertexState vertex_state = {
+        .stage_ptr = (uint32_t)(uintptr_t)&vertex_stage,
+        .buffer_count = (uint32_t)descriptor->vertex.bufferCount,
+        .buffers_ptr = (uint32_t)(uintptr_t)vertex_buffers,
+    };
+
+    GMWasmProgrammableStage fragment_stage = {0};
+    GMWasmColorTargetState color_targets_buffer[4];
+    GMWasmFragmentState fragment_state = {0};
+    if (descriptor->fragment != NULL && descriptor->fragment->targetCount > 0 &&
+            descriptor->fragment->targets != NULL) {
+        fragment_stage.module_handle = (uint32_t)(uintptr_t)descriptor->fragment->module;
+        fragment_stage.entry_point_ptr = (uint32_t)(uintptr_t)descriptor->fragment->entryPoint.data;
+        fragment_stage.entry_point_length = gm_wasm_string_length(descriptor->fragment->entryPoint);
+
+        size_t target_count = descriptor->fragment->targetCount;
+        if (target_count > 4) {
+            target_count = 4;
+        }
+        for (size_t i = 0; i < target_count; i++) {
+            const WGPUColorTargetState *src = &descriptor->fragment->targets[i];
+            GMWasmColorTargetState *dst = &color_targets_buffer[i];
+            *dst = (GMWasmColorTargetState){0};
+            dst->format = (uint32_t)src->format;
+            dst->write_mask = (uint32_t)src->writeMask;
+            if (src->blend != NULL) {
+                dst->blend_enabled = 1u;
+                dst->color_src_factor = (uint32_t)src->blend->color.srcFactor;
+                dst->color_dst_factor = (uint32_t)src->blend->color.dstFactor;
+                dst->color_operation = (uint32_t)src->blend->color.operation;
+                dst->alpha_src_factor = (uint32_t)src->blend->alpha.srcFactor;
+                dst->alpha_dst_factor = (uint32_t)src->blend->alpha.dstFactor;
+                dst->alpha_operation = (uint32_t)src->blend->alpha.operation;
+            }
+        }
+
+        fragment_state.stage_ptr = (uint32_t)(uintptr_t)&fragment_stage;
+        fragment_state.target_count = (uint32_t)target_count;
+        fragment_state.targets_ptr = (uint32_t)(uintptr_t)color_targets_buffer;
+    }
+
+    GMWasmPrimitiveState primitive_state = {
+        .topology = (uint32_t)descriptor->primitive.topology,
+        .cull_mode = (uint32_t)descriptor->primitive.cullMode,
+        .front_face = (uint32_t)descriptor->primitive.frontFace,
+        .strip_index_format = (uint32_t)descriptor->primitive.stripIndexFormat,
+    };
+
+    GMWasmDepthStencilState depth_state = {0};
+    uint32_t depth_state_ptr = 0;
+    if (descriptor->depthStencil != NULL) {
+        depth_state.format = (uint32_t)descriptor->depthStencil->format;
+        depth_state.depth_write_enabled = descriptor->depthStencil->depthWriteEnabled ? 1u : 0u;
+        depth_state.depth_compare = (uint32_t)descriptor->depthStencil->depthCompare;
+        depth_state_ptr = (uint32_t)(uintptr_t)&depth_state;
+    }
+
+    GMWasmRenderPipelineDescriptor desc = {
+        .layout_handle = (uint32_t)(uintptr_t)descriptor->layout,
+        .vertex_state_ptr = (uint32_t)(uintptr_t)&vertex_state,
+        .fragment_state_ptr = (fragment_state.stage_ptr != 0) ?
+            (uint32_t)(uintptr_t)&fragment_state : 0u,
+        .primitive_state_ptr = (uint32_t)(uintptr_t)&primitive_state,
+        .depth_stencil_state_ptr = depth_state_ptr,
+        .multisample_count = descriptor->multisample.count,
+        .alpha_to_coverage_enabled = descriptor->multisample.alphaToCoverageEnabled ? 1u : 0u,
+    };
+
+    uint32_t handle = webgpu_host_device_create_render_pipeline(
+            (uint32_t)(uintptr_t)device,
+            (uint32_t)(uintptr_t)&desc);
+    return (WGPURenderPipeline)(uintptr_t)handle;
 }

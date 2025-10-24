@@ -137,6 +137,15 @@ clang \
     -Wl,--export=gm_create_shader_modules \
     -Wl,--export=gm_get_shader_module_table \
     -Wl,--export=gm_get_shader_module_count \
+    -Wl,--export=gm_register_texture_views \
+    -Wl,--export=gm_create_bind_group_layouts \
+    -Wl,--export=gm_create_pipeline_layouts \
+    -Wl,--export=gm_create_render_pipelines \
+    -Wl,--export=gm_create_bind_groups \
+    -Wl,--export=gm_get_bind_group_table \
+    -Wl,--export=gm_get_bind_group_count \
+    -Wl,--export=gm_get_render_pipeline_table \
+    -Wl,--export=gm_get_render_pipeline_count \
     -Wl,--initial-memory=262144 \
     -o gm.wasm \
     gm.c \

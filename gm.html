@@ -16,6 +16,12 @@
             'rgba8unorm-srgb': 0x00000017,
             'bgra8unorm': 0x0000001B,
             'bgra8unorm-srgb': 0x0000001C,
+            'stencil8': 0x0000002C,
+            'depth16unorm': 0x0000002D,
+            'depth24plus': 0x0000002E,
+            'depth24plus-stencil8': 0x0000002F,
+            'depth32float': 0x00000030,
+            'depth32float-stencil8': 0x00000031,
         };
 
         const textureFormatEnumToString = {};
@@ -41,19 +47,397 @@
             return format;
         }
 
+        const GMBufferSlot = Object.freeze({
+            POSITIONS: 0,
+            UVS: 1,
+            SURFACE_TYPES: 2,
+            TRIANGLE_IDS: 3,
+            NORMALS: 4,
+            INDICES: 5,
+            UNIFORM: 6,
+            OVERLAY_UNIFORM: 7,
+            OVERLAY_TEXT: 8,
+            OVERLAY_MAP: 9,
+            OVERLAY_VERTEX: 10,
+        });
+
         function createWasmWebGPUHost(adapter, device) {
             let memory = null;
             let nextHandle = 1;
+            const decoder = new TextDecoder('utf-8');
+
             const buffers = new Map();
             const shaderModules = new Map();
             const devices = new Map();
             const queues = new Map();
-            const decoder = new TextDecoder('utf-8');
+            const bindGroupLayouts = new Map();
+            const pipelineLayouts = new Map();
+            const renderPipelines = new Map();
+            const bindGroups = new Map();
+            const samplers = new Map();
+            const textureViews = new Map();
+
+            const GMResource = {
+                BUFFER: 0,
+                SAMPLER: 1,
+                TEXTURE_VIEW: 2,
+                STORAGE_TEXTURE: 3,
+            };
+
+            const bufferBindingTypeMap = new Map([
+                [0x00000002, 'uniform'],
+                [0x00000003, 'storage'],
+                [0x00000004, 'read-only-storage'],
+            ]);
+
+            const samplerTypeMap = new Map([
+                [0x00000002, 'filtering'],
+                [0x00000003, 'non-filtering'],
+                [0x00000004, 'comparison'],
+            ]);
+
+            const textureSampleTypeMap = new Map([
+                [0x00000002, 'float'],
+                [0x00000003, 'unfilterable-float'],
+                [0x00000004, 'depth'],
+                [0x00000005, 'sint'],
+                [0x00000006, 'uint'],
+            ]);
+
+            const textureViewDimensionMap = new Map([
+                [0x00000001, '1d'],
+                [0x00000002, '2d'],
+                [0x00000003, '2d-array'],
+                [0x00000004, 'cube'],
+                [0x00000005, 'cube-array'],
+                [0x00000006, '3d'],
+            ]);
+
+            const vertexFormatMap = new Map([
+                [0x0000001C, 'float32'],
+                [0x0000001D, 'float32x2'],
+                [0x0000001E, 'float32x3'],
+                [0x0000001F, 'float32x4'],
+            ]);
+
+            const vertexStepModeMap = new Map([
+                [0x00000001, 'vertex'],
+                [0x00000002, 'instance'],
+            ]);
+
+            const primitiveTopologyMap = new Map([
+                [0x00000004, 'triangle-list'],
+                [0x00000005, 'triangle-strip'],
+                [0x00000001, 'point-list'],
+                [0x00000002, 'line-list'],
+                [0x00000003, 'line-strip'],
+            ]);
+
+            const cullModeMap = new Map([
+                [0x00000001, 'none'],
+                [0x00000002, 'front'],
+                [0x00000003, 'back'],
+            ]);
+
+            const frontFaceMap = new Map([
+                [0x00000001, 'ccw'],
+                [0x00000002, 'cw'],
+            ]);
+
+            const compareFunctionMap = new Map([
+                [0x00000002, 'less'],
+                [0x00000008, 'always'],
+                [0x00000004, 'less-equal'],
+                [0x00000005, 'greater'],
+            ]);
+
+            const filterModeMap = new Map([
+                [0x00000001, 'nearest'],
+                [0x00000002, 'linear'],
+            ]);
+
+            const mipmapFilterModeMap = new Map([
+                [0x00000001, 'nearest'],
+                [0x00000002, 'linear'],
+            ]);
+
+            const addressModeMap = new Map([
+                [0x00000001, 'clamp-to-edge'],
+                [0x00000002, 'repeat'],
+                [0x00000003, 'mirror-repeat'],
+            ]);
+
+            const blendFactorMap = new Map([
+                [0x00000001, 'zero'],
+                [0x00000002, 'one'],
+                [0x00000005, 'src-alpha'],
+                [0x00000006, 'one-minus-src-alpha'],
+                [0x00000009, 'dst-alpha'],
+                [0x0000000A, 'one-minus-dst-alpha'],
+            ]);
+
+            const blendOperationMap = new Map([
+                [0x00000001, 'add'],
+                [0x00000002, 'subtract'],
+                [0x00000003, 'reverse-subtract'],
+                [0x00000004, 'min'],
+                [0x00000005, 'max'],
+            ]);
 
             const deviceHandle = nextHandle++;
             devices.set(deviceHandle, device);
             const queueHandle = nextHandle++;
             queues.set(queueHandle, device.queue);
+
+            function requireMemory() {
+                if (!memory) {
+                    throw new Error('WebGPU memory not registered');
+                }
+            }
+
+            function readString(ptr, length) {
+                if (!ptr || length === 0) {
+                    return '';
+                }
+                const bytes = new Uint8Array(memory.buffer, ptr, length);
+                return decoder.decode(bytes);
+            }
+
+            function mapOrDefault(map, key, fallback) {
+                return map.get(key) ?? fallback;
+            }
+
+            function readBindGroupLayoutEntries(ptr, count) {
+                const entries = [];
+                const dv = new DataView(memory.buffer);
+                const stride = 56;
+                for (let i = 0; i < count; i++) {
+                    const base = ptr + i * stride;
+                    const binding = dv.getUint32(base, true);
+                    const visibility = dv.getUint32(base + 4, true);
+                    const resourceType = dv.getUint32(base + 8, true);
+                    const bufferType = dv.getUint32(base + 12, true);
+                    const hasDynamicOffset = !!dv.getUint32(base + 16, true);
+                    const minBindingSize = Number(dv.getBigUint64(base + 20, true));
+                    const samplerType = dv.getUint32(base + 28, true);
+                    const textureSampleType = dv.getUint32(base + 32, true);
+                    const textureViewDim = dv.getUint32(base + 36, true);
+                    const textureMultisampled = !!dv.getUint32(base + 40, true);
+                    const storageAccess = dv.getUint32(base + 44, true);
+                    const storageFormat = dv.getUint32(base + 48, true);
+                    const storageViewDim = dv.getUint32(base + 52, true);
+
+                    const entry = { binding, visibility };
+                    if (resourceType === GMResource.BUFFER) {
+                        entry.buffer = {
+                            type: mapOrDefault(bufferBindingTypeMap, bufferType, 'uniform'),
+                            hasDynamicOffset,
+                            minBindingSize,
+                        };
+                    } else if (resourceType === GMResource.SAMPLER) {
+                        entry.sampler = {
+                            type: mapOrDefault(samplerTypeMap, samplerType, 'filtering'),
+                        };
+                    } else if (resourceType === GMResource.TEXTURE_VIEW) {
+                        entry.texture = {
+                            sampleType: mapOrDefault(textureSampleTypeMap, textureSampleType, 'float'),
+                            viewDimension: mapOrDefault(textureViewDimensionMap, textureViewDim, '2d'),
+                            multisampled: textureMultisampled,
+                        };
+                    } else if (resourceType === GMResource.STORAGE_TEXTURE) {
+                        entry.storageTexture = {
+                            access: storageAccess === 0x00000003 ? 'read-only' : 'write-only',
+                            format: textureFormatFromEnum(storageFormat),
+                            viewDimension: mapOrDefault(textureViewDimensionMap, storageViewDim, '2d'),
+                        };
+                    }
+                    entries.push(entry);
+                }
+                return entries;
+            }
+
+            function readBindGroupEntries(ptr, count) {
+                const entries = [];
+                const dv = new DataView(memory.buffer);
+                const stride = 28;
+                for (let i = 0; i < count; i++) {
+                    const base = ptr + i * stride;
+                    const binding = dv.getUint32(base, true);
+                    const resourceType = dv.getUint32(base + 4, true);
+                    const handle = dv.getUint32(base + 8, true);
+                    const offset = Number(dv.getBigUint64(base + 12, true));
+                    const rawSize = dv.getBigUint64(base + 20, true);
+                    const size = rawSize === 0xFFFFFFFFFFFFFFFFn ? undefined : Number(rawSize);
+
+                    if (resourceType === GMResource.BUFFER) {
+                        const buffer = buffers.get(handle);
+                        if (!buffer) {
+                            throw new Error(`Unknown buffer handle ${handle}`);
+                        }
+                        const resource = { buffer, offset };
+                        if (size !== undefined) {
+                            resource.size = size;
+                        }
+                        entries.push({
+                            binding,
+                            resource,
+                        });
+                    } else if (resourceType === GMResource.SAMPLER) {
+                        const sampler = samplers.get(handle);
+                        if (!sampler) {
+                            throw new Error(`Unknown sampler handle ${handle}`);
+                        }
+                        entries.push({ binding, resource: sampler });
+                    } else if (resourceType === GMResource.TEXTURE_VIEW) {
+                        const view = textureViews.get(handle);
+                        if (!view) {
+                            throw new Error(`Unknown texture view handle ${handle}`);
+                        }
+                        entries.push({ binding, resource: view });
+                    } else {
+                        throw new Error(`Unsupported bind group resource type ${resourceType}`);
+                    }
+                }
+                return entries;
+            }
+
+            function readProgrammableStage(ptr) {
+                if (!ptr) {
+                    return null;
+                }
+                const dv = new DataView(memory.buffer);
+                const moduleHandle = dv.getUint32(ptr, true);
+                const entryPtr = dv.getUint32(ptr + 4, true);
+                const entryLength = dv.getUint32(ptr + 8, true);
+                const module = shaderModules.get(moduleHandle);
+                if (!module) {
+                    throw new Error(`Unknown shader module handle ${moduleHandle}`);
+                }
+                const entryPoint = readString(entryPtr, entryLength) || 'main';
+                return { module, entryPoint };
+            }
+
+            function readVertexBuffers(ptr, count) {
+                if (!ptr || count === 0) {
+                    return [];
+                }
+                const buffersOut = [];
+                const dv = new DataView(memory.buffer);
+                const stride = 16;
+                for (let i = 0; i < count; i++) {
+                    const base = ptr + i * stride;
+                    const arrayStride = dv.getUint32(base, true);
+                    const stepModeValue = dv.getUint32(base + 4, true);
+                    const attributeCount = dv.getUint32(base + 8, true);
+                    const attributesPtr = dv.getUint32(base + 12, true);
+                    const attributes = [];
+                    const attrStride = 12;
+                    for (let j = 0; j < attributeCount; j++) {
+                        const attrBase = attributesPtr + j * attrStride;
+                        const shaderLocation = dv.getUint32(attrBase, true);
+                        const offset = dv.getUint32(attrBase + 4, true);
+                        const formatValue = dv.getUint32(attrBase + 8, true);
+                        attributes.push({
+                            shaderLocation,
+                            offset,
+                            format: mapOrDefault(vertexFormatMap, formatValue, 'float32'),
+                        });
+                    }
+                    buffersOut.push({
+                        arrayStride,
+                        stepMode: mapOrDefault(vertexStepModeMap, stepModeValue, 'vertex'),
+                        attributes,
+                    });
+                }
+                return buffersOut;
+            }
+
+            function readVertexState(ptr) {
+                const dv = new DataView(memory.buffer);
+                const stagePtr = dv.getUint32(ptr, true);
+                const bufferCount = dv.getUint32(ptr + 4, true);
+                const buffersPtr = dv.getUint32(ptr + 8, true);
+                const stage = readProgrammableStage(stagePtr);
+                return {
+                    module: stage.module,
+                    entryPoint: stage.entryPoint,
+                    buffers: readVertexBuffers(buffersPtr, bufferCount),
+                };
+            }
+
+            function readColorTargets(ptr, count) {
+                if (!ptr || count === 0) {
+                    return [];
+                }
+                const targets = [];
+                const dv = new DataView(memory.buffer);
+                const stride = 36;
+                for (let i = 0; i < count; i++) {
+                    const base = ptr + i * stride;
+                    const format = textureFormatFromEnum(dv.getUint32(base, true));
+                    const blendEnabled = !!dv.getUint32(base + 4, true);
+                    const colorSrc = dv.getUint32(base + 8, true);
+                    const colorDst = dv.getUint32(base + 12, true);
+                    const colorOp = dv.getUint32(base + 16, true);
+                    const alphaSrc = dv.getUint32(base + 20, true);
+                    const alphaDst = dv.getUint32(base + 24, true);
+                    const alphaOp = dv.getUint32(base + 28, true);
+                    const writeMask = dv.getUint32(base + 32, true);
+                    const target = { format, writeMask };
+                    if (blendEnabled) {
+                        target.blend = {
+                            color: {
+                                srcFactor: mapOrDefault(blendFactorMap, colorSrc, 'one'),
+                                dstFactor: mapOrDefault(blendFactorMap, colorDst, 'zero'),
+                                operation: mapOrDefault(blendOperationMap, colorOp, 'add'),
+                            },
+                            alpha: {
+                                srcFactor: mapOrDefault(blendFactorMap, alphaSrc, 'one'),
+                                dstFactor: mapOrDefault(blendFactorMap, alphaDst, 'zero'),
+                                operation: mapOrDefault(blendOperationMap, alphaOp, 'add'),
+                            },
+                        };
+                    }
+                    targets.push(target);
+                }
+                return targets;
+            }
+
+            function readFragmentState(ptr) {
+                const dv = new DataView(memory.buffer);
+                const stagePtr = dv.getUint32(ptr, true);
+                const targetCount = dv.getUint32(ptr + 4, true);
+                const targetsPtr = dv.getUint32(ptr + 8, true);
+                const stage = readProgrammableStage(stagePtr);
+                return {
+                    module: stage.module,
+                    entryPoint: stage.entryPoint,
+                    targets: readColorTargets(targetsPtr, targetCount),
+                };
+            }
+
+            function readPrimitiveState(ptr) {
+                const dv = new DataView(memory.buffer);
+                const topology = mapOrDefault(primitiveTopologyMap, dv.getUint32(ptr, true), 'triangle-list');
+                const cullMode = mapOrDefault(cullModeMap, dv.getUint32(ptr + 4, true), 'none');
+                const frontFace = mapOrDefault(frontFaceMap, dv.getUint32(ptr + 8, true), 'ccw');
+                const stripIndexFormat = dv.getUint32(ptr + 12, true);
+                const primitive = { topology, cullMode, frontFace };
+                if (stripIndexFormat === 0x00000001) {
+                    primitive.stripIndexFormat = 'uint16';
+                } else if (stripIndexFormat === 0x00000002) {
+                    primitive.stripIndexFormat = 'uint32';
+                }
+                return primitive;
+            }
+
+            function readDepthStencilState(ptr) {
+                const dv = new DataView(memory.buffer);
+                const format = textureFormatFromEnum(dv.getUint32(ptr, true));
+                const depthWriteEnabled = !!dv.getUint32(ptr + 4, true);
+                const depthCompare = mapOrDefault(compareFunctionMap, dv.getUint32(ptr + 8, true), 'less');
+                return { format, depthWriteEnabled, depthCompare };
+            }
 
             const imports = {
                 create_instance() {
@@ -78,9 +462,7 @@
                     return handle;
                 },
                 queue_write_buffer(queueHandleParam, bufferHandle, offsetLow, offsetHigh, dataPtr, size) {
-                    if (!memory) {
-                        throw new Error('WebGPU memory not registered');
-                    }
+                    requireMemory();
                     const queue = queues.get(queueHandleParam);
                     const buffer = buffers.get(bufferHandle);
                     const offset = offsetLow + offsetHigh * 4294967296;
@@ -88,15 +470,120 @@
                     queue.writeBuffer(buffer, offset, source);
                 },
                 device_create_shader_module(deviceHandleParam, codePtr, codeLength) {
-                    if (!memory) {
-                        throw new Error('WebGPU memory not registered');
-                    }
+                    requireMemory();
                     const targetDevice = devices.get(deviceHandleParam);
                     const bytes = new Uint8Array(memory.buffer, codePtr, codeLength);
                     const code = decoder.decode(bytes);
                     const module = targetDevice.createShaderModule({ code });
                     const handle = nextHandle++;
                     shaderModules.set(handle, module);
+                    return handle;
+                },
+                device_create_bind_group_layout(deviceHandleParam, entriesPtr, entryCount) {
+                    requireMemory();
+                    const targetDevice = devices.get(deviceHandleParam);
+                    const entries = readBindGroupLayoutEntries(entriesPtr, entryCount);
+                    const layout = targetDevice.createBindGroupLayout({ entries });
+                    const handle = nextHandle++;
+                    bindGroupLayouts.set(handle, layout);
+                    return handle;
+                },
+                device_create_pipeline_layout(deviceHandleParam, layoutsPtr, layoutCount) {
+                    requireMemory();
+                    const targetDevice = devices.get(deviceHandleParam);
+                    const handles = new Uint32Array(memory.buffer, layoutsPtr, layoutCount);
+                    const layouts = [];
+                    for (let i = 0; i < handles.length; i++) {
+                        const layout = bindGroupLayouts.get(handles[i]);
+                        if (!layout) {
+                            throw new Error(`Unknown bind group layout handle ${handles[i]}`);
+                        }
+                        layouts.push(layout);
+                    }
+                    const pipelineLayout = targetDevice.createPipelineLayout({ bindGroupLayouts: layouts });
+                    const handle = nextHandle++;
+                    pipelineLayouts.set(handle, pipelineLayout);
+                    return handle;
+                },
+                device_create_sampler(deviceHandleParam, descriptorPtr) {
+                    requireMemory();
+                    const targetDevice = devices.get(deviceHandleParam);
+                    const dv = new DataView(memory.buffer);
+                    const base = descriptorPtr;
+                    const desc = {
+                        magFilter: mapOrDefault(filterModeMap, dv.getUint32(base, true), 'nearest'),
+                        minFilter: mapOrDefault(filterModeMap, dv.getUint32(base + 4, true), 'nearest'),
+                        mipmapFilter: mapOrDefault(mipmapFilterModeMap, dv.getUint32(base + 8, true), 'nearest'),
+                        addressModeU: mapOrDefault(addressModeMap, dv.getUint32(base + 12, true), 'clamp-to-edge'),
+                        addressModeV: mapOrDefault(addressModeMap, dv.getUint32(base + 16, true), 'clamp-to-edge'),
+                        addressModeW: mapOrDefault(addressModeMap, dv.getUint32(base + 20, true), 'clamp-to-edge'),
+                        lodMinClamp: dv.getFloat32(base + 24, true),
+                        lodMaxClamp: dv.getFloat32(base + 28, true),
+                    };
+                    const compareValue = dv.getUint32(base + 32, true);
+                    if (compareValue !== 0) {
+                        desc.compare = mapOrDefault(compareFunctionMap, compareValue, 'less');
+                    }
+                    const sampler = targetDevice.createSampler(desc);
+                    const handle = nextHandle++;
+                    samplers.set(handle, sampler);
+                    return handle;
+                },
+                device_create_bind_group(deviceHandleParam, descriptorPtr) {
+                    requireMemory();
+                    const targetDevice = devices.get(deviceHandleParam);
+                    const dv = new DataView(memory.buffer);
+                    const layoutHandle = dv.getUint32(descriptorPtr, true);
+                    const entryCount = dv.getUint32(descriptorPtr + 4, true);
+                    const entriesPtr = dv.getUint32(descriptorPtr + 8, true);
+                    const layout = bindGroupLayouts.get(layoutHandle);
+                    if (!layout) {
+                        throw new Error(`Unknown bind group layout handle ${layoutHandle}`);
+                    }
+                    const entries = readBindGroupEntries(entriesPtr, entryCount);
+                    const bindGroup = targetDevice.createBindGroup({ layout, entries });
+                    const handle = nextHandle++;
+                    bindGroups.set(handle, bindGroup);
+                    return handle;
+                },
+                device_create_render_pipeline(deviceHandleParam, descriptorPtr) {
+                    requireMemory();
+                    const targetDevice = devices.get(deviceHandleParam);
+                    const dv = new DataView(memory.buffer);
+                    const layoutHandle = dv.getUint32(descriptorPtr, true);
+                    const vertexStatePtr = dv.getUint32(descriptorPtr + 4, true);
+                    const fragmentStatePtr = dv.getUint32(descriptorPtr + 8, true);
+                    const primitiveStatePtr = dv.getUint32(descriptorPtr + 12, true);
+                    const depthStatePtr = dv.getUint32(descriptorPtr + 16, true);
+                    const sampleCount = dv.getUint32(descriptorPtr + 20, true);
+                    const alphaToCoverage = !!dv.getUint32(descriptorPtr + 24, true);
+
+                    const layout = pipelineLayouts.get(layoutHandle);
+                    if (!layout) {
+                        throw new Error(`Unknown pipeline layout handle ${layoutHandle}`);
+                    }
+
+                    const descriptor = {
+                        layout,
+                        vertex: readVertexState(vertexStatePtr),
+                        primitive: readPrimitiveState(primitiveStatePtr),
+                        multisample: {
+                            count: sampleCount || 1,
+                            mask: 0xFFFFFFFF,
+                            alphaToCoverageEnabled: alphaToCoverage,
+                        },
+                    };
+
+                    if (fragmentStatePtr !== 0) {
+                        descriptor.fragment = readFragmentState(fragmentStatePtr);
+                    }
+                    if (depthStatePtr !== 0) {
+                        descriptor.depthStencil = readDepthStencilState(depthStatePtr);
+                    }
+
+                    const pipeline = targetDevice.createRenderPipeline(descriptor);
+                    const handle = nextHandle++;
+                    renderPipelines.set(handle, pipeline);
                     return handle;
                 },
             };
@@ -115,6 +602,17 @@
                 },
                 getShaderModule(handle) {
                     return shaderModules.get(handle);
+                },
+                getBindGroup(handle) {
+                    return bindGroups.get(handle);
+                },
+                getRenderPipeline(handle) {
+                    return renderPipelines.get(handle);
+                },
+                registerTextureView(view) {
+                    const handle = nextHandle++;
+                    textureViews.set(handle, view);
+                    return handle;
                 },
             };
         }
@@ -240,6 +738,15 @@
             const gm_get_shader_module_count = wasmInstance.exports.gm_get_shader_module_count;
             const gm_get_shader_module_table = wasmInstance.exports.gm_get_shader_module_table;
             const gm_get_uniform_float_count = wasmInstance.exports.gm_get_uniform_float_count;
+            const gm_register_texture_views = wasmInstance.exports.gm_register_texture_views;
+            const gm_create_bind_group_layouts = wasmInstance.exports.gm_create_bind_group_layouts;
+            const gm_create_pipeline_layouts = wasmInstance.exports.gm_create_pipeline_layouts;
+            const gm_create_render_pipelines = wasmInstance.exports.gm_create_render_pipelines;
+            const gm_create_bind_groups = wasmInstance.exports.gm_create_bind_groups;
+            const gm_get_bind_group_table = wasmInstance.exports.gm_get_bind_group_table;
+            const gm_get_bind_group_count = wasmInstance.exports.gm_get_bind_group_count;
+            const gm_get_render_pipeline_table = wasmInstance.exports.gm_get_render_pipeline_table;
+            const gm_get_render_pipeline_count = wasmInstance.exports.gm_get_render_pipeline_count;
             gm_register_webgpu_handles(webgpuHost.handles.device, webgpuHost.handles.queue);
 
             const preferredFormatEnum = gm_get_preferred_canvas_format();
@@ -343,13 +850,17 @@
             const bufferHandleCount = gm_get_gpu_buffer_count();
             const bufferTablePtr = gm_get_gpu_buffer_table();
             const bufferHandleView = new Uint32Array(memory.buffer, bufferTablePtr, bufferHandleCount);
-            const positionBuffer = webgpuHost.getBuffer(bufferHandleView[0]);
-            const uvBuffer = webgpuHost.getBuffer(bufferHandleView[1]);
-            const surfaceTypeBuffer = webgpuHost.getBuffer(bufferHandleView[2]);
-            const triangleIDBuffer = webgpuHost.getBuffer(bufferHandleView[3]);
-            const normalBuffer = webgpuHost.getBuffer(bufferHandleView[4]);
-            const indexBuffer = webgpuHost.getBuffer(bufferHandleView[5]);
-            const uniformBuffer = webgpuHost.getBuffer(bufferHandleView[6]);
+            const positionBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.POSITIONS]);
+            const uvBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.UVS]);
+            const surfaceTypeBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.SURFACE_TYPES]);
+            const triangleIDBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.TRIANGLE_IDS]);
+            const normalBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.NORMALS]);
+            const indexBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.INDICES]);
+            const uniformBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.UNIFORM]);
+            const overlayUniformBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.OVERLAY_UNIFORM]);
+            const overlayTextBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.OVERLAY_TEXT]);
+            const overlayMapBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.OVERLAY_MAP]);
+            const overlayVertexBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.OVERLAY_VERTEX]);
             const uniformFloatCount = gm_get_uniform_float_count();
 
             const shaderInitResult = gm_create_shader_modules();
@@ -379,101 +890,6 @@
 
             console.log('Shaders compiled successfully');
 
-            const bindGroupLayout = device.createBindGroupLayout({
-                entries: [
-                    { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-                    { binding: 1, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
-                    { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
-                    { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
-                    { binding: 4, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
-                ]
-            });
-
-            const overlayBindGroupLayout = device.createBindGroupLayout({
-                entries: [
-                    { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-                    { binding: 1, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
-                    { binding: 2, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } }
-                ]
-            });
-
-            const pipeline = device.createRenderPipeline({
-                layout: device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout] }),
-                vertex: {
-                    module: vsModule,
-                    entryPoint: 'vs_main',
-                    buffers: [
-                        {
-                            arrayStride: 12, // vec3<f32>
-                            attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' }]
-                        },
-                        {
-                            arrayStride: 8, // vec2<f32>
-                            attributes: [{ shaderLocation: 1, offset: 0, format: 'float32x2' }]
-                        },
-                        {
-                            arrayStride: 4, // f32 surfaceType
-                            attributes: [{ shaderLocation: 2, offset: 0, format: 'float32' }]
-                        },
-                        {
-                            arrayStride: 4, // f32 triangleID
-                            attributes: [{ shaderLocation: 3, offset: 0, format: 'float32' }]
-                        },
-                        {
-                            arrayStride: 12, // vec3<f32> normal
-                            attributes: [{ shaderLocation: 4, offset: 0, format: 'float32x3' }]
-                        }
-                    ]
-                },
-                fragment: {
-                    module: fsModule,
-                    entryPoint: 'fs_main',
-                    targets: [{ format }]
-                },
-                primitive: {
-                    topology: 'triangle-list',
-                    cullMode: 'none'  // No backface culling
-                },
-                depthStencil: {
-                    depthWriteEnabled: true,
-                    depthCompare: 'less',
-                    format: 'depth24plus'
-                }
-            });
-
-            const overlayPipeline = device.createRenderPipeline({
-                layout: device.createPipelineLayout({ bindGroupLayouts: [overlayBindGroupLayout] }),
-                vertex: {
-                    module: overlayVsModule,
-                    entryPoint: 'vertex_main',
-                    buffers: [
-                        {
-                            arrayStride: 8,
-                            attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x2' }]
-                        }
-                    ]
-                },
-                fragment: {
-                    module: overlayFsModule,
-                    entryPoint: 'fragment_main',
-                    targets: [{
-                        format,
-                        blend: {
-                            color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
-                            alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' }
-                        }
-                    }]
-                },
-                primitive: {
-                    topology: 'triangle-strip'
-                },
-                depthStencil: {
-                    depthWriteEnabled: false,
-                    depthCompare: 'always',
-                    format: 'depth24plus'
-                }
-            });
-
             console.log('[Texture] Starting to load all textures...');
             const [wallTextureView, floorTextureView, ceilingTextureView] = await Promise.all([
                 createTextureFromUrl(device, 'https://threejs.org/examples/textures/brick_diffuse.jpg', 'wall-texture'),
@@ -484,66 +900,45 @@
             console.log('[Texture] Wall texture view:', wallTextureView);
             console.log('[Texture] Floor texture view:', floorTextureView);
             console.log('[Texture] Ceiling texture view:', ceilingTextureView);
+            const wallHandle = webgpuHost.registerTextureView(wallTextureView);
+            const floorHandle = webgpuHost.registerTextureView(floorTextureView);
+            const ceilingHandle = webgpuHost.registerTextureView(ceilingTextureView);
+            gm_register_texture_views(wallHandle, floorHandle, ceilingHandle);
 
-            const sampler = device.createSampler({
-                magFilter: 'linear',
-                minFilter: 'linear',
-                addressModeU: 'repeat',
-                addressModeV: 'repeat'
-            });
-            const bindGroup = device.createBindGroup({
-                layout: bindGroupLayout,
-                entries: [
-                    { binding: 0, resource: { buffer: uniformBuffer } },
-                    { binding: 1, resource: sampler },
-                    { binding: 2, resource: wallTextureView },
-                    { binding: 3, resource: floorTextureView },
-                    { binding: 4, resource: ceilingTextureView }
-                ]
-            });
-            console.log('Pipeline and bind group created successfully');
+            let pipelineInit = gm_create_bind_group_layouts();
+            if (pipelineInit !== 0) {
+                throw new Error(`gm_create_bind_group_layouts failed with code ${pipelineInit}`);
+            }
+            pipelineInit = gm_create_pipeline_layouts();
+            if (pipelineInit !== 0) {
+                throw new Error(`gm_create_pipeline_layouts failed with code ${pipelineInit}`);
+            }
+            pipelineInit = gm_create_render_pipelines(preferredFormatEnum);
+            if (pipelineInit !== 0) {
+                throw new Error(`gm_create_render_pipelines failed with code ${pipelineInit}`);
+            }
+            pipelineInit = gm_create_bind_groups();
+            if (pipelineInit !== 0) {
+                throw new Error(`gm_create_bind_groups failed with code ${pipelineInit}`);
+            }
+
+            const bindGroupHandleCount = gm_get_bind_group_count();
+            const bindGroupTablePtr = gm_get_bind_group_table();
+            const bindGroupHandleView = new Uint32Array(memory.buffer, bindGroupTablePtr, bindGroupHandleCount);
+            const bindGroup = webgpuHost.getBindGroup(bindGroupHandleView[0]);
+            const overlayBindGroup = webgpuHost.getBindGroup(bindGroupHandleView[1]);
+
+            const pipelineHandleCount = gm_get_render_pipeline_count();
+            const pipelineTablePtr = gm_get_render_pipeline_table();
+            const pipelineHandleView = new Uint32Array(memory.buffer, pipelineTablePtr, pipelineHandleCount);
+            const pipeline = webgpuHost.getRenderPipeline(pipelineHandleView[0]);
+            const overlayPipeline = webgpuHost.getRenderPipeline(pipelineHandleView[1]);
+
+            console.log('Pipelines and bind groups created successfully via WASM');
 
             const overlayUniformFloatCount = 24;
-            const overlayUniformBuffer = device.createBuffer({
-                size: overlayUniformFloatCount * 4,
-                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
-            });
-
             const overlayTextCapacity = 256;
-            const overlayTextBuffer = device.createBuffer({
-                size: overlayTextCapacity * 4,
-                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
-            });
-
-            const overlayMapBuffer = device.createBuffer({
-                size: mapDataArray.byteLength,
-                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
-            });
             device.queue.writeBuffer(overlayMapBuffer, 0, mapDataArray);
-
-            const overlayBindGroup = device.createBindGroup({
-                layout: overlayBindGroupLayout,
-                entries: [
-                    { binding: 0, resource: { buffer: overlayUniformBuffer } },
-                    { binding: 1, resource: { buffer: overlayTextBuffer } },
-                    { binding: 2, resource: { buffer: overlayMapBuffer } }
-                ]
-            });
-
-            const overlayVertexData = new Float32Array([
-                -1, -1,
-                 1, -1,
-                -1,  1,
-                 1,  1,
-            ]);
-
-            const overlayVertexBuffer = device.createBuffer({
-                size: overlayVertexData.byteLength,
-                usage: GPUBufferUsage.VERTEX,
-                mappedAtCreation: true
-            });
-            new Float32Array(overlayVertexBuffer.getMappedRange()).set(overlayVertexData);
-            overlayVertexBuffer.unmap();
 
             const overlayParams = new Float32Array(overlayUniformFloatCount);
             const overlayTextArray = new Uint32Array(overlayTextCapacity);
