@@ -4,6 +4,7 @@
 #include <base/scratch.h>
 #include <base/format.h>
 #include <base/base_string.h>
+#include <base/base_io.h>
 
 // Math functions (from libSystem on macOS, libm elsewhere, or WASM imports from JS)
 #ifdef __wasm__
@@ -1749,6 +1750,13 @@ static GameState *g_game_state = NULL;
 
 // Main render frame function - called every frame
 void gm_render_frame(GameState *state) {
+    // Debug: log first frame
+    static int first_frame = 1;
+    if (first_frame) {
+        writeln(WASI_STDERR_FD, "[C] gm_render_frame called");
+        first_frame = 0;
+    }
+
     double frame_start_time = platform_get_time();
 
     // Calculate FPS every 500ms
@@ -1790,6 +1798,14 @@ void gm_render_frame(GameState *state) {
     // Update performance metrics
     gm_update_perf_metrics(state, (float)total_frame_time, (float)js_time,
                           (float)gpu_copy_time, (float)gpu_render_time);
+
+    // Debug: log every 60 frames
+    static int frame_debug_counter = 0;
+    frame_debug_counter++;
+    if (frame_debug_counter == 60) {
+        writeln(WASI_STDERR_FD, "[C] 60 frames rendered");
+        frame_debug_counter = 0;
+    }
 
     // Request next frame
     platform_request_animation_frame();
