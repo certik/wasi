@@ -107,6 +107,8 @@
             const wasmBytes = await wasmResponse.arrayBuffer();
             const wasmModule = await WebAssembly.instantiate(wasmBytes, {
                 wasi_snapshot_preview1: {
+                // Not needed right now:
+                /*
                     fd_write: () => 0,
                     proc_exit: () => {},
                     path_open: () => 0,
@@ -116,6 +118,7 @@
                     fd_tell: () => 0,
                     args_sizes_get: () => 0,
                     args_get: () => 0,
+                */
                 }
             });
 
