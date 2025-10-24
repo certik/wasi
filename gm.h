@@ -44,3 +44,6 @@ int find_start_position(int *map, int width, int height,
 // Returns: Pointer to MeshData structure in WASM linear memory
 // Note: The returned pointer and all internal arrays point to WASM memory
 MeshData* generate_mesh(int *map, int width, int height);
+
+// Returns the preferred WebGPU canvas texture format for the current platform.
+uint32_t gm_get_preferred_canvas_format(void);

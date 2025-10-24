@@ -1,4 +1,5 @@
 #include <gm.h>
+#include <webgpu/webgpu.h>
 
 // Find starting position and direction in the map
 // Returns: 1 if found, 0 if not found
@@ -531,4 +532,12 @@ MeshData* generate_mesh(int *map, int width, int height) {
     g_mesh_data.index_count = ctx.index_idx;
 
     return &g_mesh_data;
+}
+
+// Query the preferred canvas texture format via the WebGPU bridge.
+uint32_t gm_get_preferred_canvas_format(void) {
+    WGPUInstance instance = wgpuCreateInstance(NULL);
+    (void)instance;  // Instance is currently unused but proves the linkage works.
+    extern uint32_t wasm_webgpu_get_preferred_canvas_format(void);
+    return wasm_webgpu_get_preferred_canvas_format();
 }

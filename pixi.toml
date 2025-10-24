@@ -127,9 +127,11 @@ clang \
     -Wl,--no-entry \
     -Wl,--export=find_start_position \
     -Wl,--export=generate_mesh \
+    -Wl,--export=gm_get_preferred_canvas_format \
     -Wl,--initial-memory=262144 \
     -o gm.wasm \
-    gm.c
+    gm.c \
+    webgpu/webgpu_wasm.c
 """
 
 test_gm_wasm = { cmd="echo 'WASM build successful: gm.wasm'", depends-on=["build_gm_wasm"] }
@@ -210,6 +212,7 @@ clang \
     -o gm_linux \
     gm.c \
     gm_test.c \
+    webgpu/webgpu_mock.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
@@ -308,6 +311,7 @@ clang \
     -o gm_macos \
     gm.c \
     gm_test.c \
+    webgpu/webgpu_mock.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
@@ -463,6 +467,7 @@ cl \
     /c \
     gm.c \
     gm_test.c \
+    webgpu/webgpu_mock.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
@@ -485,6 +490,7 @@ link \
     shell32.lib \
     gm.obj \
     gm_test.obj \
+    webgpu_mock.obj \
     base_io.obj \
     buddy.obj \
     arena.obj \
