@@ -99,20 +99,87 @@
                 [1,1,1,1,1,1,1,1,1,1]
             ];
 
-            // Find starting position and direction
+            // Find starting position and direction using WASM
             let startX = 1.5, startZ = 1.5, startYaw = 0;
-            for (let z = 0; z < mapHeight; z++) {
-                for (let x = 0; x < mapWidth; x++) {
-                    const cell = map[z][x];
-                    if (cell >= 5 && cell <= 8) {
-                        startX = x + 0.5;
-                        startZ = z + 0.5;
-                        if (cell === 5) startYaw = -Math.PI / 2;    // North
-                        else if (cell === 6) startYaw = 0;          // East
-                        else if (cell === 7) startYaw = Math.PI / 2; // South
-                        else if (cell === 8) startYaw = Math.PI;    // West
-                        map[z][x] = 0; // Clear the marker
-                        console.log(`Starting at (${startX}, ${startZ}) facing ${cell===5?'North':cell===6?'East':cell===7?'South':'West'} with yaw=${startYaw}`);
+
+            // Load and use WASM module for finding start position
+            try {
+                const wasmResponse = await fetch('gm_init.wasm');
+                const wasmBytes = await wasmResponse.arrayBuffer();
+                const wasmModule = await WebAssembly.instantiate(wasmBytes, {
+                    wasi_snapshot_preview1: {
+                        fd_write: () => 0,
+                        proc_exit: () => {},
+                        path_open: () => 0,
+                        fd_close: () => 0,
+                        fd_read: () => 0,
+                        fd_seek: () => 0,
+                        fd_tell: () => 0,
+                        args_sizes_get: () => 0,
+                        args_get: () => 0,
+                    }
+                });
+
+                const wasmInstance = wasmModule.instance;
+                const memory = wasmInstance.exports.memory;
+                const find_start_position = wasmInstance.exports.find_start_position;
+
+                // Flatten the 2D map into 1D array
+                const flatMap = new Int32Array(mapWidth * mapHeight);
+                for (let z = 0; z < mapHeight; z++) {
+                    for (let x = 0; x < mapWidth; x++) {
+                        flatMap[z * mapWidth + x] = map[z][x];
+                    }
+                }
+
+                // Allocate memory in WASM for map, startX, startZ, startYaw
+                const mapPtr = 1024; // Safe offset in WASM memory
+                const startXPtr = mapPtr + flatMap.length * 4 + 4;
+                const startZPtr = startXPtr + 4;
+                const startYawPtr = startZPtr + 4;
+
+                // Copy map to WASM memory
+                const wasmMemory = new Int32Array(memory.buffer);
+                wasmMemory.set(flatMap, mapPtr / 4);
+
+                // Call WASM function
+                const found = find_start_position(mapPtr, mapWidth, mapHeight, startXPtr, startZPtr, startYawPtr);
+
+                if (found) {
+                    // Read results from WASM memory
+                    const floatView = new Float32Array(memory.buffer);
+                    startX = floatView[startXPtr / 4];
+                    startZ = floatView[startZPtr / 4];
+                    startYaw = floatView[startYawPtr / 4];
+
+                    // Update JavaScript map with cleared marker
+                    for (let z = 0; z < mapHeight; z++) {
+                        for (let x = 0; x < mapWidth; x++) {
+                            map[z][x] = wasmMemory[mapPtr / 4 + z * mapWidth + x];
+                        }
+                    }
+
+                    const dirName = startYaw < -1.0 ? 'North' : startYaw < 1.0 ? 'East' : startYaw < 2.0 ? 'South' : 'West';
+                    console.log(`[WASM] Starting at (${startX}, ${startZ}) facing ${dirName} with yaw=${startYaw}`);
+                } else {
+                    console.error('[WASM] Starting position not found!');
+                }
+            } catch (error) {
+                console.warn('[WASM] Failed to load WASM module, using JavaScript fallback:', error);
+                // JavaScript fallback
+                for (let z = 0; z < mapHeight; z++) {
+                    for (let x = 0; x < mapWidth; x++) {
+                        const cell = map[z][x];
+                        if (cell >= 5 && cell <= 8) {
+                            startX = x + 0.5;
+                            startZ = z + 0.5;
+                            if (cell === 5) startYaw = -Math.PI / 2;    // North
+                            else if (cell === 6) startYaw = 0;          // East
+                            else if (cell === 7) startYaw = Math.PI / 2; // South
+                            else if (cell === 8) startYaw = Math.PI;    // West
+                            map[z][x] = 0; // Clear the marker
+                            console.log(`[JS] Starting at (${startX}, ${startZ}) facing ${cell===5?'North':cell===6?'East':cell===7?'South':'West'} with yaw=${startYaw}`);
+                        }
                     }
                 }
             }
