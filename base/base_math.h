@@ -23,6 +23,8 @@ static inline float fabsf(float x) {
 }
 
 // Trigonometric functions using compiler builtins
+// For WASM, these are provided as imports in gm.c
+#ifndef __wasm__
 static inline float cosf(float x) {
     return __builtin_cosf(x);
 }
@@ -38,4 +40,4 @@ static inline double cos(double x) {
 static inline double sin(double x) {
     return __builtin_sin(x);
 }
-
+#endif
