@@ -126,7 +126,8 @@ clang \
     -I . \
     -Wl,--no-entry \
     -Wl,--export=find_start_position \
-    -Wl,--initial-memory=131072 \
+    -Wl,--export=generate_mesh \
+    -Wl,--initial-memory=262144 \
     -o gm.wasm \
     gm.c
 """

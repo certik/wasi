@@ -125,6 +125,7 @@
             const wasmInstance = wasmModule.instance;
             const memory = wasmInstance.exports.memory;
             const find_start_position = wasmInstance.exports.find_start_position;
+            const generate_mesh = wasmInstance.exports.generate_mesh;
 
             // Flatten the 2D map into 1D array
             const flatMap = new Int32Array(mapWidth * mapHeight);
@@ -135,26 +136,28 @@
             }
 
             // Allocate memory in WASM for map, startX, startZ, startYaw
-            const mapPtr = 1024; // Safe offset in WASM memory
+            // Note: offset 1024 contains .rodata (PI constants), globals start around 1036
+            // Globals take ~52KB (g_positions, g_uvs, etc.), so use offset 60000 to be safe
+            const mapPtr = 60000;
             const startXPtr = mapPtr + flatMap.length * 4 + 4;
             const startZPtr = startXPtr + 4;
             const startYawPtr = startZPtr + 4;
 
             // Copy map to WASM memory
-            const wasmMemory = new Int32Array(memory.buffer);
-            wasmMemory.set(flatMap, mapPtr / 4);
+            new Int32Array(memory.buffer).set(flatMap, mapPtr / 4);
 
             // Call WASM function
             const found = find_start_position(mapPtr, mapWidth, mapHeight, startXPtr, startZPtr, startYawPtr);
 
             if (found) {
-                // Read results from WASM memory
+                // Read results from WASM memory (get fresh buffer reference after call)
                 const floatView = new Float32Array(memory.buffer);
                 startX = floatView[startXPtr / 4];
                 startZ = floatView[startZPtr / 4];
                 startYaw = floatView[startYawPtr / 4];
 
-                // Update JavaScript map with cleared marker
+                // Update JavaScript map with cleared marker (get fresh buffer reference)
+                const wasmMemory = new Int32Array(memory.buffer);
                 for (let z = 0; z < mapHeight; z++) {
                     for (let x = 0; x < mapWidth; x++) {
                         map[z][x] = wasmMemory[mapPtr / 4 + z * mapWidth + x];
@@ -170,246 +173,36 @@
             const wallHeight = 2.0;
             const checkerSize = 4.0; // For 4x4 checker per unit
 
-            // Generate meshes
-            const positions = [];
-            const uvs = [];
-            const normals = []; // vertex normals
-            const surfaceTypes = []; // 0=floor, 1=wall, 2=ceiling
-            const triangleIDs = []; // unique ID for each triangle
-            const indices = [];
-            let indexOffset = 0;
-            let triangleCounter = 0;
+            // Generate meshes using WASM
 
-            const windowBottom = wallHeight * 0.3;
-            const windowTop = wallHeight - windowBottom;
-            const windowMargin = 0.15;
-            const invWallHeight = 1.0 / wallHeight;
+            // Call WASM generate_mesh function
+            const meshDataPtr = generate_mesh(mapPtr, mapWidth, mapHeight);
 
-            function pushNorthSegmentRange(x0, x1, z, y0, y1, normalizeU = false, surfaceType = 1) {
-                const v0 = y0 * invWallHeight;
-                const v1 = y1 * invWallHeight;
-                const uSpan = normalizeU ? 1.0 : (x1 - x0);
-                positions.push(
-                    x0, y0, z,
-                    x1, y0, z,
-                    x0, y1, z,
-                    x1, y1, z
-                );
-                uvs.push(0, v0, uSpan, v0, 0, v1, uSpan, v1);
-                normals.push(0, 0, -1,  0, 0, -1,  0, 0, -1,  0, 0, -1); // North face normal
-                surfaceTypes.push(surfaceType, surfaceType, surfaceType, surfaceType);
-                // Triangle IDs for flat interpolation: only the first vertex of each triangle matters (provoking vertex)
-                // Triangle 1: [0,1,2] - provoking vertex 0 → gets triangleCounter
-                // Triangle 2: [1,3,2] - provoking vertex 1 → gets triangleCounter+1
-                triangleIDs.push(triangleCounter, triangleCounter + 1, 0, 0);
-                indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
-                indexOffset += 4;
-                triangleCounter += 2;
-            }
+            // Read MeshData structure from WASM memory (get fresh buffer reference after call)
+            const meshDataView = new Uint32Array(memory.buffer, meshDataPtr, 11); // 11 uint32 fields
+            const positionsPtr = meshDataView[0];
+            const uvsPtr = meshDataView[1];
+            const normalsPtr = meshDataView[2];
+            const surfaceTypesPtr = meshDataView[3];
+            const triangleIDsPtr = meshDataView[4];
+            const indicesPtr = meshDataView[5];
+            const positionCount = meshDataView[6];
+            const uvCount = meshDataView[7];
+            const normalCount = meshDataView[8];
+            const vertexCount = meshDataView[9];
+            const indexCount = meshDataView[10];
 
-            function pushSouthSegmentRange(x0, x1, z, y0, y1, normalizeU = false, surfaceType = 1) {
-                const v0 = y0 * invWallHeight;
-                const v1 = y1 * invWallHeight;
-                const uSpan = normalizeU ? 1.0 : (x1 - x0);
-                positions.push(
-                    x0, y0, z + 1,
-                    x1, y0, z + 1,
-                    x0, y1, z + 1,
-                    x1, y1, z + 1
-                );
-                uvs.push(0, v0, uSpan, v0, 0, v1, uSpan, v1);
-                normals.push(0, 0, 1,  0, 0, 1,  0, 0, 1,  0, 0, 1); // South face normal
-                surfaceTypes.push(surfaceType, surfaceType, surfaceType, surfaceType);
-                triangleIDs.push(triangleCounter, triangleCounter + 1, 0, 0);
-                indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
-                indexOffset += 4;
-                triangleCounter += 2;
-            }
+            console.log(`Mesh: ${vertexCount} vertices, ${indexCount} indices, ${indexCount/3} triangles`);
 
-            function pushWestSegmentRange(x, z0, z1, y0, y1, normalizeU = false, surfaceType = 1) {
-                const v0 = y0 * invWallHeight;
-                const v1 = y1 * invWallHeight;
-                const uSpan = normalizeU ? 1.0 : (z1 - z0);
-                positions.push(
-                    x, y0, z0,
-                    x, y0, z1,
-                    x, y1, z0,
-                    x, y1, z1
-                );
-                uvs.push(0, v0, uSpan, v0, 0, v1, uSpan, v1);
-                normals.push(-1, 0, 0,  -1, 0, 0,  -1, 0, 0,  -1, 0, 0); // West face normal
-                surfaceTypes.push(surfaceType, surfaceType, surfaceType, surfaceType);
-                triangleIDs.push(triangleCounter, triangleCounter + 1, 0, 0);
-                indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
-                indexOffset += 4;
-                triangleCounter += 2;
-            }
+            // Extract arrays from WASM memory
+            const positions = new Float32Array(memory.buffer, positionsPtr, positionCount);
+            const uvs = new Float32Array(memory.buffer, uvsPtr, uvCount);
+            const normals = new Float32Array(memory.buffer, normalsPtr, normalCount);
+            const surfaceTypes = new Float32Array(memory.buffer, surfaceTypesPtr, vertexCount);
+            const triangleIDs = new Float32Array(memory.buffer, triangleIDsPtr, vertexCount);
+            const indices = new Uint16Array(memory.buffer, indicesPtr, indexCount);
 
-            function pushEastSegmentRange(x, z0, z1, y0, y1, normalizeU = false, surfaceType = 1) {
-                const v0 = y0 * invWallHeight;
-                const v1 = y1 * invWallHeight;
-                const uSpan = normalizeU ? 1.0 : (z1 - z0);
-                positions.push(
-                    x, y0, z0,
-                    x, y0, z1,
-                    x, y1, z0,
-                    x, y1, z1
-                );
-                uvs.push(0, v0, uSpan, v0, 0, v1, uSpan, v1);
-                normals.push(1, 0, 0,  1, 0, 0,  1, 0, 0,  1, 0, 0); // East face normal
-                surfaceTypes.push(surfaceType, surfaceType, surfaceType, surfaceType);
-                triangleIDs.push(triangleCounter, triangleCounter + 1, 0, 0);
-                indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
-                indexOffset += 4;
-                triangleCounter += 2;
-            }
-
-            function pushHorizontalFill(x0, x1, z0, z1, y, surfaceType) {
-                const uSpan = x1 - x0;
-                const vSpan = z1 - z0;
-                positions.push(
-                    x0, y, z0,
-                    x1, y, z0,
-                    x0, y, z1,
-                    x1, y, z1
-                );
-                uvs.push(0, 0, uSpan, 0, 0, vSpan, uSpan, vSpan);
-                // Normal depends on surface type: floor (0) = (0,1,0), ceiling (2) = (0,-1,0)
-                const ny = surfaceType === 0 ? 1 : -1;
-                normals.push(0, ny, 0,  0, ny, 0,  0, ny, 0,  0, ny, 0);
-                surfaceTypes.push(surfaceType, surfaceType, surfaceType, surfaceType);
-                triangleIDs.push(triangleCounter, triangleCounter + 1, 0, 0);
-                indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
-                indexOffset += 4;
-                triangleCounter += 2;
-            }
-
-            function pushNorthSegment(x, z, y0, y1) {
-                pushNorthSegmentRange(x, x + 1, z, y0, y1);
-            }
-
-            function pushSouthSegment(x, z, y0, y1) {
-                pushSouthSegmentRange(x, x + 1, z, y0, y1);
-            }
-
-            function pushWestSegment(x, z, y0, y1) {
-                pushWestSegmentRange(x, z, z + 1, y0, y1);
-            }
-
-            function pushEastSegment(x, z, y0, y1) {
-                pushEastSegmentRange(x + 1, z, z + 1, y0, y1);
-            }
-
-            // Floor: one big quad (matching collision coordinate system)
-            const floorPositions = [
-                0, 0, 0,  mapWidth, 0, 0,
-                0, 0, mapHeight,  mapWidth, 0, mapHeight
-            ];
-            const floorUVs = [
-                0, 0,  mapWidth * checkerSize, 0,
-                0, mapHeight * checkerSize,  mapWidth * checkerSize, mapHeight * checkerSize
-            ];
-            positions.push(...floorPositions);
-            uvs.push(...floorUVs);
-            normals.push(0, 1, 0,  0, 1, 0,  0, 1, 0,  0, 1, 0); // Floor normal (up)
-            surfaceTypes.push(0, 0, 0, 0); // floor
-            triangleIDs.push(triangleCounter, triangleCounter + 1, 0, 0);
-            indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
-            indexOffset += 4;
-            triangleCounter += 2;
-
-            // Ceiling: similar but at wallHeight (matching collision coordinate system)
-            const ceilingPositions = [
-                0, wallHeight, 0,  mapWidth, wallHeight, 0,
-                0, wallHeight, mapHeight,  mapWidth, wallHeight, mapHeight
-            ];
-            const ceilingUVs = floorUVs; // Same tiling
-            positions.push(...ceilingPositions);
-            uvs.push(...ceilingUVs);
-            normals.push(0, -1, 0,  0, -1, 0,  0, -1, 0,  0, -1, 0); // Ceiling normal (down)
-            surfaceTypes.push(2, 2, 2, 2); // ceiling
-            triangleIDs.push(triangleCounter, triangleCounter + 1, 0, 0);
-            indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
-            indexOffset += 4;
-            triangleCounter += 2;
-
-            const isSolidCell = (value) => value === 1 || value === 2 || value === 3;
-
-            // Walls: generate quads for each boundary
-            for (let z = 0; z < mapHeight; z++) {
-                for (let x = 0; x < mapWidth; x++) {
-                    const cell = map[z][x];
-                    if (!isSolidCell(cell)) {
-                        continue;
-                    }
-
-                    const isWindowNS = cell === 2;
-                    const isWindowEW = cell === 3;
-
-                    const xInner0 = x + windowMargin;
-                    const xInner1 = x + 1 - windowMargin;
-                    const zInner0 = z + windowMargin;
-                    const zInner1 = z + 1 - windowMargin;
-
-                    // North face (negative Z)
-                    if (z === 0 || !isSolidCell(map[z - 1][x])) {
-                        if (isWindowNS) {
-                            pushNorthSegmentRange(x, x + 1, z, 0, windowBottom);
-                            pushNorthSegmentRange(x, x + 1, z, windowTop, wallHeight);
-                            pushNorthSegmentRange(x, xInner0, z, windowBottom, windowTop, false, 3);
-                            pushNorthSegmentRange(xInner1, x + 1, z, windowBottom, windowTop, false, 3);
-                        } else {
-                            pushNorthSegment(x, z, 0, wallHeight);
-                        }
-                    }
-                    // South face (positive Z)
-                    if (z === mapHeight - 1 || !isSolidCell(map[z + 1][x])) {
-                        if (isWindowNS) {
-                            pushSouthSegmentRange(x, x + 1, z, 0, windowBottom);
-                            pushSouthSegmentRange(x, x + 1, z, windowTop, wallHeight);
-                            pushSouthSegmentRange(x, xInner0, z, windowBottom, windowTop, false, 3);
-                            pushSouthSegmentRange(xInner1, x + 1, z, windowBottom, windowTop, false, 3);
-                        } else {
-                            pushSouthSegment(x, z, 0, wallHeight);
-                        }
-                    }
-                    // West face (negative X)
-                    if (x === 0 || !isSolidCell(map[z][x - 1])) {
-                        if (isWindowEW) {
-                            pushWestSegmentRange(x, z, z + 1, 0, windowBottom);
-                            pushWestSegmentRange(x, z, z + 1, windowTop, wallHeight);
-                            pushWestSegmentRange(x, z, zInner0, windowBottom, windowTop, false, 3);
-                            pushWestSegmentRange(x, zInner1, z + 1, windowBottom, windowTop, false, 3);
-                        } else {
-                            pushWestSegment(x, z, 0, wallHeight);
-                        }
-                    }
-                    // East face (positive X)
-                    if (x === mapWidth - 1 || !isSolidCell(map[z][x + 1])) {
-                        if (isWindowEW) {
-                            pushEastSegmentRange(x + 1, z, z + 1, 0, windowBottom);
-                            pushEastSegmentRange(x + 1, z, z + 1, windowTop, wallHeight);
-                            pushEastSegmentRange(x + 1, z, zInner0, windowBottom, windowTop, false, 3);
-                            pushEastSegmentRange(x + 1, zInner1, z + 1, windowBottom, windowTop, false, 3);
-                        } else {
-                            pushEastSegment(x, z, 0, wallHeight);
-                        }
-                    }
-
-                    if (isWindowNS) {
-                        pushWestSegmentRange(xInner0, z, z + 1, windowBottom, windowTop, true, 3);
-                        pushEastSegmentRange(xInner1, z, z + 1, windowBottom, windowTop, true, 3);
-                        pushHorizontalFill(xInner0, xInner1, z, z + 1, windowBottom, 0);
-                        pushHorizontalFill(xInner0, xInner1, z, z + 1, windowTop, 2);
-                    } else if (isWindowEW) {
-                        pushNorthSegmentRange(x, x + 1, zInner0, windowBottom, windowTop, true, 3);
-                        pushSouthSegmentRange(x, x + 1, zInner1 - 1, windowBottom, windowTop, true, 3);
-                        pushHorizontalFill(x, x + 1, zInner0, zInner1, windowBottom, 0);
-                        pushHorizontalFill(x, x + 1, zInner0, zInner1, windowTop, 2);
-                    }
-                }
-            }
-
+            // Create map data array for collision detection (still needed by JavaScript)
             const mapDataArray = new Uint32Array(mapWidth * mapHeight);
             for (let z = 0; z < mapHeight; z++) {
                 for (let x = 0; x < mapWidth; x++) {

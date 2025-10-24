@@ -1,5 +1,7 @@
 #pragma once
 
+#include <base/base_types.h>
+
 // Map dimensions
 #define MAP_WIDTH 10
 #define MAP_HEIGHT 10
@@ -11,8 +13,34 @@
 // Math constants
 #define PI 3.14159265358979323846
 
+// Mesh generation constants
+#define WALL_HEIGHT 2.0f
+#define CHECKER_SIZE 4.0f
+
+// Mesh data structure returned by generate_mesh
+// All arrays are allocated in a flat memory region for easy WASM access
+typedef struct {
+    float *positions;       // Vertex positions (x,y,z), size = position_count * 3
+    float *uvs;            // Texture coordinates (u,v), size = uv_count * 2
+    float *normals;        // Surface normals (x,y,z), size = normal_count * 3
+    float *surface_types;  // Surface type per vertex, size = vertex_count
+    float *triangle_ids;   // Triangle ID per vertex, size = vertex_count
+    uint16_t *indices;     // Triangle indices, size = index_count
+
+    uint32_t position_count;  // Number of floats in positions array
+    uint32_t uv_count;        // Number of floats in uvs array
+    uint32_t normal_count;    // Number of floats in normals array
+    uint32_t vertex_count;    // Number of vertices (for surface_types and triangle_ids)
+    uint32_t index_count;     // Number of indices
+} MeshData;
+
 // Find starting position and direction in the map
 // Returns: 1 if found, 0 if not found
 // Outputs: startX, startZ (position), startYaw (direction in radians), and modifies map
 int find_start_position(int *map, int width, int height,
                        float *startX, float *startZ, float *startYaw);
+
+// Generate mesh geometry from map
+// Returns: Pointer to MeshData structure in WASM linear memory
+// Note: The returned pointer and all internal arrays point to WASM memory
+MeshData* generate_mesh(int *map, int width, int height);

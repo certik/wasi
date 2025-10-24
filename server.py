@@ -19,7 +19,9 @@ def main():
     with socketserver.TCPServer(("", PORT), MyHTTPRequestHandler) as httpd:
         print(f"Server running at http://localhost:{PORT}/")
         print(f"Serving files from: {os.getcwd()}")
+        print()
         print(f"Open http://localhost:{PORT}/gm.html to view the game")
+        print()
         print("Press Ctrl+C to stop the server")
         try:
             httpd.serve_forever()
