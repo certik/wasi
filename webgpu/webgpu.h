@@ -61,9 +61,11 @@
 #define WGPU_NULLABLE
 #endif
 
-#include <stdint.h>
-#include <stddef.h>
-#include <math.h>
+//#include <stdint.h>
+//#include <stddef.h>
+//#include <math.h>
+#include <base/base_types.h>
+#include <base/base_math.h>
 
 #define _wgpu_COMMA ,
 #if defined(__cplusplus)
