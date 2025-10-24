@@ -5,16 +5,14 @@
 #include <base/format.h>
 #include <base/base_string.h>
 #include <base/base_io.h>
+#include <base/base_math.h>
 
-// Math functions (from libSystem on macOS, libm elsewhere, or WASM imports from JS)
+// Math functions for WASM (imported from JavaScript)
 #ifdef __wasm__
-// These will be imported from JavaScript
+// These will be imported from JavaScript, overriding the builtins
 __attribute__((import_module("env"), import_name("cosf")))
 extern float cosf(float x);
 __attribute__((import_module("env"), import_name("sinf")))
-extern float sinf(float x);
-#else
-extern float cosf(float x);
 extern float sinf(float x);
 #endif
 
