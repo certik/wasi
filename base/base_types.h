@@ -40,3 +40,19 @@ typedef signed long long int64_t;
 #define bool _Bool
 #define true 1
 #define false 0
+#define SIZE_MAX ((size_t)-1)
+
+#define INT8_C(value) value
+#define UINT8_C(value) value##u
+#define INT16_C(value) value
+#define UINT16_C(value) value##u
+#define INT32_C(value) value
+#define UINT32_C(value) value##u
+#define INT64_C(value) value##ll
+#define UINT64_C(value) value##ull
+#define INTMAX_C(value) INT64_C(value)
+#define UINTMAX_C(value) UINT64_C(value)
+#define INT32_MAX ((int32_t)0x7FFFFFFF)
+#define UINT32_MAX ((uint32_t)0xFFFFFFFFu)
+#define INT64_MAX ((int64_t)0x7FFFFFFFFFFFFFFFll)
+#define UINT64_MAX ((uint64_t)0xFFFFFFFFFFFFFFFFull)
