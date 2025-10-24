@@ -792,6 +792,9 @@
                 },
             };
 
+            // Declare memory variable for WASI imports to use
+            let memory;
+
             const wasmModule = await WebAssembly.instantiate(wasmBytes, {
                 env: {
                     cosf: (x) => Math.cos(x),
@@ -799,24 +802,31 @@
                 },
                 platform: platformAPI,
                 wasi_snapshot_preview1: {
-                // Not needed right now:
-                /*
-                    fd_write: () => 0,
-                    proc_exit: () => {},
-                    path_open: () => 0,
-                    fd_close: () => 0,
-                    fd_read: () => 0,
-                    fd_seek: () => 0,
-                    fd_tell: () => 0,
-                    args_sizes_get: () => 0,
-                    args_get: () => 0,
-                */
+                    fd_write: (fd, iovs, iovs_len, nwritten) => {
+                        // Simple implementation for stdout/stderr
+                        let written = 0;
+                        const view = new DataView(memory.buffer);
+                        const decoder = new TextDecoder();
+                        for (let i = 0; i < iovs_len; i++) {
+                            const ptr = view.getUint32(iovs + i * 8, true);
+                            const len = view.getUint32(iovs + i * 8 + 4, true);
+                            const bytes = new Uint8Array(memory.buffer, ptr, len);
+                            console.log(decoder.decode(bytes));
+                            written += len;
+                        }
+                        view.setUint32(nwritten, written, true);
+                        return 0;
+                    },
+                    proc_exit: (code) => {
+                        console.log('WASM exited with code:', code);
+                        throw new Error('WASM called proc_exit with code: ' + code);
+                    },
                 },
                 webgpu: webgpuHost.imports,
             });
 
             const wasmInstance = wasmModule.instance;
-            const memory = wasmInstance.exports.memory;
+            memory = wasmInstance.exports.memory;
             webgpuHost.setMemory(memory);
             const find_start_position = wasmInstance.exports.find_start_position;
             const generate_mesh = wasmInstance.exports.generate_mesh;
