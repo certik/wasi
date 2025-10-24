@@ -1090,22 +1090,71 @@
                 const jsEndTime = performance.now();
                 const jsTime = jsEndTime - frameStartTime;
 
-                // Build overlay text via WASM
-                // OverlayTextResult struct: { glyph_data: ptr, length: u32, max_line_length: u32 }
-                const overlayTextResultPtr = gm_build_overlay_text(gameStatePtr);
-                const overlayTextResultView = new Uint32Array(memory.buffer, overlayTextResultPtr, 3);
-                const overlayTextDataPtr = overlayTextResultView[0];
-                const textLength = overlayTextResultView[1];
-                const maxLineLength = overlayTextResultView[2];
+                // Read camera state from uniform data for HUD
+                const cameraX = uniformData[0];
+                const cameraY = uniformData[1];
+                const cameraZ = uniformData[2];
+                const yaw = uniformData[3];
+                const pitch = uniformData[4];
 
-                const overlayTextData = new Uint32Array(memory.buffer, overlayTextDataPtr, textLength);
+                // Read game state flags
+                const gameStateView = new Int32Array(memory.buffer, gameStatePtr, 128);
+                const mapVisible = gameStateView[GameStateOffsets.map_visible / 4];
+                const mapRelativeMode = gameStateView[GameStateOffsets.map_relative_mode / 4];
+                const hudVisible = gameStateView[GameStateOffsets.hud_visible / 4];
+                const texturesEnabled = gameStateView[GameStateOffsets.textures_enabled / 4];
+                const triangleMode = gameStateView[GameStateOffsets.triangle_mode / 4];
+                const debugMode = gameStateView[GameStateOffsets.debug_mode / 4];
+                const horizontalMovement = gameStateView[GameStateOffsets.horizontal_movement / 4];
+
+                // Read performance metrics from game state
+                // Offset calculation: 7*4 (camera) + 7*4 (params) + 7*4 (flags) + 256 (keys) + 2*4 (mouse) + 4 (ptr) + 2*4 (map dims) = 360
+                const perfView = new Float32Array(memory.buffer, gameStatePtr + 360, 5); // fps and 4 avg times
+                const stateFps = perfView[0];
+                const avgFrameTime = perfView[1];
+                const avgJsTime = perfView[2];
+                const avgGpuCopyTime = perfView[3];
+                const avgGpuRenderTime = perfView[4];
+
+                // Build HUD text in JavaScript
+                const directionNames = ['E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE'];
+                const directionIndex = Math.round(((yaw / Math.PI * 4) + 8) % 8);
+                const direction = directionNames[directionIndex];
+
+                const lines = [
+                    `FPS: ${fps}  Frame: ${avgFrameTime.toFixed(2)}ms`,
+                    `JS: ${avgJsTime.toFixed(2)}ms  GPU Copy: ${avgGpuCopyTime.toFixed(2)}ms  GPU Render: ${avgGpuRenderTime.toFixed(2)}ms`,
+                    `Pos: (${cameraX.toFixed(2)}, ${cameraY.toFixed(2)}, ${cameraZ.toFixed(2)})`,
+                    `Dir: ${direction} (yaw: ${(yaw * 180 / Math.PI).toFixed(1)}°, pitch: ${(pitch * 180 / Math.PI).toFixed(1)}°)`,
+                    `Movement: ${horizontalMovement ? 'Person' : 'Flying'} (f)  HUD: ${hudVisible ? 'ON' : 'OFF'} (h)  Map: ${mapVisible ? 'ON' : 'OFF'} (m/r)`,
+                    `Textures: ${texturesEnabled ? 'ON' : 'OFF'} (t)  Triangles: ${triangleMode ? 'ON' : 'OFF'} (v)  Debug: ${debugMode ? 'ON' : 'OFF'} (b)`
+                ];
+
+                // Build overlay text array
+                const overlayTextArray = new Uint32Array(overlayTextCapacity);
+                overlayTextArray.fill(32); // SPACE_CODE
+                let index = 0;
+                let maxLineLength = 0;
+                const NEWLINE_CODE = 255;
+
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i];
+                    maxLineLength = Math.max(maxLineLength, line.length);
+                    for (let j = 0; j < line.length && index < overlayTextCapacity; j++) {
+                        overlayTextArray[index++] = line.charCodeAt(j);
+                    }
+                    if (i < lines.length - 1 && index < overlayTextCapacity) {
+                        overlayTextArray[index++] = NEWLINE_CODE;
+                    }
+                }
+                const textLength = index;
 
                 // Get overlay uniform data from WASM
                 const overlayUniformDataPtr = gm_get_overlay_uniform_data(gameStatePtr, canvas.width, canvas.height, textLength, maxLineLength);
                 const overlayUniformData = new Float32Array(memory.buffer, overlayUniformDataPtr, overlayUniformFloatCount);
 
                 device.queue.writeBuffer(overlayUniformBuffer, 0, overlayUniformData);
-                device.queue.writeBuffer(overlayTextBuffer, 0, overlayTextData);
+                device.queue.writeBuffer(overlayTextBuffer, 0, overlayTextArray);
 
                 const gpuCopyEndTime = performance.now();
                 const gpuCopyTime = gpuCopyEndTime - jsEndTime;
