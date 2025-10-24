@@ -30,6 +30,14 @@ WGPUBuffer wgpuDeviceCreateBuffer(WGPUDevice device,
     return NULL;
 }
 
+WGPUShaderModule wgpuDeviceCreateShaderModule(WGPUDevice device,
+        WGPUShaderModuleDescriptor const * descriptor) {
+    (void)device;
+    (void)descriptor;
+    FATAL_ERROR("WebGPU is not supported on this platform build.");
+    return NULL;
+}
+
 void wgpuQueueWriteBuffer(WGPUQueue queue, WGPUBuffer buffer, uint64_t bufferOffset,
         void const * data, size_t size) {
     (void)queue;

@@ -18,6 +18,10 @@ WASM_IMPORT("webgpu", "queue_write_buffer")
 void webgpu_host_queue_write_buffer(uint32_t queue_handle, uint32_t buffer_handle,
         uint32_t offset_low, uint32_t offset_high, uint32_t data_ptr, uint32_t size);
 
+WASM_IMPORT("webgpu", "device_create_shader_module")
+uint32_t webgpu_host_device_create_shader_module(uint32_t device_handle,
+        uint32_t code_ptr, uint32_t code_length);
+
 WGPUInstance wgpuCreateInstance(WGPUInstanceDescriptor const * descriptor) {
     uint32_t desc_ptr = (uint32_t)(uintptr_t)descriptor;
     uint32_t handle = webgpu_host_create_instance(desc_ptr);
@@ -67,6 +71,30 @@ WGPUBuffer wgpuDeviceCreateBuffer(WGPUDevice device,
             (uint32_t)descriptor->usage,
             descriptor->mappedAtCreation ? 1u : 0u);
     return (WGPUBuffer)(uintptr_t)handle;
+}
+
+WGPUShaderModule wgpuDeviceCreateShaderModule(WGPUDevice device,
+        WGPUShaderModuleDescriptor const * descriptor) {
+    if (descriptor == NULL || descriptor->nextInChain == NULL) {
+        return NULL;
+    }
+    const WGPUShaderSourceWGSL *wgsl = (const WGPUShaderSourceWGSL*)descriptor->nextInChain;
+    if (wgsl->chain.sType != WGPUSType_ShaderSourceWGSL || wgsl->code.data == NULL) {
+        return NULL;
+    }
+    size_t code_length = wgsl->code.length;
+    if (code_length == WGPU_STRLEN) {
+        const char *ptr = wgsl->code.data;
+        code_length = 0;
+        while (ptr[code_length] != '\0') {
+            code_length++;
+        }
+    }
+    uint32_t handle = webgpu_host_device_create_shader_module(
+            (uint32_t)(uintptr_t)device,
+            (uint32_t)(uintptr_t)wgsl->code.data,
+            (uint32_t)code_length);
+    return (WGPUShaderModule)(uintptr_t)handle;
 }
 
 void wgpuQueueWriteBuffer(WGPUQueue queue, WGPUBuffer buffer, uint64_t bufferOffset,

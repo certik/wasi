@@ -45,8 +45,10 @@
             let memory = null;
             let nextHandle = 1;
             const buffers = new Map();
+            const shaderModules = new Map();
             const devices = new Map();
             const queues = new Map();
+            const decoder = new TextDecoder('utf-8');
 
             const deviceHandle = nextHandle++;
             devices.set(deviceHandle, device);
@@ -85,6 +87,18 @@
                     const source = new Uint8Array(memory.buffer, dataPtr, size);
                     queue.writeBuffer(buffer, offset, source);
                 },
+                device_create_shader_module(deviceHandleParam, codePtr, codeLength) {
+                    if (!memory) {
+                        throw new Error('WebGPU memory not registered');
+                    }
+                    const targetDevice = devices.get(deviceHandleParam);
+                    const bytes = new Uint8Array(memory.buffer, codePtr, codeLength);
+                    const code = decoder.decode(bytes);
+                    const module = targetDevice.createShaderModule({ code });
+                    const handle = nextHandle++;
+                    shaderModules.set(handle, module);
+                    return handle;
+                },
             };
 
             return {
@@ -98,6 +112,9 @@
                 },
                 getBuffer(handle) {
                     return buffers.get(handle);
+                },
+                getShaderModule(handle) {
+                    return shaderModules.get(handle);
                 },
             };
         }
@@ -217,7 +234,11 @@
             const gm_get_preferred_canvas_format = wasmInstance.exports.gm_get_preferred_canvas_format;
             const gm_register_webgpu_handles = wasmInstance.exports.gm_register_webgpu_handles;
             const gm_create_gpu_buffers = wasmInstance.exports.gm_create_gpu_buffers;
+            const gm_get_gpu_buffer_count = wasmInstance.exports.gm_get_gpu_buffer_count;
             const gm_get_gpu_buffer_table = wasmInstance.exports.gm_get_gpu_buffer_table;
+            const gm_create_shader_modules = wasmInstance.exports.gm_create_shader_modules;
+            const gm_get_shader_module_count = wasmInstance.exports.gm_get_shader_module_count;
+            const gm_get_shader_module_table = wasmInstance.exports.gm_get_shader_module_table;
             const gm_get_uniform_float_count = wasmInstance.exports.gm_get_uniform_float_count;
             gm_register_webgpu_handles(webgpuHost.handles.device, webgpuHost.handles.queue);
 
@@ -319,7 +340,7 @@
                 throw new Error(`gm_create_gpu_buffers failed with code ${bufferInitResult}`);
             }
 
-            const bufferHandleCount = 7;
+            const bufferHandleCount = gm_get_gpu_buffer_count();
             const bufferTablePtr = gm_get_gpu_buffer_table();
             const bufferHandleView = new Uint32Array(memory.buffer, bufferTablePtr, bufferHandleCount);
             const positionBuffer = webgpuHost.getBuffer(bufferHandleView[0]);
@@ -331,704 +352,18 @@
             const uniformBuffer = webgpuHost.getBuffer(bufferHandleView[6]);
             const uniformFloatCount = gm_get_uniform_float_count();
 
-            // Shaders
-            const vsSource = `
-                struct Uniforms {
-                    cameraPosX: f32,
-                    cameraPosY: f32,
-                    cameraPosZ: f32,
-                    yaw: f32,
-                    pitch: f32,
-                    fov: f32,
-                    viewWidth: f32,
-                    viewHeight: f32,
-                    useTextures: f32,
-                    showTriangles: f32,
-                    debugMode: f32,
-                    padding2: f32,
-                };
-                @group(0) @binding(0) var<uniform> u: Uniforms;
+            const shaderInitResult = gm_create_shader_modules();
+            if (shaderInitResult !== 0) {
+                throw new Error(`gm_create_shader_modules failed with code ${shaderInitResult}`);
+            }
 
-                struct VertexOutput {
-                    @builtin(position) clipPos: vec4<f32>,
-                    @location(0) worldPos: vec3<f32>,
-                    @location(1) surfaceType: f32,
-                    @location(2) viewDist: f32,
-                    @location(3) materialUV: vec2<f32>,
-                    @location(4) normal: vec3<f32>,
-                    @location(5) @interpolate(flat) triangleID: f32,
-                };
-
-                @vertex fn vs_main(
-                    @location(0) position: vec3<f32>,
-                    @location(1) uv: vec2<f32>,
-                    @location(2) surfaceType: f32,
-                    @location(3) triangleID: f32,
-                    @location(4) normal: vec3<f32>
-                ) -> VertexOutput {
-                    var output: VertexOutput;
-
-                    // Transform to camera space
-                    let cy = cos(u.yaw);
-                    let sy = sin(u.yaw);
-                    let cp = cos(u.pitch);
-                    let sp = sin(u.pitch);
-
-                    // Position relative to camera
-                    let dx = position.x - u.cameraPosX;
-                    let dy = position.y - u.cameraPosY;
-                    let dz = position.z - u.cameraPosZ;
-
-                    // Transform to view space
-                    // Forward direction is (cos(yaw), 0, sin(yaw)) in world space
-                    // Right direction is (-sin(yaw), 0, cos(yaw)) in world space
-                    let viewX = -dx * sy + dz * cy;
-                    let viewZ_noPitch = dx * cy + dz * sy;
-
-                    // Rotate by pitch (around X axis in view space)
-                    let viewY = dy * cp - viewZ_noPitch * sp;
-                    let viewZ = dy * sp + viewZ_noPitch * cp;
-
-                    // Calculate distance from camera for fog
-                    let viewDist = sqrt(viewX * viewX + viewY * viewY + viewZ * viewZ);
-
-                    // Perspective projection
-                    let aspect = u.viewWidth / u.viewHeight;
-                    let f = tan(u.fov * 0.5);
-                    let near = 0.01;
-                    let far = 100.0;
-
-                    // Output clip-space coordinates (before perspective divide)
-                    // Let GPU handle perspective divide by setting w = viewZ
-                    let clipX = viewX / (f * aspect);
-                    let clipY = viewY / f;
-                    let clipZ = ((far + near) * viewZ - 2.0 * far * near) / (far - near);
-                    let clipW = viewZ;
-
-                    output.clipPos = vec4<f32>(clipX, clipY, clipZ, clipW);
-                    output.worldPos = position;
-                    output.surfaceType = surfaceType;
-                    output.viewDist = viewDist;
-                    output.materialUV = uv;
-                    output.normal = normal;
-                    output.triangleID = triangleID;
-                    return output;
-                }
-            `;
-
-            const fsSource = `
-                struct Uniforms {
-                    cameraPosX: f32,
-                    cameraPosY: f32,
-                    cameraPosZ: f32,
-                    yaw: f32,
-                    pitch: f32,
-                    fov: f32,
-                    viewWidth: f32,
-                    viewHeight: f32,
-                    useTextures: f32,
-                    showTriangles: f32,
-                    debugMode: f32,
-                    padding2: f32,
-                };
-                @group(0) @binding(0) var<uniform> u: Uniforms;
-                @group(0) @binding(1) var s: sampler;
-                @group(0) @binding(2) var wallTexture: texture_2d<f32>;
-                @group(0) @binding(3) var floorTexture: texture_2d<f32>;
-                @group(0) @binding(4) var ceilingTexture: texture_2d<f32>;
-
-                struct VertexOutput {
-                    @builtin(position) clipPos: vec4<f32>,
-                    @location(0) worldPos: vec3<f32>,
-                    @location(1) surfaceType: f32,
-                    @location(2) viewDist: f32,
-                    @location(3) materialUV: vec2<f32>,
-                    @location(4) normal: vec3<f32>,
-                    @location(5) @interpolate(flat) triangleID: f32,
-                };
-
-                @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-                    // Calculate perspective-correct UVs from world position
-                    var texU: f32;
-                    var texV: f32;
-
-                    if (in.surfaceType > 1.5 && in.surfaceType < 2.5) {
-                        // Ceiling (surfaceType = 2)
-                        texU = fract(in.worldPos.x);
-                        texV = fract(in.worldPos.z);
-                    } else if (in.surfaceType > 0.5 && in.surfaceType < 2.5) {
-                        // Wall (surfaceType = 1)
-                        let fx = fract(in.worldPos.x);
-                        let fz = fract(in.worldPos.z);
-                        let distX = min(fx, 1.0 - fx);
-                        let distZ = min(fz, 1.0 - fz);
-                        if (distX < distZ) {
-                            texU = fz;
-                        } else {
-                            texU = fx;
-                        }
-                        texV = in.worldPos.y / 2.0; // wallHeight = 2.0
-                    } else {
-                        // Floor (surfaceType = 0) or window frames (3) initial default
-                        texU = fract(in.worldPos.x);
-                        texV = fract(in.worldPos.z);
-                    }
-
-                    let isFrame = in.surfaceType > 2.5;
-                    if (isFrame) {
-                        texU = in.materialUV.x;
-                        texV = in.materialUV.y;
-                    }
-
-                    var tileScale = 4.0;
-                    var baseColor: vec4<f32>;
-                    if (u.useTextures > 0.5) {
-                        if (in.surfaceType > 1.5 && in.surfaceType < 2.5) {
-                            tileScale = 4.0 / 3.0; // Ceiling texture 3x larger
-                        } else if (in.surfaceType > 0.5) {
-                            tileScale = 4.0 / 5.0; // Wall/window texture 5x larger
-                        } else {
-                            tileScale = 4.0 / 5.0; // Floor texture 5x larger
-                        }
-                        let sampleUV = vec2<f32>(texU, texV) * tileScale;
-
-                        // Sample all textures unconditionally to satisfy uniform control flow requirement
-                        let ceilingSample = textureSample(ceilingTexture, s, sampleUV);
-                        let wallSample = textureSample(wallTexture, s, sampleUV);
-                        let floorSample = textureSample(floorTexture, s, sampleUV);
-
-                        // Select the appropriate sample based on surface type
-                        if (in.surfaceType > 1.5 && in.surfaceType < 2.5) {
-                            baseColor = ceilingSample;
-                        } else if (in.surfaceType > 0.5) {
-                            baseColor = wallSample;
-                        } else {
-                            baseColor = floorSample;
-                        }
-                    } else {
-                        let checkerU = floor(texU * 4.0);
-                        let checkerV = floor(texV * 4.0);
-                        let checker = (i32(checkerU) + i32(checkerV)) & 1;
-                        let checkerFactor = select(0.7, 1.0, checker == 0);
-
-                        if (in.surfaceType > 1.5 && in.surfaceType < 2.5) {
-                            baseColor = vec4<f32>(1.0, 1.0, 0.0, 1.0); // Yellow ceiling
-                        } else if (in.surfaceType > 0.5) {
-                            baseColor = vec4<f32>(1.0, 0.0, 0.0, 1.0); // Red walls
-                        } else {
-                            baseColor = vec4<f32>(0.0, 0.0, 1.0, 1.0); // Blue floor
-                        }
-
-                        baseColor *= checkerFactor;
-                    }
-
-                    var color = baseColor;
-
-                    // Distance fog (exp2 like g.html)
-                    let factor = exp2(-in.viewDist * 0.05);
-                    color.r *= factor;
-                    color.g *= factor;
-                    color.b *= factor;
-
-                    // Debug mode - visualize normals and UV coordinates
-                    if (u.debugMode > 0.5) {
-                        // Show normals as RGB colors (remap from [-1,1] to [0,1])
-                        // Red=X, Green=Y, Blue=Z
-                        let normalColor = (in.normal + vec3<f32>(1.0)) * 0.5;
-
-                        // Show UV in the alpha/brightness
-                        // Or blend with UV visualization
-                        color = vec4<f32>(normalColor, 1.0);
-                    }
-
-                    // Triangle visualization mode
-                    if (u.showTriangles > 0.5) {
-                        // Generate unique color per triangle using triangle ID
-                        let id = in.triangleID;
-
-                        // Simple hash function to generate varied colors from triangle ID
-                        let h1 = fract(sin(id * 12.9898) * 43758.5453);
-                        let h2 = fract(sin(id * 78.233) * 28451.3791);
-                        let h3 = fract(sin(id * 45.164) * 19283.4567);
-
-                        // Create distinct colors with good saturation
-                        color = vec4<f32>(
-                            h1 * 0.7 + 0.3,
-                            h2 * 0.7 + 0.3,
-                            h3 * 0.7 + 0.3,
-                            1.0
-                        );
-                    }
-
-                    return color;
-                }
-            `;
-
-            const overlayVsSource = `
-                struct VertexInput {
-                    @location(0) position: vec2<f32>,
-                };
-
-                struct VertexOutput {
-                    @builtin(position) position: vec4<f32>,
-                    @location(0) frag_position: vec2<f32>,
-                };
-
-                @vertex
-                fn vertex_main(input: VertexInput) -> VertexOutput {
-                    var output: VertexOutput;
-                    output.position = vec4<f32>(input.position, 0.0, 1.0);
-                    output.frag_position = input.position * 0.5 + vec2<f32>(0.5, 0.5);
-                    return output;
-                }
-            `;
-
-            const overlayFsSource = `
-                struct Params {
-                    viewportAndOrigin: vec4<f32>,
-                    sizeAndMetrics: vec4<f32>,
-                    spacingAndPadding: vec4<f32>,
-                    mapRect: vec4<f32>,
-                    mapMeta: vec4<f32>,
-                    playerInfo: vec4<f32>,
-                };
-
-                @group(0) @binding(0)
-                var<uniform> params: Params;
-
-                @group(0) @binding(1)
-                var<storage, read> textData: array<u32>;
-
-                @group(0) @binding(2)
-                var<storage, read> mapData: array<u32>;
-
-                const FONT_GLYPHS = array<array<u32, 8>, 256>(
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x18u, 0x3cu, 0x3cu, 0x18u, 0x18u, 0x00u, 0x18u, 0x00u),
-                            array<u32, 8>(0x36u, 0x36u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x36u, 0x36u, 0x7fu, 0x36u, 0x7fu, 0x36u, 0x36u, 0x00u),
-                            array<u32, 8>(0x0cu, 0x3eu, 0x03u, 0x1eu, 0x30u, 0x1fu, 0x0cu, 0x00u),
-                            array<u32, 8>(0x00u, 0x63u, 0x33u, 0x18u, 0x0cu, 0x66u, 0x63u, 0x00u),
-                            array<u32, 8>(0x1cu, 0x36u, 0x1cu, 0x6eu, 0x3bu, 0x33u, 0x6eu, 0x00u),
-                            array<u32, 8>(0x06u, 0x06u, 0x03u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x18u, 0x0cu, 0x06u, 0x06u, 0x06u, 0x0cu, 0x18u, 0x00u),
-                            array<u32, 8>(0x06u, 0x0cu, 0x18u, 0x18u, 0x18u, 0x0cu, 0x06u, 0x00u),
-                            array<u32, 8>(0x00u, 0x66u, 0x3cu, 0xffu, 0x3cu, 0x66u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x0cu, 0x0cu, 0x3fu, 0x0cu, 0x0cu, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x0cu, 0x0cu, 0x06u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x3fu, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x0cu, 0x0cu, 0x00u),
-                            array<u32, 8>(0x60u, 0x30u, 0x18u, 0x0cu, 0x06u, 0x03u, 0x01u, 0x00u),
-                            array<u32, 8>(0x3eu, 0x63u, 0x73u, 0x7bu, 0x6fu, 0x67u, 0x3eu, 0x00u),
-                            array<u32, 8>(0x0cu, 0x0eu, 0x0cu, 0x0cu, 0x0cu, 0x0cu, 0x3fu, 0x00u),
-                            array<u32, 8>(0x1eu, 0x33u, 0x30u, 0x1cu, 0x06u, 0x33u, 0x3fu, 0x00u),
-                            array<u32, 8>(0x1eu, 0x33u, 0x30u, 0x1cu, 0x30u, 0x33u, 0x1eu, 0x00u),
-                            array<u32, 8>(0x38u, 0x3cu, 0x36u, 0x33u, 0x7fu, 0x30u, 0x78u, 0x00u),
-                            array<u32, 8>(0x3fu, 0x03u, 0x1fu, 0x30u, 0x30u, 0x33u, 0x1eu, 0x00u),
-                            array<u32, 8>(0x1cu, 0x06u, 0x03u, 0x1fu, 0x33u, 0x33u, 0x1eu, 0x00u),
-                            array<u32, 8>(0x3fu, 0x33u, 0x30u, 0x18u, 0x0cu, 0x0cu, 0x0cu, 0x00u),
-                            array<u32, 8>(0x1eu, 0x33u, 0x33u, 0x1eu, 0x33u, 0x33u, 0x1eu, 0x00u),
-                            array<u32, 8>(0x1eu, 0x33u, 0x33u, 0x3eu, 0x30u, 0x18u, 0x0eu, 0x00u),
-                            array<u32, 8>(0x00u, 0x0cu, 0x0cu, 0x00u, 0x00u, 0x0cu, 0x0cu, 0x00u),
-                            array<u32, 8>(0x00u, 0x0cu, 0x0cu, 0x00u, 0x00u, 0x0cu, 0x0cu, 0x06u),
-                            array<u32, 8>(0x18u, 0x0cu, 0x06u, 0x03u, 0x06u, 0x0cu, 0x18u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x3fu, 0x00u, 0x00u, 0x3fu, 0x00u, 0x00u),
-                            array<u32, 8>(0x06u, 0x0cu, 0x18u, 0x30u, 0x18u, 0x0cu, 0x06u, 0x00u),
-                            array<u32, 8>(0x1eu, 0x33u, 0x30u, 0x18u, 0x0cu, 0x00u, 0x0cu, 0x00u),
-                            array<u32, 8>(0x3eu, 0x63u, 0x7bu, 0x7bu, 0x7bu, 0x03u, 0x1eu, 0x00u),
-                            array<u32, 8>(0x0cu, 0x1eu, 0x33u, 0x33u, 0x3fu, 0x33u, 0x33u, 0x00u),
-                            array<u32, 8>(0x3fu, 0x66u, 0x66u, 0x3eu, 0x66u, 0x66u, 0x3fu, 0x00u),
-                            array<u32, 8>(0x3cu, 0x66u, 0x03u, 0x03u, 0x03u, 0x66u, 0x3cu, 0x00u),
-                            array<u32, 8>(0x1fu, 0x36u, 0x66u, 0x66u, 0x66u, 0x36u, 0x1fu, 0x00u),
-                            array<u32, 8>(0x7fu, 0x46u, 0x16u, 0x1eu, 0x16u, 0x46u, 0x7fu, 0x00u),
-                            array<u32, 8>(0x7fu, 0x46u, 0x16u, 0x1eu, 0x16u, 0x06u, 0x0fu, 0x00u),
-                            array<u32, 8>(0x3cu, 0x66u, 0x03u, 0x03u, 0x73u, 0x66u, 0x7cu, 0x00u),
-                            array<u32, 8>(0x33u, 0x33u, 0x33u, 0x3fu, 0x33u, 0x33u, 0x33u, 0x00u),
-                            array<u32, 8>(0x1eu, 0x0cu, 0x0cu, 0x0cu, 0x0cu, 0x0cu, 0x1eu, 0x00u),
-                            array<u32, 8>(0x78u, 0x30u, 0x30u, 0x30u, 0x33u, 0x33u, 0x1eu, 0x00u),
-                            array<u32, 8>(0x67u, 0x66u, 0x36u, 0x1eu, 0x36u, 0x66u, 0x67u, 0x00u),
-                            array<u32, 8>(0x0fu, 0x06u, 0x06u, 0x06u, 0x46u, 0x66u, 0x7fu, 0x00u),
-                            array<u32, 8>(0x63u, 0x77u, 0x7fu, 0x7fu, 0x6bu, 0x63u, 0x63u, 0x00u),
-                            array<u32, 8>(0x63u, 0x67u, 0x6fu, 0x7bu, 0x73u, 0x63u, 0x63u, 0x00u),
-                            array<u32, 8>(0x1cu, 0x36u, 0x63u, 0x63u, 0x63u, 0x36u, 0x1cu, 0x00u),
-                            array<u32, 8>(0x3fu, 0x66u, 0x66u, 0x3eu, 0x06u, 0x06u, 0x0fu, 0x00u),
-                            array<u32, 8>(0x1eu, 0x33u, 0x33u, 0x33u, 0x3bu, 0x1eu, 0x38u, 0x00u),
-                            array<u32, 8>(0x3fu, 0x66u, 0x66u, 0x3eu, 0x36u, 0x66u, 0x67u, 0x00u),
-                            array<u32, 8>(0x1eu, 0x33u, 0x07u, 0x0eu, 0x38u, 0x33u, 0x1eu, 0x00u),
-                            array<u32, 8>(0x3fu, 0x2du, 0x0cu, 0x0cu, 0x0cu, 0x0cu, 0x1eu, 0x00u),
-                            array<u32, 8>(0x33u, 0x33u, 0x33u, 0x33u, 0x33u, 0x33u, 0x3fu, 0x00u),
-                            array<u32, 8>(0x33u, 0x33u, 0x33u, 0x33u, 0x33u, 0x1eu, 0x0cu, 0x00u),
-                            array<u32, 8>(0x63u, 0x63u, 0x63u, 0x6bu, 0x7fu, 0x77u, 0x63u, 0x00u),
-                            array<u32, 8>(0x63u, 0x63u, 0x36u, 0x1cu, 0x1cu, 0x36u, 0x63u, 0x00u),
-                            array<u32, 8>(0x33u, 0x33u, 0x33u, 0x1eu, 0x0cu, 0x0cu, 0x1eu, 0x00u),
-                            array<u32, 8>(0x7fu, 0x63u, 0x31u, 0x18u, 0x4cu, 0x66u, 0x7fu, 0x00u),
-                            array<u32, 8>(0x1eu, 0x06u, 0x06u, 0x06u, 0x06u, 0x06u, 0x1eu, 0x00u),
-                            array<u32, 8>(0x03u, 0x06u, 0x0cu, 0x18u, 0x30u, 0x60u, 0x40u, 0x00u),
-                            array<u32, 8>(0x1eu, 0x18u, 0x18u, 0x18u, 0x18u, 0x18u, 0x1eu, 0x00u),
-                            array<u32, 8>(0x08u, 0x1cu, 0x36u, 0x63u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0xffu),
-                            array<u32, 8>(0x0cu, 0x0cu, 0x18u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x1eu, 0x30u, 0x3eu, 0x33u, 0x6eu, 0x00u),
-                            array<u32, 8>(0x07u, 0x06u, 0x06u, 0x3eu, 0x66u, 0x66u, 0x3bu, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x1eu, 0x33u, 0x03u, 0x33u, 0x1eu, 0x00u),
-                            array<u32, 8>(0x38u, 0x30u, 0x30u, 0x3eu, 0x33u, 0x33u, 0x6eu, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x1eu, 0x33u, 0x3fu, 0x03u, 0x1eu, 0x00u),
-                            array<u32, 8>(0x1cu, 0x36u, 0x06u, 0x0fu, 0x06u, 0x06u, 0x0fu, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x6eu, 0x33u, 0x33u, 0x3eu, 0x30u, 0x1fu),
-                            array<u32, 8>(0x07u, 0x06u, 0x36u, 0x6eu, 0x66u, 0x66u, 0x67u, 0x00u),
-                            array<u32, 8>(0x0cu, 0x00u, 0x0eu, 0x0cu, 0x0cu, 0x0cu, 0x1eu, 0x00u),
-                            array<u32, 8>(0x30u, 0x00u, 0x30u, 0x30u, 0x30u, 0x33u, 0x33u, 0x1eu),
-                            array<u32, 8>(0x07u, 0x06u, 0x66u, 0x36u, 0x1eu, 0x36u, 0x67u, 0x00u),
-                            array<u32, 8>(0x0eu, 0x0cu, 0x0cu, 0x0cu, 0x0cu, 0x0cu, 0x1eu, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x33u, 0x7fu, 0x7fu, 0x6bu, 0x63u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x1fu, 0x33u, 0x33u, 0x33u, 0x33u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x1eu, 0x33u, 0x33u, 0x33u, 0x1eu, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x3bu, 0x66u, 0x66u, 0x3eu, 0x06u, 0x0fu),
-                            array<u32, 8>(0x00u, 0x00u, 0x6eu, 0x33u, 0x33u, 0x3eu, 0x30u, 0x78u),
-                            array<u32, 8>(0x00u, 0x00u, 0x3bu, 0x6eu, 0x66u, 0x06u, 0x0fu, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x3eu, 0x03u, 0x1eu, 0x30u, 0x1fu, 0x00u),
-                            array<u32, 8>(0x08u, 0x0cu, 0x3eu, 0x0cu, 0x0cu, 0x2cu, 0x18u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x33u, 0x33u, 0x33u, 0x33u, 0x6eu, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x33u, 0x33u, 0x33u, 0x1eu, 0x0cu, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x63u, 0x6bu, 0x7fu, 0x7fu, 0x36u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x63u, 0x36u, 0x1cu, 0x36u, 0x63u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x33u, 0x33u, 0x33u, 0x3eu, 0x30u, 0x1fu),
-                            array<u32, 8>(0x00u, 0x00u, 0x3fu, 0x19u, 0x0cu, 0x26u, 0x3fu, 0x00u),
-                            array<u32, 8>(0x38u, 0x0cu, 0x0cu, 0x07u, 0x0cu, 0x0cu, 0x38u, 0x00u),
-                            array<u32, 8>(0x18u, 0x18u, 0x18u, 0x00u, 0x18u, 0x18u, 0x18u, 0x00u),
-                            array<u32, 8>(0x07u, 0x0cu, 0x0cu, 0x38u, 0x0cu, 0x0cu, 0x07u, 0x00u),
-                            array<u32, 8>(0x6eu, 0x3bu, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x1cu, 0x36u, 0x36u, 0x1cu, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u),
-                            array<u32, 8>(0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u)
-                );
-
-                const GLYPH_WIDTH: u32 = 8u;
-                const GLYPH_HEIGHT: u32 = 8u;
-                const NEWLINE_CODE: u32 = 255u;
-
-                fn glyph_on(char_idx: u32, column: u32, row: u32) -> bool {
-                    if (char_idx >= 256u) {
-                        return false;
-                    }
-                    let rowData = FONT_GLYPHS[char_idx][row];
-                    return ((rowData >> column) & 1u) == 1u;
-                }
-
-                struct FragIn {
-                    @location(0) frag_position: vec2<f32>,
-                };
-
-                @fragment
-                fn fragment_main(fragData: FragIn) -> @location(0) vec4<f32> {
-                    let viewportSize = vec2<f32>(params.viewportAndOrigin.x, params.viewportAndOrigin.y);
-                    let panelOrigin = vec2<f32>(params.viewportAndOrigin.z, params.viewportAndOrigin.w);
-                    let panelSize = vec2<f32>(params.sizeAndMetrics.x, params.sizeAndMetrics.y);
-                    let panelMax = panelOrigin + panelSize;
-
-                    let screen = vec2<f32>(
-                        fragData.frag_position.x * viewportSize.x,
-                        (1.0 - fragData.frag_position.y) * viewportSize.y
-                    );
-
-                    let center = viewportSize * 0.5;
-                    let crosshairSize = 10.0;
-                    let crosshairThickness = 2.0;
-                    let innerThickness = 1.0;
-                    let dx = abs(screen.x - center.x);
-                    let dy = abs(screen.y - center.y);
-                    if ((dx < crosshairThickness && dy < crosshairSize) ||
-                        (dy < crosshairThickness && dx < crosshairSize)) {
-                        if (dx < innerThickness || dy < innerThickness) {
-                            return vec4<f32>(1.0, 1.0, 1.0, 1.0);
-                        }
-                        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
-                    }
-
-                    if (screen.x < panelOrigin.x || screen.x > panelMax.x ||
-                        screen.y < panelOrigin.y || screen.y > panelMax.y) {
-                        return vec4<f32>(0.0, 0.0, 0.0, 0.0);
-                    }
-
-                    var color = vec4<f32>(0.0, 1.0, 0.0, 0.3);
-
-                    let textScale = params.sizeAndMetrics.z;
-                    let glyphSpacing = u32(params.sizeAndMetrics.w + 0.5);
-                    let lineSpacing = u32(params.spacingAndPadding.x + 0.5);
-                    let textLength = u32(params.spacingAndPadding.y + 0.5);
-                    let padding = vec2<f32>(params.spacingAndPadding.z, params.spacingAndPadding.w);
-
-                    let hudVisible = params.playerInfo.w;
-                    if (hudVisible <= 0.5) {
-                        return vec4<f32>(0.0, 0.0, 0.0, 0.0);
-                    }
-
-                    let textLocal = screen - (panelOrigin + padding);
-                    if (textLocal.x >= 0.0 && textLocal.y >= 0.0) {
-                        var cursorX: u32 = 0u;
-                        var cursorY: u32 = 0u;
-                        var idx: u32 = 0u;
-                        loop {
-                            if (idx >= textLength) { break; }
-                            let code = textData[idx];
-                            if (code == NEWLINE_CODE) {
-                                cursorX = 0u;
-                                cursorY = cursorY + GLYPH_HEIGHT + lineSpacing;
-                                idx = idx + 1u;
-                                continue;
-                            }
-
-                            let glyphOrigin = vec2<f32>(
-                                f32(cursorX) * textScale,
-                                f32(cursorY) * textScale
-                            );
-                            let glyphLocal = textLocal - glyphOrigin;
-                            if (glyphLocal.x >= 0.0 && glyphLocal.y >= 0.0 &&
-                                glyphLocal.x < textScale * f32(GLYPH_WIDTH) &&
-                                glyphLocal.y < textScale * f32(GLYPH_HEIGHT)) {
-                                let column = u32(floor(glyphLocal.x / textScale));
-                                let row = u32(floor(glyphLocal.y / textScale));
-                                if (column < GLYPH_WIDTH && row < GLYPH_HEIGHT) {
-                                    if (glyph_on(code, column, row)) {
-                                        return vec4<f32>(1.0, 0.0, 0.0, 1.0);
-                                    }
-                                }
-                            }
-
-                            cursorX = cursorX + GLYPH_WIDTH + glyphSpacing;
-                            idx = idx + 1u;
-                        }
-                    }
-
-                    let mapVisible = params.mapRect.w;
-                    if (mapVisible > 0.5) {
-                        let mapOrigin = vec2<f32>(params.mapRect.x, params.mapRect.y);
-                        let mapScale = params.mapRect.z;
-                        let mapMode = params.mapMeta.x;
-                        let mapWidth = u32(params.mapMeta.y + 0.5);
-                        let mapHeight = u32(params.mapMeta.z + 0.5);
-                        let playerPos = vec2<f32>(params.playerInfo.x, params.playerInfo.y);
-                        let playerYaw = params.playerInfo.z;
-                        let mapSize = vec2<f32>(f32(mapWidth) * mapScale, f32(mapHeight) * mapScale);
-                        let mapMax = mapOrigin + mapSize;
-
-                        if (screen.x >= mapOrigin.x && screen.x <= mapMax.x &&
-                            screen.y >= mapOrigin.y && screen.y <= mapMax.y) {
-                            let local = screen - mapOrigin;
-                            var worldPos = vec2<f32>(local.x / mapScale, local.y / mapScale);
-                            var playerScreen = mapOrigin + playerPos * mapScale;
-
-                            if (mapMode > 0.5) {
-                                let mapCenter = mapOrigin + mapSize * 0.5;
-                                let offsetScaled = (screen - mapCenter) / mapScale;
-                                let forward = vec2<f32>(cos(playerYaw), sin(playerYaw));
-                                let right = vec2<f32>(-forward.y, forward.x);
-                                worldPos = playerPos + right * offsetScaled.x - forward * offsetScaled.y;
-                                playerScreen = mapCenter;
-                            }
-
-                            let tileX = i32(floor(worldPos.x));
-                            let tileY = i32(floor(worldPos.y));
-                            var tileColor = vec4<f32>(0.02, 0.05, 0.08, 0.6);
-
-                            if (tileX >= 0 && tileX < i32(mapWidth) && tileY >= 0 && tileY < i32(mapHeight)) {
-                                let idx = u32(tileY) * mapWidth + u32(tileX);
-                                let cell = mapData[idx];
-                                if (cell >= 1u) {
-                                    tileColor = vec4<f32>(0.7, 0.1, 0.1, 0.9);
-                                } else {
-                                    tileColor = vec4<f32>(0.1, 0.2, 0.35, 0.7);
-                                }
-                            }
-
-                            let markerOffset = screen - playerScreen;
-                            let markerDist = length(markerOffset);
-                            let markerRadius = mapScale * 0.25;
-                            if (markerDist < markerRadius) {
-                                tileColor = vec4<f32>(1.0, 1.0, 1.0, 1.0);
-                            } else {
-                                if (mapMode < 0.5) {
-                                    let dir = vec2<f32>(cos(playerYaw), sin(playerYaw));
-                                    let forward = markerOffset.x * dir.x + markerOffset.y * dir.y;
-                                    let perpendicular = abs(markerOffset.x * dir.y - markerOffset.y * dir.x);
-                                    if (forward > 0.0 && forward < mapScale && perpendicular < mapScale * 0.18) {
-                                        tileColor = vec4<f32>(1.0, 0.8, 0.2, 1.0);
-                                    }
-                                } else {
-                                    let offsetNorm = markerOffset / mapScale;
-                                    if (-offsetNorm.y > 0.0 && -offsetNorm.y < 1.0 && abs(offsetNorm.x) < 0.2) {
-                                        tileColor = vec4<f32>(1.0, 0.8, 0.2, 1.0);
-                                    }
-                                }
-                            }
-
-                            return tileColor;
-                        }
-                    }
-
-                    return color;
-                }
-            `;
-            const vsModule = device.createShaderModule({ code: vsSource });
-            const fsModule = device.createShaderModule({ code: fsSource });
+            const shaderHandleCount = gm_get_shader_module_count();
+            const shaderTablePtr = gm_get_shader_module_table();
+            const shaderHandleView = new Uint32Array(memory.buffer, shaderTablePtr, shaderHandleCount);
+            const vsModule = webgpuHost.getShaderModule(shaderHandleView[0]);
+            const fsModule = webgpuHost.getShaderModule(shaderHandleView[1]);
+            const overlayVsModule = webgpuHost.getShaderModule(shaderHandleView[2]);
+            const overlayFsModule = webgpuHost.getShaderModule(shaderHandleView[3]);
 
             // Check for shader compilation errors
             vsModule.getCompilationInfo().then(info => {
@@ -1105,9 +440,6 @@
                     format: 'depth24plus'
                 }
             });
-
-            const overlayVsModule = device.createShaderModule({ code: overlayVsSource });
-            const overlayFsModule = device.createShaderModule({ code: overlayFsSource });
 
             const overlayPipeline = device.createRenderPipeline({
                 layout: device.createPipelineLayout({ bindGroupLayouts: [overlayBindGroupLayout] }),

@@ -1,6 +1,8 @@
 #include <gm.h>
 #include <webgpu/webgpu.h>
 
+#include "gm_shaders.inc"
+
 #define GM_UNIFORM_FLOAT_COUNT 12
 
 typedef enum {
@@ -17,6 +19,16 @@ typedef enum {
 static WGPUDevice g_wgpu_device = NULL;
 static WGPUQueue g_wgpu_queue = NULL;
 static WGPUBuffer g_gpu_buffers[GM_BUFFER_COUNT];
+
+typedef enum {
+    GM_SHADER_MAIN_VS = 0,
+    GM_SHADER_MAIN_FS,
+    GM_SHADER_OVERLAY_VS,
+    GM_SHADER_OVERLAY_FS,
+    GM_SHADER_COUNT
+} GMShaderSlot;
+
+static WGPUShaderModule g_shader_modules[GM_SHADER_COUNT];
 
 // Find starting position and direction in the map
 // Returns: 1 if found, 0 if not found
@@ -570,6 +582,19 @@ void gm_register_webgpu_handles(uint32_t device_handle, uint32_t queue_handle) {
     g_wgpu_queue = (WGPUQueue)(uintptr_t)queue_handle;
 }
 
+static WGPUShaderModule gm_create_shader_module_from_source(const char *source, size_t length) {
+    if (source == NULL || length == 0 || g_wgpu_device == NULL) {
+        return NULL;
+    }
+    WGPUShaderSourceWGSL wgsl = WGPU_SHADER_SOURCE_WGSL_INIT;
+    wgsl.code.data = source;
+    wgsl.code.length = length;
+
+    WGPUShaderModuleDescriptor desc = WGPU_SHADER_MODULE_DESCRIPTOR_INIT;
+    desc.nextInChain = (WGPUChainedStruct*)&wgsl;
+    return wgpuDeviceCreateShaderModule(g_wgpu_device, &desc);
+}
+
 static WGPUBuffer gm_create_buffer_with_data(const void *data, size_t size,
         WGPUBufferUsage usage) {
     if (size == 0) {
@@ -663,10 +688,54 @@ uint32_t gm_get_gpu_buffer_table(void) {
     return (uint32_t)(uintptr_t)g_gpu_buffers;
 }
 
+uint32_t gm_get_gpu_buffer_count(void) {
+    return GM_BUFFER_COUNT;
+}
+
 uint32_t gm_get_uniform_float_count(void) {
     return GM_UNIFORM_FLOAT_COUNT;
 }
 
 uint32_t gm_get_uniform_buffer_size(void) {
     return GM_UNIFORM_FLOAT_COUNT * (uint32_t)sizeof(float);
+}
+
+int gm_create_shader_modules(void) {
+    if (g_wgpu_device == NULL) {
+        return -1;
+    }
+
+    g_shader_modules[GM_SHADER_MAIN_VS] = gm_create_shader_module_from_source(
+            GM_WGSL_MAIN_VS, sizeof(GM_WGSL_MAIN_VS) - 1);
+    if (g_shader_modules[GM_SHADER_MAIN_VS] == NULL) {
+        return -2;
+    }
+
+    g_shader_modules[GM_SHADER_MAIN_FS] = gm_create_shader_module_from_source(
+            GM_WGSL_MAIN_FS, sizeof(GM_WGSL_MAIN_FS) - 1);
+    if (g_shader_modules[GM_SHADER_MAIN_FS] == NULL) {
+        return -3;
+    }
+
+    g_shader_modules[GM_SHADER_OVERLAY_VS] = gm_create_shader_module_from_source(
+            GM_WGSL_OVERLAY_VS, sizeof(GM_WGSL_OVERLAY_VS) - 1);
+    if (g_shader_modules[GM_SHADER_OVERLAY_VS] == NULL) {
+        return -4;
+    }
+
+    g_shader_modules[GM_SHADER_OVERLAY_FS] = gm_create_shader_module_from_source(
+            GM_WGSL_OVERLAY_FS, sizeof(GM_WGSL_OVERLAY_FS) - 1);
+    if (g_shader_modules[GM_SHADER_OVERLAY_FS] == NULL) {
+        return -5;
+    }
+
+    return 0;
+}
+
+uint32_t gm_get_shader_module_table(void) {
+    return (uint32_t)(uintptr_t)g_shader_modules;
+}
+
+uint32_t gm_get_shader_module_count(void) {
+    return GM_SHADER_COUNT;
 }
