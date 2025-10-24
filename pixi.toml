@@ -255,6 +255,7 @@ clang \
     gm.c \
     gm_test.c \
     webgpu/webgpu_mock.c \
+    platform_mock.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
@@ -354,6 +355,7 @@ clang \
     gm.c \
     gm_test.c \
     webgpu/webgpu_mock.c \
+    platform_mock.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
@@ -510,6 +512,7 @@ cl \
     gm.c \
     gm_test.c \
     webgpu/webgpu_mock.c \
+    platform_mock.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
@@ -533,6 +536,7 @@ link \
     gm.obj \
     gm_test.obj \
     webgpu_mock.obj \
+    platform_mock.obj \
     base_io.obj \
     buddy.obj \
     arena.obj \
