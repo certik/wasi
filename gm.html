@@ -123,9 +123,12 @@
             // Generate meshes
             const positions = [];
             const uvs = [];
+            const normals = []; // vertex normals
             const surfaceTypes = []; // 0=floor, 1=wall, 2=ceiling
+            const triangleIDs = []; // unique ID for each triangle
             const indices = [];
             let indexOffset = 0;
+            let triangleCounter = 0;
 
             const windowBottom = wallHeight * 0.3;
             const windowTop = wallHeight - windowBottom;
@@ -143,9 +146,15 @@
                     x1, y1, z
                 );
                 uvs.push(0, v0, uSpan, v0, 0, v1, uSpan, v1);
+                normals.push(0, 0, -1,  0, 0, -1,  0, 0, -1,  0, 0, -1); // North face normal
                 surfaceTypes.push(surfaceType, surfaceType, surfaceType, surfaceType);
+                // Triangle IDs for flat interpolation: only the first vertex of each triangle matters (provoking vertex)
+                // Triangle 1: [0,1,2] - provoking vertex 0 → gets triangleCounter
+                // Triangle 2: [1,3,2] - provoking vertex 1 → gets triangleCounter+1
+                triangleIDs.push(triangleCounter, triangleCounter + 1, 0, 0);
                 indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
                 indexOffset += 4;
+                triangleCounter += 2;
             }
 
             function pushSouthSegmentRange(x0, x1, z, y0, y1, normalizeU = false, surfaceType = 1) {
@@ -159,9 +168,12 @@
                     x1, y1, z + 1
                 );
                 uvs.push(0, v0, uSpan, v0, 0, v1, uSpan, v1);
+                normals.push(0, 0, 1,  0, 0, 1,  0, 0, 1,  0, 0, 1); // South face normal
                 surfaceTypes.push(surfaceType, surfaceType, surfaceType, surfaceType);
+                triangleIDs.push(triangleCounter, triangleCounter + 1, 0, 0);
                 indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
                 indexOffset += 4;
+                triangleCounter += 2;
             }
 
             function pushWestSegmentRange(x, z0, z1, y0, y1, normalizeU = false, surfaceType = 1) {
@@ -175,9 +187,12 @@
                     x, y1, z1
                 );
                 uvs.push(0, v0, uSpan, v0, 0, v1, uSpan, v1);
+                normals.push(-1, 0, 0,  -1, 0, 0,  -1, 0, 0,  -1, 0, 0); // West face normal
                 surfaceTypes.push(surfaceType, surfaceType, surfaceType, surfaceType);
+                triangleIDs.push(triangleCounter, triangleCounter + 1, 0, 0);
                 indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
                 indexOffset += 4;
+                triangleCounter += 2;
             }
 
             function pushEastSegmentRange(x, z0, z1, y0, y1, normalizeU = false, surfaceType = 1) {
@@ -191,9 +206,12 @@
                     x, y1, z1
                 );
                 uvs.push(0, v0, uSpan, v0, 0, v1, uSpan, v1);
+                normals.push(1, 0, 0,  1, 0, 0,  1, 0, 0,  1, 0, 0); // East face normal
                 surfaceTypes.push(surfaceType, surfaceType, surfaceType, surfaceType);
+                triangleIDs.push(triangleCounter, triangleCounter + 1, 0, 0);
                 indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
                 indexOffset += 4;
+                triangleCounter += 2;
             }
 
             function pushHorizontalFill(x0, x1, z0, z1, y, surfaceType) {
@@ -206,9 +224,14 @@
                     x1, y, z1
                 );
                 uvs.push(0, 0, uSpan, 0, 0, vSpan, uSpan, vSpan);
+                // Normal depends on surface type: floor (0) = (0,1,0), ceiling (2) = (0,-1,0)
+                const ny = surfaceType === 0 ? 1 : -1;
+                normals.push(0, ny, 0,  0, ny, 0,  0, ny, 0,  0, ny, 0);
                 surfaceTypes.push(surfaceType, surfaceType, surfaceType, surfaceType);
+                triangleIDs.push(triangleCounter, triangleCounter + 1, 0, 0);
                 indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
                 indexOffset += 4;
+                triangleCounter += 2;
             }
 
             function pushNorthSegment(x, z, y0, y1) {
@@ -238,9 +261,12 @@
             ];
             positions.push(...floorPositions);
             uvs.push(...floorUVs);
+            normals.push(0, 1, 0,  0, 1, 0,  0, 1, 0,  0, 1, 0); // Floor normal (up)
             surfaceTypes.push(0, 0, 0, 0); // floor
+            triangleIDs.push(triangleCounter, triangleCounter + 1, 0, 0);
             indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
             indexOffset += 4;
+            triangleCounter += 2;
 
             // Ceiling: similar but at wallHeight (matching collision coordinate system)
             const ceilingPositions = [
@@ -250,9 +276,12 @@
             const ceilingUVs = floorUVs; // Same tiling
             positions.push(...ceilingPositions);
             uvs.push(...ceilingUVs);
+            normals.push(0, -1, 0,  0, -1, 0,  0, -1, 0,  0, -1, 0); // Ceiling normal (down)
             surfaceTypes.push(2, 2, 2, 2); // ceiling
+            triangleIDs.push(triangleCounter, triangleCounter + 1, 0, 0);
             indices.push(indexOffset, indexOffset + 1, indexOffset + 2, indexOffset + 1, indexOffset + 3, indexOffset + 2);
             indexOffset += 4;
+            triangleCounter += 2;
 
             const isSolidCell = (value) => value === 1 || value === 2 || value === 3;
 
@@ -363,6 +392,22 @@
             new Float32Array(surfaceTypeBuffer.getMappedRange()).set(surfaceTypes);
             surfaceTypeBuffer.unmap();
 
+            const triangleIDBuffer = device.createBuffer({
+                size: triangleIDs.length * 4,
+                usage: GPUBufferUsage.VERTEX,
+                mappedAtCreation: true
+            });
+            new Float32Array(triangleIDBuffer.getMappedRange()).set(triangleIDs);
+            triangleIDBuffer.unmap();
+
+            const normalBuffer = device.createBuffer({
+                size: normals.length * 4,
+                usage: GPUBufferUsage.VERTEX,
+                mappedAtCreation: true
+            });
+            new Float32Array(normalBuffer.getMappedRange()).set(normals);
+            normalBuffer.unmap();
+
             const indexBuffer = device.createBuffer({
                 size: indices.length * 2,
                 usage: GPUBufferUsage.INDEX,
@@ -391,8 +436,8 @@
                     viewWidth: f32,
                     viewHeight: f32,
                     useTextures: f32,
-                    padding0: f32,
-                    padding1: f32,
+                    showTriangles: f32,
+                    debugMode: f32,
                     padding2: f32,
                 };
                 @group(0) @binding(0) var<uniform> u: Uniforms;
@@ -403,12 +448,16 @@
                     @location(1) surfaceType: f32,
                     @location(2) viewDist: f32,
                     @location(3) materialUV: vec2<f32>,
+                    @location(4) normal: vec3<f32>,
+                    @location(5) @interpolate(flat) triangleID: f32,
                 };
 
                 @vertex fn vs_main(
                     @location(0) position: vec3<f32>,
                     @location(1) uv: vec2<f32>,
-                    @location(2) surfaceType: f32
+                    @location(2) surfaceType: f32,
+                    @location(3) triangleID: f32,
+                    @location(4) normal: vec3<f32>
                 ) -> VertexOutput {
                     var output: VertexOutput;
 
@@ -454,6 +503,8 @@
                     output.surfaceType = surfaceType;
                     output.viewDist = viewDist;
                     output.materialUV = uv;
+                    output.normal = normal;
+                    output.triangleID = triangleID;
                     return output;
                 }
             `;
@@ -469,8 +520,8 @@
                     viewWidth: f32,
                     viewHeight: f32,
                     useTextures: f32,
-                    padding0: f32,
-                    padding1: f32,
+                    showTriangles: f32,
+                    debugMode: f32,
                     padding2: f32,
                 };
                 @group(0) @binding(0) var<uniform> u: Uniforms;
@@ -485,6 +536,8 @@
                     @location(1) surfaceType: f32,
                     @location(2) viewDist: f32,
                     @location(3) materialUV: vec2<f32>,
+                    @location(4) normal: vec3<f32>,
+                    @location(5) @interpolate(flat) triangleID: f32,
                 };
 
                 @fragment fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
@@ -569,6 +622,36 @@
                     color.r *= factor;
                     color.g *= factor;
                     color.b *= factor;
+
+                    // Debug mode - visualize normals and UV coordinates
+                    if (u.debugMode > 0.5) {
+                        // Show normals as RGB colors (remap from [-1,1] to [0,1])
+                        // Red=X, Green=Y, Blue=Z
+                        let normalColor = (in.normal + vec3<f32>(1.0)) * 0.5;
+
+                        // Show UV in the alpha/brightness
+                        // Or blend with UV visualization
+                        color = vec4<f32>(normalColor, 1.0);
+                    }
+
+                    // Triangle visualization mode
+                    if (u.showTriangles > 0.5) {
+                        // Generate unique color per triangle using triangle ID
+                        let id = in.triangleID;
+
+                        // Simple hash function to generate varied colors from triangle ID
+                        let h1 = fract(sin(id * 12.9898) * 43758.5453);
+                        let h2 = fract(sin(id * 78.233) * 28451.3791);
+                        let h3 = fract(sin(id * 45.164) * 19283.4567);
+
+                        // Create distinct colors with good saturation
+                        color = vec4<f32>(
+                            h1 * 0.7 + 0.3,
+                            h2 * 0.7 + 0.3,
+                            h3 * 0.7 + 0.3,
+                            1.0
+                        );
+                    }
 
                     return color;
                 }
@@ -1039,6 +1122,19 @@
             `;
             const vsModule = device.createShaderModule({ code: vsSource });
             const fsModule = device.createShaderModule({ code: fsSource });
+
+            // Check for shader compilation errors
+            vsModule.getCompilationInfo().then(info => {
+                if (info.messages.length > 0) {
+                    console.error('[Shader] Vertex shader compilation messages:', info.messages);
+                }
+            });
+            fsModule.getCompilationInfo().then(info => {
+                if (info.messages.length > 0) {
+                    console.error('[Shader] Fragment shader compilation messages:', info.messages);
+                }
+            });
+
             console.log('Shaders compiled successfully');
 
             const bindGroupLayout = device.createBindGroupLayout({
@@ -1076,6 +1172,14 @@
                         {
                             arrayStride: 4, // f32 surfaceType
                             attributes: [{ shaderLocation: 2, offset: 0, format: 'float32' }]
+                        },
+                        {
+                            arrayStride: 4, // f32 triangleID
+                            attributes: [{ shaderLocation: 3, offset: 0, format: 'float32' }]
+                        },
+                        {
+                            arrayStride: 12, // vec3<f32> normal
+                            attributes: [{ shaderLocation: 4, offset: 0, format: 'float32x3' }]
                         }
                     ]
                 },
@@ -1270,6 +1374,8 @@
             let mapRelativeMode = false;
             let hudVisible = true;
             let texturesEnabled = false;
+            let triangleMode = false;
+            let debugMode = false;
             let horizontalMovement = true;
             let lastLoggedTextureState = false;
 
@@ -1283,6 +1389,12 @@
                     } else if (key === 't') {
                         texturesEnabled = !texturesEnabled;
                         console.log('[Texture] Textures toggled:', texturesEnabled ? 'ENABLED' : 'DISABLED');
+                    } else if (key === 'v') {
+                        triangleMode = !triangleMode;
+                        console.log('[Visualization] Triangle mode:', triangleMode ? 'ENABLED' : 'DISABLED');
+                    } else if (key === 'b') {
+                        debugMode = !debugMode;
+                        console.log('[Debug] Debug mode:', debugMode ? 'ENABLED' : 'DISABLED');
                     } else if (key === 'h') {
                         hudVisible = !hudVisible;
                     } else if (key === 'f') {
@@ -1473,8 +1585,8 @@
                 data[6] = canvas.width;      // viewWidth
                 data[7] = canvas.height;     // viewHeight
                 data[8] = texturesEnabled ? 1 : 0;
-                data[9] = 0;
-                data[10] = 0;
+                data[9] = triangleMode ? 1 : 0; // showTriangles
+                data[10] = debugMode ? 1 : 0; // debugMode
                 data[11] = 0;
 
                 if (texturesEnabled !== lastLoggedTextureState) {
@@ -1496,7 +1608,8 @@
                     `JS: ${avgJsTime.toFixed(2)}ms  GPU Copy: ${avgGpuCopyTime.toFixed(2)}ms  GPU Render: ${avgGpuRenderTime.toFixed(2)}ms`,
                     `Pos: (${cameraPos.x.toFixed(2)}, ${cameraPos.y.toFixed(2)}, ${cameraPos.z.toFixed(2)})`,
                     `Dir: ${direction} (yaw: ${(yaw * 180 / Math.PI).toFixed(1)}°, pitch: ${(pitch * 180 / Math.PI).toFixed(1)}°)`,
-                    `Movement: ${horizontalMovement ? 'Person' : 'Flying'} (f)  HUD: ${hudVisible ? 'ON' : 'OFF'} (h)  Map: ${mapVisible ? 'ON' : 'OFF'} (m/r)  Textures: ${texturesEnabled ? 'ON' : 'OFF'} (t)`
+                    `Movement: ${horizontalMovement ? 'Person' : 'Flying'} (f)  HUD: ${hudVisible ? 'ON' : 'OFF'} (h)  Map: ${mapVisible ? 'ON' : 'OFF'} (m/r)`,
+                    `Textures: ${texturesEnabled ? 'ON' : 'OFF'} (t)  Triangles: ${triangleMode ? 'ON' : 'OFF'} (v)  Debug: ${debugMode ? 'ON' : 'OFF'} (b)`
                 ];
 
                 const { length: textLength, maxLineLength } = buildOverlayText(lines);
@@ -1573,6 +1686,8 @@
                 renderPass.setVertexBuffer(0, positionBuffer);
                 renderPass.setVertexBuffer(1, uvBuffer);
                 renderPass.setVertexBuffer(2, surfaceTypeBuffer);
+                renderPass.setVertexBuffer(3, triangleIDBuffer);
+                renderPass.setVertexBuffer(4, normalBuffer);
                 renderPass.setIndexBuffer(indexBuffer, 'uint16');
                 renderPass.drawIndexed(indices.length);
 
