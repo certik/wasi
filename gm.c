@@ -1,6 +1,18 @@
 #include <gm.h>
 #include <webgpu/webgpu.h>
 
+// Math functions (from libSystem on macOS, libm elsewhere, or WASM imports from JS)
+#ifdef __wasm__
+// These will be imported from JavaScript
+__attribute__((import_module("env"), import_name("cosf")))
+extern float cosf(float x);
+__attribute__((import_module("env"), import_name("sinf")))
+extern float sinf(float x);
+#else
+extern float cosf(float x);
+extern float sinf(float x);
+#endif
+
 #include "gm_shaders.inc"
 
 #define GM_UNIFORM_FLOAT_COUNT 12
@@ -1315,4 +1327,380 @@ uint32_t gm_get_render_pipeline_table(void) {
 
 uint32_t gm_get_render_pipeline_count(void) {
     return GM_RENDER_PIPELINE_COUNT;
+}
+
+// ============================================================================
+// Game Logic Implementation
+// ============================================================================
+
+// Overlay text constants
+#define GLYPH_WIDTH 8
+#define GLYPH_HEIGHT 8
+#define GLYPH_SPACING 0
+#define LINE_SPACING 2
+#define TEXT_SCALE 4.0f
+#define PANEL_PADDING_X 12.0f
+#define PANEL_PADDING_Y 12.0f
+#define PANEL_MARGIN 10.0f
+#define MAP_SCALE 12.0f
+#define MAP_GAP 12.0f
+#define NEWLINE_CODE 255
+#define SPACE_CODE 32
+#define PERF_SMOOTHING 0.9f
+
+// Static buffers for overlay text and uniforms
+static uint32_t g_overlay_text_buffer[GM_OVERLAY_TEXT_CAPACITY];
+static float g_uniform_buffer[GM_UNIFORM_FLOAT_COUNT];
+static float g_overlay_uniform_buffer[GM_OVERLAY_UNIFORM_FLOAT_COUNT];
+
+// Convert character to glyph code
+static inline uint32_t char_to_glyph_code(char ch) {
+    return (uint32_t)(uint8_t)ch;
+}
+
+// Utility: clamp pitch to valid range
+static inline float clamp_pitch(float pitch) {
+    const float max_pitch = PI / 2.0f - 0.01f;
+    if (pitch < -max_pitch) return -max_pitch;
+    if (pitch > max_pitch) return max_pitch;
+    return pitch;
+}
+
+// Utility: clamp float to range
+static inline float clampf(float v, float min, float max) {
+    if (v < min) return min;
+    if (v > max) return max;
+    return v;
+}
+
+// Collision detection: check if position is walkable
+static int is_walkable(const GameState *state, float x, float z) {
+    int min_x = (int)(x - state->collision_radius);
+    int max_x = (int)(x + state->collision_radius);
+    int min_z = (int)(z - state->collision_radius);
+    int max_z = (int)(z + state->collision_radius);
+
+    for (int tz = min_z; tz <= max_z; tz++) {
+        if (tz < 0 || tz >= state->map_height) {
+            return 0;
+        }
+        for (int tx = min_x; tx <= max_x; tx++) {
+            if (tx < 0 || tx >= state->map_width) {
+                return 0;
+            }
+            int cell = state->map_data[tz * state->map_width + tx];
+            if (cell != 0) {
+                return 0;
+            }
+        }
+    }
+    return 1;
+}
+
+// Initialize game state
+void gm_init_game_state(GameState *state, int *map, int width, int height,
+                       float start_x, float start_z, float start_yaw) {
+    // Zero out the struct
+    for (int i = 0; i < (int)sizeof(GameState); i++) {
+        ((uint8_t*)state)[i] = 0;
+    }
+
+    // Camera state
+    state->camera_x = start_x;
+    state->camera_y = 1.0f;  // person_height
+    state->camera_z = start_z;
+    state->yaw = start_yaw;
+    state->pitch = 0.0f;
+    state->target_yaw = start_yaw;
+    state->target_pitch = 0.0f;
+
+    // Movement parameters
+    state->person_height = 1.0f;
+    state->turn_speed = 0.03f;
+    state->mouse_sensitivity = 0.002f;
+    state->orientation_smoothing = 0.35f;
+    state->fov = PI / 3.0f;
+    state->move_speed = 0.1f;
+    state->collision_radius = 0.2f;
+
+    // Game flags
+    state->map_visible = 0;
+    state->map_relative_mode = 0;
+    state->hud_visible = 1;
+    state->textures_enabled = 0;
+    state->triangle_mode = 0;
+    state->debug_mode = 0;
+    state->horizontal_movement = 1;
+
+    // Map data
+    state->map_data = map;
+    state->map_width = width;
+    state->map_height = height;
+
+    // Performance tracking
+    state->fps = 0.0f;
+    state->avg_frame_time = 0.0f;
+    state->avg_js_time = 0.0f;
+    state->avg_gpu_copy_time = 0.0f;
+    state->avg_gpu_render_time = 0.0f;
+    state->frame_count = 0;
+}
+
+// Set key state
+void gm_set_key_state(GameState *state, uint8_t key_code, int pressed) {
+    state->keys[key_code] = pressed ? 1 : 0;
+}
+
+// Add mouse delta
+void gm_add_mouse_delta(GameState *state, float dx, float dy) {
+    state->mouse_delta_x = dx;
+    state->mouse_delta_y = dy;
+}
+
+// Update camera based on input
+static void update_camera(GameState *state) {
+    // Apply mouse smoothing
+    float yaw_delta = state->target_yaw - state->yaw;
+    float pitch_delta = state->target_pitch - state->pitch;
+    state->yaw += yaw_delta * state->orientation_smoothing;
+    state->pitch += pitch_delta * state->orientation_smoothing;
+
+    // Arrow key rotation
+    int arrow_used = 0;
+    float yaw_delta_arrows = 0.0f;
+    if (state->keys['<']) {  // ArrowLeft is mapped to '<' by JS
+        yaw_delta_arrows -= state->turn_speed;
+        arrow_used = 1;
+    }
+    if (state->keys['>']) {  // ArrowRight is mapped to '>' by JS
+        yaw_delta_arrows += state->turn_speed;
+        arrow_used = 1;
+    }
+    if (yaw_delta_arrows != 0.0f) {
+        state->yaw += yaw_delta_arrows;
+        state->target_yaw = state->yaw;
+    }
+
+    // Arrow forward/backward movement
+    float arrow_forward = 0.0f;
+    if (state->keys['^']) {  // ArrowUp is mapped to '^' by JS
+        arrow_forward += state->move_speed;
+        arrow_used = 1;
+    }
+    if (state->keys['v']) {  // ArrowDown is mapped to 'v' by JS (lowercase)
+        arrow_forward -= state->move_speed;
+        arrow_used = 1;
+    }
+
+    // Reset pitch if arrow keys used
+    if (arrow_used) {
+        state->pitch = 0.0f;
+        state->target_pitch = 0.0f;
+    }
+
+    // Clamp pitch
+    state->pitch = clamp_pitch(state->pitch);
+    state->target_pitch = clamp_pitch(state->target_pitch);
+
+    // Calculate direction vectors
+    float cos_yaw = cosf(state->yaw);
+    float sin_yaw = sinf(state->yaw);
+    float cos_pitch = cosf(state->pitch);
+    float sin_pitch = sinf(state->pitch);
+
+    float dx = 0.0f, dy = 0.0f, dz = 0.0f;
+
+    // Forward direction
+    float forward_x, forward_y, forward_z;
+    if (state->horizontal_movement) {
+        forward_x = cos_yaw;
+        forward_y = 0.0f;
+        forward_z = sin_yaw;
+    } else {
+        forward_x = cos_pitch * cos_yaw;
+        forward_y = sin_pitch;
+        forward_z = cos_pitch * sin_yaw;
+    }
+
+    // WASD movement
+    if (state->keys['w']) {
+        dx += forward_x * state->move_speed;
+        dy += forward_y * state->move_speed;
+        dz += forward_z * state->move_speed;
+    }
+    if (state->keys['s']) {
+        dx -= forward_x * state->move_speed;
+        dy -= forward_y * state->move_speed;
+        dz -= forward_z * state->move_speed;
+    }
+    if (state->keys['a']) {
+        dx += sin_yaw * state->move_speed;
+        dz -= cos_yaw * state->move_speed;
+    }
+    if (state->keys['d']) {
+        dx -= sin_yaw * state->move_speed;
+        dz += cos_yaw * state->move_speed;
+    }
+
+    // Arrow forward movement
+    if (arrow_forward != 0.0f) {
+        dx += cos_yaw * arrow_forward;
+        dz += sin_yaw * arrow_forward;
+    }
+
+    // Apply movement with collision detection
+    float base_y = arrow_used ? state->person_height : state->camera_y;
+    float new_y = base_y + dy;
+
+    float candidate_x = state->camera_x + dx;
+    float candidate_z = state->camera_z + dz;
+
+    if (is_walkable(state, candidate_x, state->camera_z)) {
+        state->camera_x = candidate_x;
+    }
+    if (is_walkable(state, state->camera_x, candidate_z)) {
+        state->camera_z = candidate_z;
+    }
+
+    state->camera_y = clampf(new_y, 0.1f, WALL_HEIGHT - 0.1f);
+    if (arrow_used) {
+        state->camera_y = state->person_height;
+    }
+}
+
+// Per-frame update
+void gm_update_frame(GameState *state, float canvas_width, float canvas_height) {
+    (void)canvas_width;
+    (void)canvas_height;
+
+    // Update camera from target based on mouse delta
+    state->target_yaw += state->mouse_delta_x * state->mouse_sensitivity;
+    state->target_pitch = clamp_pitch(state->target_pitch - state->mouse_delta_y * state->mouse_sensitivity);
+
+    // Reset mouse delta for next frame
+    state->mouse_delta_x = 0.0f;
+    state->mouse_delta_y = 0.0f;
+
+    // Update camera position
+    update_camera(state);
+
+    state->frame_count++;
+}
+
+// Get uniform data for main rendering
+const float* gm_get_uniform_data(const GameState *state, float canvas_width, float canvas_height) {
+    g_uniform_buffer[0] = state->camera_x;
+    g_uniform_buffer[1] = state->camera_y;
+    g_uniform_buffer[2] = state->camera_z;
+    g_uniform_buffer[3] = state->yaw;
+    g_uniform_buffer[4] = state->pitch;
+    g_uniform_buffer[5] = state->fov;
+    g_uniform_buffer[6] = canvas_width;
+    g_uniform_buffer[7] = canvas_height;
+    g_uniform_buffer[8] = state->textures_enabled ? 1.0f : 0.0f;
+    g_uniform_buffer[9] = state->triangle_mode ? 1.0f : 0.0f;
+    g_uniform_buffer[10] = state->debug_mode ? 1.0f : 0.0f;
+    g_uniform_buffer[11] = 0.0f;
+
+    return g_uniform_buffer;
+}
+
+// Build overlay text from game state
+static OverlayTextResult g_overlay_text_result;
+
+const OverlayTextResult* gm_build_overlay_text(const GameState *state) {
+    // Build HUD lines (we'll use simple string building)
+    // For now, simplified version without full string formatting
+
+    // Just fill with test pattern for now
+    // TODO: Proper text formatting with sprintf-like functionality
+    uint32_t index = 0;
+
+    // Fill with spaces initially
+    for (uint32_t i = 0; i < GM_OVERLAY_TEXT_CAPACITY; i++) {
+        g_overlay_text_buffer[i] = SPACE_CODE;
+    }
+
+    // Simple placeholder text
+    const char *test_text = "FPS: 60  Frame: 16.67ms\nPos: (1.50, 1.00, 1.50)\nHUD: ON";
+    for (const char *p = test_text; *p && index < GM_OVERLAY_TEXT_CAPACITY; p++) {
+        if (*p == '\n') {
+            g_overlay_text_buffer[index++] = NEWLINE_CODE;
+        } else {
+            g_overlay_text_buffer[index++] = char_to_glyph_code(*p);
+        }
+    }
+
+    g_overlay_text_result.glyph_data = g_overlay_text_buffer;
+    g_overlay_text_result.length = index;
+    g_overlay_text_result.max_line_length = 30;  // Approximate for now
+    return &g_overlay_text_result;
+}
+
+// Get overlay uniform data
+const float* gm_get_overlay_uniform_data(const GameState *state, float canvas_width,
+                                         float canvas_height, uint32_t text_length,
+                                         uint32_t max_line_length) {
+    // Calculate text and panel dimensions
+    uint32_t line_count = 6;  // Approximate
+    float char_advance = GLYPH_WIDTH * TEXT_SCALE;
+    float text_width = max_line_length * char_advance;
+    float text_height = line_count * GLYPH_HEIGHT * TEXT_SCALE +
+                       (line_count > 1 ? (line_count - 1) * LINE_SPACING * TEXT_SCALE : 0.0f);
+
+    float panel_origin_x = PANEL_MARGIN;
+    float panel_origin_y = PANEL_MARGIN;
+    float map_width_pixels = state->map_width * MAP_SCALE;
+    float map_height_pixels = state->map_height * MAP_SCALE;
+
+    float panel_width = PANEL_PADDING_X * 2.0f + text_width;
+    if (state->map_visible) {
+        if (map_width_pixels > panel_width) {
+            panel_width = PANEL_PADDING_X * 2.0f + map_width_pixels;
+        }
+    }
+
+    float panel_height = PANEL_PADDING_Y * 2.0f + text_height;
+    float map_origin_x = panel_origin_x + PANEL_PADDING_X;
+    float map_origin_y = panel_origin_y + PANEL_PADDING_Y + text_height +
+                        (state->map_visible ? MAP_GAP : 0.0f);
+    if (state->map_visible) {
+        panel_height += MAP_GAP + map_height_pixels;
+    }
+
+    g_overlay_uniform_buffer[0] = canvas_width;
+    g_overlay_uniform_buffer[1] = canvas_height;
+    g_overlay_uniform_buffer[2] = panel_origin_x;
+    g_overlay_uniform_buffer[3] = panel_origin_y;
+    g_overlay_uniform_buffer[4] = panel_width;
+    g_overlay_uniform_buffer[5] = panel_height;
+    g_overlay_uniform_buffer[6] = TEXT_SCALE;
+    g_overlay_uniform_buffer[7] = GLYPH_SPACING;
+    g_overlay_uniform_buffer[8] = LINE_SPACING;
+    g_overlay_uniform_buffer[9] = text_length;
+    g_overlay_uniform_buffer[10] = PANEL_PADDING_X;
+    g_overlay_uniform_buffer[11] = PANEL_PADDING_Y;
+    g_overlay_uniform_buffer[12] = map_origin_x;
+    g_overlay_uniform_buffer[13] = map_origin_y;
+    g_overlay_uniform_buffer[14] = MAP_SCALE;
+    g_overlay_uniform_buffer[15] = state->map_visible ? 1.0f : 0.0f;
+    g_overlay_uniform_buffer[16] = state->map_relative_mode ? 1.0f : 0.0f;
+    g_overlay_uniform_buffer[17] = (float)state->map_width;
+    g_overlay_uniform_buffer[18] = (float)state->map_height;
+    g_overlay_uniform_buffer[19] = 0.0f;
+    g_overlay_uniform_buffer[20] = state->camera_x;
+    g_overlay_uniform_buffer[21] = state->camera_z;
+    g_overlay_uniform_buffer[22] = state->yaw;
+    g_overlay_uniform_buffer[23] = state->hud_visible ? 1.0f : 0.0f;
+
+    return g_overlay_uniform_buffer;
+}
+
+// Update performance metrics
+void gm_update_perf_metrics(GameState *state, float frame_time, float js_time,
+                           float gpu_copy_time, float gpu_render_time) {
+    state->avg_frame_time = state->avg_frame_time * PERF_SMOOTHING + frame_time * (1.0f - PERF_SMOOTHING);
+    state->avg_js_time = state->avg_js_time * PERF_SMOOTHING + js_time * (1.0f - PERF_SMOOTHING);
+    state->avg_gpu_copy_time = state->avg_gpu_copy_time * PERF_SMOOTHING + gpu_copy_time * (1.0f - PERF_SMOOTHING);
+    state->avg_gpu_render_time = state->avg_gpu_render_time * PERF_SMOOTHING + gpu_render_time * (1.0f - PERF_SMOOTHING);
 }

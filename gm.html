@@ -707,6 +707,10 @@
             const webgpuHost = createWasmWebGPUHost(adapter, device);
 
             const wasmModule = await WebAssembly.instantiate(wasmBytes, {
+                env: {
+                    cosf: (x) => Math.cos(x),
+                    sinf: (x) => Math.sin(x),
+                },
                 wasi_snapshot_preview1: {
                 // Not needed right now:
                 /*
@@ -940,47 +944,6 @@
             const overlayTextCapacity = 256;
             device.queue.writeBuffer(overlayMapBuffer, 0, mapDataArray);
 
-            const overlayParams = new Float32Array(overlayUniformFloatCount);
-            const overlayTextArray = new Uint32Array(overlayTextCapacity);
-
-            const GLYPH_WIDTH = 8;
-            const GLYPH_HEIGHT = 8;
-            const GLYPH_SPACING = 0;
-            const LINE_SPACING = 2;
-            const TEXT_SCALE = 4.0;
-            const PANEL_PADDING_X = 12.0;
-            const PANEL_PADDING_Y = 12.0;
-            const PANEL_MARGIN = 10.0;
-            const MAP_SCALE = 12.0;
-            const MAP_GAP = 12.0;
-            const NEWLINE_CODE = 255;
-            const SPACE_CODE = 32;
-
-            function charToGlyphCode(ch) {
-                const code = ch.charCodeAt(0);
-                if (code >= 0 && code < 256) {
-                    return code;
-                }
-                return SPACE_CODE;
-            }
-
-            function buildOverlayText(lines) {
-                let index = 0;
-                let maxLineLength = 0;
-                overlayTextArray.fill(SPACE_CODE);
-                for (let i = 0; i < lines.length; i++) {
-                    const line = lines[i];
-                    maxLineLength = Math.max(maxLineLength, line.length);
-                    for (let j = 0; j < line.length && index < overlayTextCapacity; j++) {
-                        overlayTextArray[index++] = charToGlyphCode(line[j]);
-                    }
-                    if (i < lines.length - 1 && index < overlayTextCapacity) {
-                        overlayTextArray[index++] = NEWLINE_CODE;
-                    }
-                }
-                return { length: index, maxLineLength };
-            }
-
             // Depth texture
             let depthTexture = device.createTexture({
                 size: [canvas.width, canvas.height, 1],
@@ -989,60 +952,102 @@
             });
             console.log(`Mesh generated: ${positions.length/3} vertices, ${indices.length/3} triangles`);
 
-            // Camera and controls
-            const personHeight = 1.0;
-            const turnSpeed = 0.03;
-            const mouseSensitivity = 0.002;
-            const orientationSmoothing = 0.35;
-            let cameraPos = { x: startX, y: personHeight, z: startZ };
-            let yaw = startYaw;
-            let pitch = 0.0;
-            let targetYaw = yaw;
-            let targetPitch = pitch;
-            const fov = Math.PI / 3;
-            const moveSpeed = 0.1;
-            const collisionRadius = 0.2;
-            const keys = {};
-            let mapArray = map;
-            let mapVisible = false;
-            let mapRelativeMode = false;
-            let hudVisible = true;
-            let texturesEnabled = false;
-            let triangleMode = false;
-            let debugMode = false;
-            let horizontalMovement = true;
+            // Initialize game state in WASM
+            // Allocate after the map and temp variables
+            const gameStateSize = 512;
+            const gameStatePtr = startYawPtr + 4 + 64; // After startYaw with padding
+            const gm_init_game_state = wasmInstance.exports.gm_init_game_state;
+            const gm_set_key_state = wasmInstance.exports.gm_set_key_state;
+            const gm_add_mouse_delta = wasmInstance.exports.gm_add_mouse_delta;
+            const gm_update_frame = wasmInstance.exports.gm_update_frame;
+            const gm_get_uniform_data = wasmInstance.exports.gm_get_uniform_data;
+            const gm_build_overlay_text = wasmInstance.exports.gm_build_overlay_text;
+            const gm_get_overlay_uniform_data = wasmInstance.exports.gm_get_overlay_uniform_data;
+            const gm_update_perf_metrics = wasmInstance.exports.gm_update_perf_metrics;
+
+            gm_init_game_state(gameStatePtr, mapPtr, mapWidth, mapHeight, startX, startZ, startYaw);
+            console.log('Game state initialized at', gameStatePtr);
+
+            // Debug: read back camera position
+            const debugView = new Float32Array(memory.buffer, gameStatePtr, 12);
+            console.log(`[Debug] Initial camera: (${debugView[0]}, ${debugView[1]}, ${debugView[2]}), yaw=${debugView[3]}, pitch=${debugView[4]}`);
+
+            // Helper to get GameState field offsets (calculated from struct definition)
+            // float camera_x,y,z (0,4,8), yaw,pitch (12,16), target_yaw,pitch (20,24)
+            // float person_height...collision_radius (28-52) = 7 floats
+            // Then int flags starting at offset 56
+            const GameStateOffsets = {
+                map_visible: 56,           // offset to map_visible field
+                map_relative_mode: 60,     // offset to map_relative_mode field
+                hud_visible: 64,           // offset to hud_visible field
+                textures_enabled: 68,      // offset to textures_enabled field
+                triangle_mode: 72,         // offset to triangle_mode field
+                debug_mode: 76,            // offset to debug_mode field
+                horizontal_movement: 80,   // offset to horizontal_movement field
+            };
+
             let lastLoggedTextureState = false;
+
+            // Helper to toggle game state flags
+            function toggleGameStateFlag(offset) {
+                const view = new Int32Array(memory.buffer, gameStatePtr + offset, 1);
+                view[0] = view[0] ? 0 : 1;
+                return view[0];
+            }
+
+            // Map arrow keys to special characters for C code
+            const keyMap = {
+                'arrowleft': '<'.charCodeAt(0),
+                'arrowright': '>'.charCodeAt(0),
+                'arrowup': '^'.charCodeAt(0),
+                'arrowdown': 'v'.charCodeAt(0),
+            };
 
             document.addEventListener('keydown', (e) => {
                 const key = e.key.toLowerCase();
                 if (!e.repeat) {
                     if (key === 'm') {
-                        mapVisible = !mapVisible;
+                        const val = toggleGameStateFlag(GameStateOffsets.map_visible);
+                        console.log('[Map] Map visible:', val ? 'ON' : 'OFF');
                     } else if (key === 'r') {
-                        mapRelativeMode = !mapRelativeMode;
+                        const val = toggleGameStateFlag(GameStateOffsets.map_relative_mode);
+                        console.log('[Map] Relative mode:', val ? 'ON' : 'OFF');
                     } else if (key === 't') {
-                        texturesEnabled = !texturesEnabled;
-                        console.log('[Texture] Textures toggled:', texturesEnabled ? 'ENABLED' : 'DISABLED');
+                        const val = toggleGameStateFlag(GameStateOffsets.textures_enabled);
+                        console.log('[Texture] Textures toggled:', val ? 'ENABLED' : 'DISABLED');
                     } else if (key === 'v') {
-                        triangleMode = !triangleMode;
-                        console.log('[Visualization] Triangle mode:', triangleMode ? 'ENABLED' : 'DISABLED');
+                        const val = toggleGameStateFlag(GameStateOffsets.triangle_mode);
+                        console.log('[Visualization] Triangle mode:', val ? 'ENABLED' : 'DISABLED');
                     } else if (key === 'b') {
-                        debugMode = !debugMode;
-                        console.log('[Debug] Debug mode:', debugMode ? 'ENABLED' : 'DISABLED');
+                        const val = toggleGameStateFlag(GameStateOffsets.debug_mode);
+                        console.log('[Debug] Debug mode:', val ? 'ENABLED' : 'DISABLED');
                     } else if (key === 'h') {
-                        hudVisible = !hudVisible;
+                        toggleGameStateFlag(GameStateOffsets.hud_visible);
                     } else if (key === 'f') {
-                        horizontalMovement = !horizontalMovement;
-                        if (horizontalMovement) {
-                            cameraPos.y = personHeight;
-                        }
+                        const val = toggleGameStateFlag(GameStateOffsets.horizontal_movement);
+                        console.log('[Movement] Mode:', val ? 'Person' : 'Flying');
                     }
                 }
-                keys[key] = true;
+                // Send key code to WASM
+                const keyCode = keyMap[key] || key.charCodeAt(0);
+                if (key === 'w' || key === 'a' || key === 's' || key === 'd') {
+                    console.log(`[Input] Key ${key} pressed, code=${keyCode}`);
+                }
+                gm_set_key_state(gameStatePtr, keyCode, 1);
             });
-            document.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
+
+            document.addEventListener('keyup', (e) => {
+                const key = e.key.toLowerCase();
+                const keyCode = keyMap[key] || key.charCodeAt(0);
+                gm_set_key_state(gameStatePtr, keyCode, 0);
+            });
 
             canvas.addEventListener('click', () => canvas.requestPointerLock());
+
+            function onMouseMove(e) {
+                gm_add_mouse_delta(gameStatePtr, e.movementX, e.movementY);
+            }
+
             document.addEventListener('pointerlockchange', () => {
                 if (document.pointerLockElement === canvas) {
                     document.addEventListener('mousemove', onMouseMove);
@@ -1051,153 +1056,16 @@
                 }
             });
 
-            function clampPitch(value) {
-                return Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, value));
-            }
-
-            function onMouseMove(e) {
-                targetYaw += e.movementX * mouseSensitivity;
-                targetPitch = clampPitch(targetPitch - e.movementY * mouseSensitivity);
-            }
-
-            function isWalkable(x, z) {
-                const minX = Math.floor(x - collisionRadius);
-                const maxX = Math.floor(x + collisionRadius);
-                const minZ = Math.floor(z - collisionRadius);
-                const maxZ = Math.floor(z + collisionRadius);
-
-                for (let tz = minZ; tz <= maxZ; tz++) {
-                    if (tz < 0 || tz >= mapHeight) {
-                        return false;
-                    }
-                    for (let tx = minX; tx <= maxX; tx++) {
-                        if (tx < 0 || tx >= mapWidth || mapArray[tz][tx] !== 0) {
-                            return false;
-                        }
-                    }
-                }
-                return true;
-            }
-
-            function updateCamera() {
-                const yawDeltaFromMouse = targetYaw - yaw;
-                const pitchDeltaFromMouse = targetPitch - pitch;
-                yaw += yawDeltaFromMouse * orientationSmoothing;
-                pitch += pitchDeltaFromMouse * orientationSmoothing;
-
-                let arrowUsed = false;
-                let yawDelta = 0;
-                if (keys['arrowleft']) {
-                    yawDelta -= turnSpeed;
-                    arrowUsed = true;
-                }
-                if (keys['arrowright']) {
-                    yawDelta += turnSpeed;
-                    arrowUsed = true;
-                }
-                if (yawDelta !== 0) {
-                    yaw += yawDelta;
-                    targetYaw = yaw;
-                }
-
-                let arrowForward = 0;
-                if (keys['arrowup']) {
-                    arrowForward += moveSpeed;
-                    arrowUsed = true;
-                }
-                if (keys['arrowdown']) {
-                    arrowForward -= moveSpeed;
-                    arrowUsed = true;
-                }
-
-                if (arrowUsed) {
-                    pitch = 0;
-                    targetPitch = 0;
-                }
-
-                pitch = clampPitch(pitch);
-                targetPitch = clampPitch(targetPitch);
-
-                const cosYaw = Math.cos(yaw);
-                const sinYaw = Math.sin(yaw);
-                const cosPitch = Math.cos(pitch);
-                const sinPitch = Math.sin(pitch);
-
-                let dx = 0;
-                let dy = 0;
-                let dz = 0;
-
-                let forwardX, forwardY, forwardZ;
-                if (horizontalMovement) {
-                    // Person movement: horizontal plane only
-                    forwardX = cosYaw;
-                    forwardY = 0;
-                    forwardZ = sinYaw;
-                } else {
-                    // Flying mode: arbitrary direction
-                    forwardX = cosPitch * cosYaw;
-                    forwardY = sinPitch;
-                    forwardZ = cosPitch * sinYaw;
-                }
-                if (keys['w']) {
-                    dx += forwardX * moveSpeed;
-                    dy += forwardY * moveSpeed;
-                    dz += forwardZ * moveSpeed;
-                }
-                if (keys['s']) {
-                    dx -= forwardX * moveSpeed;
-                    dy -= forwardY * moveSpeed;
-                    dz -= forwardZ * moveSpeed;
-                }
-                if (keys['a']) {
-                    dx += sinYaw * moveSpeed;
-                    dz -= cosYaw * moveSpeed;
-                }
-                if (keys['d']) {
-                    dx -= sinYaw * moveSpeed;
-                    dz += cosYaw * moveSpeed;
-                }
-
-                if (arrowForward !== 0) {
-                    dx += cosYaw * arrowForward;
-                    dz += sinYaw * arrowForward;
-                }
-
-                const baseY = arrowUsed ? personHeight : cameraPos.y;
-                const newY = baseY + dy;
-                const candidateX = cameraPos.x + dx;
-                const candidateZ = cameraPos.z + dz;
-
-                if (isWalkable(candidateX, cameraPos.z)) {
-                    cameraPos.x = candidateX;
-                }
-                if (isWalkable(cameraPos.x, candidateZ)) {
-                    cameraPos.z = candidateZ;
-                }
-                cameraPos.y = Math.min(Math.max(newY, 0.1), wallHeight - 0.1);
-                if (arrowUsed) {
-                    cameraPos.y = personHeight;
-                }
-            }
-
             // Render loop
-            let frameCount = 0;
-            let lastFrameTime = performance.now();
             let fps = 0;
             let fpsUpdateTime = performance.now();
             let fpsFrameCount = 0;
 
-            // Performance timing
-            let avgFrameTime = 0;
-            let avgJsTime = 0;
-            let avgGpuCopyTime = 0;
-            let avgGpuRenderTime = 0;
-            const PERF_SMOOTHING = 0.9; // Exponential moving average
-
             function render() {
                 const frameStartTime = performance.now();
 
-                updateCamera();
+                // Update game state in WASM
+                gm_update_frame(gameStatePtr, canvas.width, canvas.height);
 
                 // FPS calc
                 const currentTime = performance.now();
@@ -1208,91 +1076,36 @@
                     fpsUpdateTime = currentTime;
                 }
 
-                // Update uniforms with individual floats
-                const data = new Float32Array(uniformFloatCount);
-                data[0] = cameraPos.x;       // cameraPosX
-                data[1] = cameraPos.y;       // cameraPosY
-                data[2] = cameraPos.z;       // cameraPosZ
-                data[3] = yaw;
-                data[4] = pitch;
-                data[5] = fov;
-                data[6] = canvas.width;      // viewWidth
-                data[7] = canvas.height;     // viewHeight
-                data[8] = texturesEnabled ? 1 : 0;
-                data[9] = triangleMode ? 1 : 0; // showTriangles
-                data[10] = debugMode ? 1 : 0; // debugMode
-                data[11] = 0;
+                // Get uniform data from WASM
+                const uniformDataPtr = gm_get_uniform_data(gameStatePtr, canvas.width, canvas.height);
+                const uniformData = new Float32Array(memory.buffer, uniformDataPtr, uniformFloatCount);
 
-                if (texturesEnabled !== lastLoggedTextureState) {
-                    console.log('[Texture] Uniform buffer useTextures value:', data[8]);
-                    lastLoggedTextureState = texturesEnabled;
+                if (uniformData[8] !== lastLoggedTextureState) {
+                    console.log('[Texture] Uniform buffer useTextures value:', uniformData[8]);
+                    lastLoggedTextureState = uniformData[8];
                 }
 
-                device.queue.writeBuffer(uniformBuffer, 0, data);
+                device.queue.writeBuffer(uniformBuffer, 0, uniformData);
 
                 const jsEndTime = performance.now();
                 const jsTime = jsEndTime - frameStartTime;
 
-                const directionNames = ['E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE'];
-                const directionIndex = Math.round(((yaw / Math.PI * 4) + 8) % 8);
-                const direction = directionNames[directionIndex];
+                // Build overlay text via WASM
+                // OverlayTextResult struct: { glyph_data: ptr, length: u32, max_line_length: u32 }
+                const overlayTextResultPtr = gm_build_overlay_text(gameStatePtr);
+                const overlayTextResultView = new Uint32Array(memory.buffer, overlayTextResultPtr, 3);
+                const overlayTextDataPtr = overlayTextResultView[0];
+                const textLength = overlayTextResultView[1];
+                const maxLineLength = overlayTextResultView[2];
 
-                const lines = [
-                    `FPS: ${fps}  Frame: ${avgFrameTime.toFixed(2)}ms`,
-                    `JS: ${avgJsTime.toFixed(2)}ms  GPU Copy: ${avgGpuCopyTime.toFixed(2)}ms  GPU Render: ${avgGpuRenderTime.toFixed(2)}ms`,
-                    `Pos: (${cameraPos.x.toFixed(2)}, ${cameraPos.y.toFixed(2)}, ${cameraPos.z.toFixed(2)})`,
-                    `Dir: ${direction} (yaw: ${(yaw * 180 / Math.PI).toFixed(1)}°, pitch: ${(pitch * 180 / Math.PI).toFixed(1)}°)`,
-                    `Movement: ${horizontalMovement ? 'Person' : 'Flying'} (f)  HUD: ${hudVisible ? 'ON' : 'OFF'} (h)  Map: ${mapVisible ? 'ON' : 'OFF'} (m/r)`,
-                    `Textures: ${texturesEnabled ? 'ON' : 'OFF'} (t)  Triangles: ${triangleMode ? 'ON' : 'OFF'} (v)  Debug: ${debugMode ? 'ON' : 'OFF'} (b)`
-                ];
+                const overlayTextData = new Uint32Array(memory.buffer, overlayTextDataPtr, textLength);
 
-                const { length: textLength, maxLineLength } = buildOverlayText(lines);
-                const lineCount = lines.length;
-                const charAdvance = GLYPH_WIDTH * TEXT_SCALE;
-                const textWidth = maxLineLength * charAdvance;
-                const textHeight = lineCount * GLYPH_HEIGHT * TEXT_SCALE + Math.max(0, (lineCount - 1)) * LINE_SPACING * TEXT_SCALE;
-                const panelOriginX = PANEL_MARGIN;
-                const panelOriginY = PANEL_MARGIN;
-                const mapWidthPixels = mapWidth * MAP_SCALE;
-                const mapHeightPixels = mapHeight * MAP_SCALE;
-                let panelWidth = PANEL_PADDING_X * 2 + textWidth;
-                if (mapVisible) {
-                    panelWidth = Math.max(panelWidth, PANEL_PADDING_X * 2 + mapWidthPixels);
-                }
-                let panelHeight = PANEL_PADDING_Y * 2 + textHeight;
-                const mapOriginX = panelOriginX + PANEL_PADDING_X;
-                const mapOriginY = panelOriginY + PANEL_PADDING_Y + textHeight + (mapVisible ? MAP_GAP : 0);
-                if (mapVisible) {
-                    panelHeight += MAP_GAP + mapHeightPixels;
-                }
+                // Get overlay uniform data from WASM
+                const overlayUniformDataPtr = gm_get_overlay_uniform_data(gameStatePtr, canvas.width, canvas.height, textLength, maxLineLength);
+                const overlayUniformData = new Float32Array(memory.buffer, overlayUniformDataPtr, overlayUniformFloatCount);
 
-                overlayParams[0] = canvas.width;
-                overlayParams[1] = canvas.height;
-                overlayParams[2] = panelOriginX;
-                overlayParams[3] = panelOriginY;
-                overlayParams[4] = panelWidth;
-                overlayParams[5] = panelHeight;
-                overlayParams[6] = TEXT_SCALE;
-                overlayParams[7] = GLYPH_SPACING;
-                overlayParams[8] = LINE_SPACING;
-                overlayParams[9] = textLength;
-                overlayParams[10] = PANEL_PADDING_X;
-                overlayParams[11] = PANEL_PADDING_Y;
-                overlayParams[12] = mapOriginX;
-                overlayParams[13] = mapOriginY;
-                overlayParams[14] = MAP_SCALE;
-                overlayParams[15] = mapVisible ? 1 : 0;
-                overlayParams[16] = mapRelativeMode ? 1 : 0;
-                overlayParams[17] = mapWidth;
-                overlayParams[18] = mapHeight;
-                overlayParams[19] = 0;
-                overlayParams[20] = cameraPos.x;
-                overlayParams[21] = cameraPos.z;
-                overlayParams[22] = yaw;
-                overlayParams[23] = hudVisible ? 1 : 0;
-
-                device.queue.writeBuffer(overlayUniformBuffer, 0, overlayParams);
-                device.queue.writeBuffer(overlayTextBuffer, 0, overlayTextArray);
+                device.queue.writeBuffer(overlayUniformBuffer, 0, overlayUniformData);
+                device.queue.writeBuffer(overlayTextBuffer, 0, overlayTextData);
 
                 const gpuCopyEndTime = performance.now();
                 const gpuCopyTime = gpuCopyEndTime - jsEndTime;
@@ -1337,11 +1150,8 @@
                 const gpuRenderTime = gpuRenderEndTime - gpuCopyEndTime;
                 const totalFrameTime = gpuRenderEndTime - frameStartTime;
 
-                // Update smoothed averages
-                avgFrameTime = avgFrameTime * PERF_SMOOTHING + totalFrameTime * (1 - PERF_SMOOTHING);
-                avgJsTime = avgJsTime * PERF_SMOOTHING + jsTime * (1 - PERF_SMOOTHING);
-                avgGpuCopyTime = avgGpuCopyTime * PERF_SMOOTHING + gpuCopyTime * (1 - PERF_SMOOTHING);
-                avgGpuRenderTime = avgGpuRenderTime * PERF_SMOOTHING + gpuRenderTime * (1 - PERF_SMOOTHING);
+                // Update performance metrics in WASM
+                gm_update_perf_metrics(gameStatePtr, totalFrameTime, jsTime, gpuCopyTime, gpuRenderTime);
 
                 requestAnimationFrame(render);
             }

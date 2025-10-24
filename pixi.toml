@@ -146,6 +146,15 @@ clang \
     -Wl,--export=gm_get_bind_group_count \
     -Wl,--export=gm_get_render_pipeline_table \
     -Wl,--export=gm_get_render_pipeline_count \
+    -Wl,--export=gm_init_game_state \
+    -Wl,--export=gm_set_key_state \
+    -Wl,--export=gm_add_mouse_delta \
+    -Wl,--export=gm_update_frame \
+    -Wl,--export=gm_get_uniform_data \
+    -Wl,--export=gm_build_overlay_text \
+    -Wl,--export=gm_get_overlay_uniform_data \
+    -Wl,--export=gm_update_perf_metrics \
+    -Wl,--export=__heap_base \
     -Wl,--initial-memory=262144 \
     -o gm.wasm \
     gm.c \

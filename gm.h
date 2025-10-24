@@ -68,3 +68,79 @@ uint32_t gm_get_bind_group_table(void);
 uint32_t gm_get_bind_group_count(void);
 uint32_t gm_get_render_pipeline_table(void);
 uint32_t gm_get_render_pipeline_count(void);
+
+// Game state and logic
+typedef struct {
+    // Camera state
+    float camera_x, camera_y, camera_z;
+    float yaw, pitch;
+    float target_yaw, target_pitch;
+
+    // Movement parameters
+    float person_height;
+    float turn_speed;
+    float mouse_sensitivity;
+    float orientation_smoothing;
+    float fov;
+    float move_speed;
+    float collision_radius;
+
+    // Game flags
+    int map_visible;
+    int map_relative_mode;
+    int hud_visible;
+    int textures_enabled;
+    int triangle_mode;
+    int debug_mode;
+    int horizontal_movement;
+
+    // Input state (keys are indexed by ASCII code, max 256)
+    uint8_t keys[256];
+    float mouse_delta_x;
+    float mouse_delta_y;
+
+    // Map data for collision detection
+    int *map_data;
+    int map_width;
+    int map_height;
+
+    // Performance tracking
+    float fps;
+    float avg_frame_time;
+    float avg_js_time;
+    float avg_gpu_copy_time;
+    float avg_gpu_render_time;
+    uint32_t frame_count;
+} GameState;
+
+// Initialize game state with starting position and map
+void gm_init_game_state(GameState *state, int *map, int width, int height,
+                        float start_x, float start_z, float start_yaw);
+
+// Input management
+void gm_set_key_state(GameState *state, uint8_t key_code, int pressed);
+void gm_add_mouse_delta(GameState *state, float dx, float dy);
+
+// Per-frame update
+void gm_update_frame(GameState *state, float canvas_width, float canvas_height);
+
+// Get uniform data for rendering (returns float array for main uniforms)
+const float* gm_get_uniform_data(const GameState *state, float canvas_width, float canvas_height);
+
+// Overlay text building (returns glyph array and metadata)
+typedef struct {
+    uint32_t *glyph_data;  // Array of glyph codes
+    uint32_t length;       // Number of glyphs
+    uint32_t max_line_length;  // Max chars per line
+} OverlayTextResult;
+
+const OverlayTextResult* gm_build_overlay_text(const GameState *state);
+
+// Get overlay uniform data (returns float array for overlay uniforms)
+const float* gm_get_overlay_uniform_data(const GameState *state, float canvas_width,
+                                         float canvas_height, uint32_t text_length,
+                                         uint32_t max_line_length);
+
+// Update performance metrics
+void gm_update_perf_metrics(GameState *state, float frame_time, float js_time,
+                           float gpu_copy_time, float gpu_render_time);
