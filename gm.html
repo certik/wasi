@@ -861,24 +861,9 @@
             webgpuHost.configureContext(canvasFormat);
             webgpuHost.createDepthTexture(canvas.width, canvas.height);
 
-            const defaultTextures = {
-                wall: 'https://threejs.org/examples/textures/brick_diffuse.jpg',
-                floor: 'https://threejs.org/examples/textures/hardwood2_diffuse.jpg',
-                ceiling: 'https://threejs.org/examples/textures/lava/cloud.png',
-            };
-
-            const [wallTextureView, floorTextureView, ceilingTextureView] = await Promise.all([
-                createTextureFromUrl(device, defaultTextures.wall, 'wall-texture'),
-                createTextureFromUrl(device, defaultTextures.floor, 'floor-texture'),
-                createTextureFromUrl(device, defaultTextures.ceiling, 'ceiling-texture'),
-            ]);
-
             const hostConfigHandles = {
                 device: webgpuHost.handles.device,
                 queue: webgpuHost.handles.queue,
-                wallTexture: webgpuHost.registerTextureView(wallTextureView),
-                floorTexture: webgpuHost.registerTextureView(floorTextureView),
-                ceilingTexture: webgpuHost.registerTextureView(ceilingTextureView),
                 preferredFormat: preferredFormatEnum,
             };
             let hostConfigReady = true;
