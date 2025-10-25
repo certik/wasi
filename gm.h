@@ -158,3 +158,50 @@ void gm_on_animation_frame(void);
 
 // Main entry point - call this to start the game
 void gm_main(void);
+
+// WebGPU Enum String Conversion Functions
+// Texture formats
+uint32_t gm_texture_format_from_string(const char* name);
+const char* gm_texture_format_to_string(uint32_t value);
+
+// Vertex formats
+const char* gm_vertex_format_to_string(uint32_t value);
+
+// Primitive topology
+const char* gm_primitive_topology_to_string(uint32_t value);
+
+// Cull mode
+const char* gm_cull_mode_to_string(uint32_t value);
+
+// Front face
+const char* gm_front_face_to_string(uint32_t value);
+
+// Compare function
+const char* gm_compare_function_to_string(uint32_t value);
+
+// Filter modes
+const char* gm_filter_mode_to_string(uint32_t value);
+
+// Address modes
+const char* gm_address_mode_to_string(uint32_t value);
+
+// Blend factors
+const char* gm_blend_factor_to_string(uint32_t value);
+
+// Blend operations
+const char* gm_blend_operation_to_string(uint32_t value);
+
+// Buffer binding types
+const char* gm_buffer_binding_type_to_string(uint32_t value);
+
+// Sampler types
+const char* gm_sampler_type_to_string(uint32_t value);
+
+// Texture sample types
+const char* gm_texture_sample_type_to_string(uint32_t value);
+
+// Texture view dimensions
+const char* gm_texture_view_dimension_to_string(uint32_t value);
+
+// Vertex step modes
+const char* gm_vertex_step_mode_to_string(uint32_t value);

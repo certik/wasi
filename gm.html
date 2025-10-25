@@ -11,42 +11,7 @@
 <body>
     <canvas id="canvas"></canvas>
     <script type="module">
-        const textureFormatStringToEnum = {
-            'rgba8unorm': 0x00000016,
-            'rgba8unorm-srgb': 0x00000017,
-            'bgra8unorm': 0x0000001B,
-            'bgra8unorm-srgb': 0x0000001C,
-            'stencil8': 0x0000002C,
-            'depth16unorm': 0x0000002D,
-            'depth24plus': 0x0000002E,
-            'depth24plus-stencil8': 0x0000002F,
-            'depth32float': 0x00000030,
-            'depth32float-stencil8': 0x00000031,
-        };
-
-        const textureFormatEnumToString = {};
-        for (const [name, value] of Object.entries(textureFormatStringToEnum)) {
-            textureFormatEnumToString[value] = name;
-        }
-
-        function enumFromTextureFormat(name) {
-            const value = textureFormatStringToEnum[name];
-            if (value === undefined) {
-                console.warn(`[WebGPU] Unknown texture format: ${name}`);
-                return textureFormatStringToEnum['bgra8unorm'];
-            }
-            return value;
-        }
-
-        function textureFormatFromEnum(value) {
-            const format = textureFormatEnumToString[value];
-            if (!format) {
-                console.warn(`[WebGPU] Unknown texture format enum: 0x${value.toString(16)}`);
-                return 'bgra8unorm';
-            }
-            return format;
-        }
-
+        // GMBufferSlot enum - keep in sync with gm.c
         const GMBufferSlot = Object.freeze({
             POSITIONS: 0,
             UVS: 1,
@@ -183,6 +148,31 @@
                 [0x00000004, 'min'],
                 [0x00000005, 'max'],
             ]);
+
+            // Texture format mapping for use within this function
+            const textureFormatToEnum = {
+                'rgba8unorm': 0x00000016,
+                'rgba8unorm-srgb': 0x00000017,
+                'bgra8unorm': 0x0000001B,
+                'bgra8unorm-srgb': 0x0000001C,
+            };
+
+            const textureFormatFromEnumLocal = {
+                0x00000016: 'rgba8unorm',
+                0x00000017: 'rgba8unorm-srgb',
+                0x0000001B: 'bgra8unorm',
+                0x0000001C: 'bgra8unorm-srgb',
+                0x0000002C: 'stencil8',
+                0x0000002D: 'depth16unorm',
+                0x0000002E: 'depth24plus',
+                0x0000002F: 'depth24plus-stencil8',
+                0x00000030: 'depth32float',
+                0x00000031: 'depth32float-stencil8',
+            };
+
+            function textureFormatFromEnum(value) {
+                return textureFormatFromEnumLocal[value] ?? 'bgra8unorm';
+            }
 
             const deviceHandle = nextHandle++;
             devices.set(deviceHandle, device);
@@ -445,7 +435,7 @@
                 },
                 surface_get_preferred_format() {
                     const preferred = navigator.gpu.getPreferredCanvasFormat();
-                    const value = enumFromTextureFormat(preferred);
+                    const value = textureFormatToEnum[preferred] ?? 0x0000001B;
                     console.log('[WebGPU] Preferred canvas format (JS):', preferred, '-> enum', value);
                     return value;
                 },
@@ -816,6 +806,33 @@
             memory = wasmInstance.exports.memory;
             webgpuHost.setMemory(memory);
             
+            // Helper: Read C string from WASM memory
+            function readCString(ptr) {
+                const bytes = new Uint8Array(memory.buffer);
+                let end = ptr;
+                while (bytes[end] !== 0) end++;
+                return new TextDecoder().decode(bytes.slice(ptr, end));
+            }
+            
+            // Helper: Enum conversion functions using WASM exports
+            const gm_texture_format_to_string = wasmInstance.exports.gm_texture_format_to_string;
+            const gm_texture_format_from_string = wasmInstance.exports.gm_texture_format_from_string;
+            
+            function textureFormatFromEnum(value) {
+                const strPtr = gm_texture_format_to_string(value);
+                return readCString(strPtr);
+            }
+            
+            function enumFromTextureFormat(name) {
+                // Write string to temporary buffer (or use existing string in memory)
+                // For now, we'll encode it
+                const encoder = new TextEncoder();
+                const bytes = encoder.encode(name + '\0');
+                const tempPtr = wasmInstance.exports.gm_get_temp_buffer();
+                new Uint8Array(memory.buffer).set(bytes, tempPtr);
+                return gm_texture_format_from_string(tempPtr);
+            }
+            
             // Get map data from WASM instead of hardcoding in JavaScript
             const gm_get_default_map = wasmInstance.exports.gm_get_default_map;
             const gm_get_map_width = wasmInstance.exports.gm_get_map_width;
@@ -985,14 +1002,6 @@
             });
 
             console.log('Shaders compiled successfully');
-
-            // Helper function to read a null-terminated C string from WASM memory
-            function readCString(ptr) {
-                const view = new Uint8Array(memory.buffer);
-                let end = ptr;
-                while (view[end] !== 0) end++;
-                return new TextDecoder('utf-8').decode(view.subarray(ptr, end));
-            }
 
             // Get texture URLs from WASM
             const gm_get_wall_texture_url = wasmInstance.exports.gm_get_wall_texture_url;

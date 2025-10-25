@@ -4,6 +4,7 @@
 #include <base/scratch.h>
 #include <base/format.h>
 #include <base/base_string.h>
+#include <base/mem.h>
 
 // Math functions for WASM (imported from JavaScript)
 #ifdef __wasm__
@@ -1964,6 +1965,351 @@ __attribute__((export_name("gm_get_ceiling_texture_url")))
 #endif
 const char* gm_get_ceiling_texture_url(void) {
     return g_ceiling_texture_url;
+}
+
+// ============================================================================
+// WebGPU Enum String Conversions
+// ============================================================================
+
+// Texture format enum <-> string conversions
+typedef struct {
+    const char* name;
+    uint32_t value;
+} EnumMapping;
+
+static const EnumMapping g_texture_format_mappings[] = {
+    {"rgba8unorm", 0x00000016},
+    {"rgba8unorm-srgb", 0x00000017},
+    {"bgra8unorm", 0x0000001B},
+    {"bgra8unorm-srgb", 0x0000001C},
+    {"stencil8", 0x0000002C},
+    {"depth16unorm", 0x0000002D},
+    {"depth24plus", 0x0000002E},
+    {"depth24plus-stencil8", 0x0000002F},
+    {"depth32float", 0x00000030},
+    {"depth32float-stencil8", 0x00000031},
+    {NULL, 0}  // Sentinel
+};
+
+#ifdef __wasm__
+__attribute__((export_name("gm_texture_format_from_string")))
+#endif
+uint32_t gm_texture_format_from_string(const char* name) {
+    if (!name) return 0x0000001B;  // Default to bgra8unorm
+    
+    for (int i = 0; g_texture_format_mappings[i].name != NULL; i++) {
+        if (strcmp(name, g_texture_format_mappings[i].name) == 0) {
+            return g_texture_format_mappings[i].value;
+        }
+    }
+    
+    // Unknown format, return default
+    return 0x0000001B;  // bgra8unorm
+}
+
+#ifdef __wasm__
+__attribute__((export_name("gm_texture_format_to_string")))
+#endif
+const char* gm_texture_format_to_string(uint32_t value) {
+    for (int i = 0; g_texture_format_mappings[i].name != NULL; i++) {
+        if (g_texture_format_mappings[i].value == value) {
+            return g_texture_format_mappings[i].name;
+        }
+    }
+    
+    // Unknown format, return default
+    return "bgra8unorm";
+}
+
+// Vertex format enum <-> string conversions
+static const EnumMapping g_vertex_format_mappings[] = {
+    {"float32", 0x0000001C},
+    {"float32x2", 0x0000001D},
+    {"float32x3", 0x0000001E},
+    {"float32x4", 0x0000001F},
+    {NULL, 0}
+};
+
+#ifdef __wasm__
+__attribute__((export_name("gm_vertex_format_to_string")))
+#endif
+const char* gm_vertex_format_to_string(uint32_t value) {
+    for (int i = 0; g_vertex_format_mappings[i].name != NULL; i++) {
+        if (g_vertex_format_mappings[i].value == value) {
+            return g_vertex_format_mappings[i].name;
+        }
+    }
+    return "float32";
+}
+
+// Primitive topology enum <-> string conversions
+static const EnumMapping g_primitive_topology_mappings[] = {
+    {"point-list", 0x00000001},
+    {"line-list", 0x00000002},
+    {"line-strip", 0x00000003},
+    {"triangle-list", 0x00000004},
+    {"triangle-strip", 0x00000005},
+    {NULL, 0}
+};
+
+#ifdef __wasm__
+__attribute__((export_name("gm_primitive_topology_to_string")))
+#endif
+const char* gm_primitive_topology_to_string(uint32_t value) {
+    for (int i = 0; g_primitive_topology_mappings[i].name != NULL; i++) {
+        if (g_primitive_topology_mappings[i].value == value) {
+            return g_primitive_topology_mappings[i].name;
+        }
+    }
+    return "triangle-list";
+}
+
+// Cull mode enum <-> string conversions
+static const EnumMapping g_cull_mode_mappings[] = {
+    {"none", 0x00000001},
+    {"front", 0x00000002},
+    {"back", 0x00000003},
+    {NULL, 0}
+};
+
+#ifdef __wasm__
+__attribute__((export_name("gm_cull_mode_to_string")))
+#endif
+const char* gm_cull_mode_to_string(uint32_t value) {
+    for (int i = 0; g_cull_mode_mappings[i].name != NULL; i++) {
+        if (g_cull_mode_mappings[i].value == value) {
+            return g_cull_mode_mappings[i].name;
+        }
+    }
+    return "none";
+}
+
+// Front face enum <-> string conversions
+static const EnumMapping g_front_face_mappings[] = {
+    {"ccw", 0x00000001},
+    {"cw", 0x00000002},
+    {NULL, 0}
+};
+
+#ifdef __wasm__
+__attribute__((export_name("gm_front_face_to_string")))
+#endif
+const char* gm_front_face_to_string(uint32_t value) {
+    for (int i = 0; g_front_face_mappings[i].name != NULL; i++) {
+        if (g_front_face_mappings[i].value == value) {
+            return g_front_face_mappings[i].name;
+        }
+    }
+    return "ccw";
+}
+
+// Compare function enum <-> string conversions
+static const EnumMapping g_compare_function_mappings[] = {
+    {"less", 0x00000002},
+    {"less-equal", 0x00000004},
+    {"greater", 0x00000005},
+    {"always", 0x00000008},
+    {NULL, 0}
+};
+
+#ifdef __wasm__
+__attribute__((export_name("gm_compare_function_to_string")))
+#endif
+const char* gm_compare_function_to_string(uint32_t value) {
+    for (int i = 0; g_compare_function_mappings[i].name != NULL; i++) {
+        if (g_compare_function_mappings[i].value == value) {
+            return g_compare_function_mappings[i].name;
+        }
+    }
+    return "less";
+}
+
+// Filter mode enum <-> string conversions
+static const EnumMapping g_filter_mode_mappings[] = {
+    {"nearest", 0x00000001},
+    {"linear", 0x00000002},
+    {NULL, 0}
+};
+
+#ifdef __wasm__
+__attribute__((export_name("gm_filter_mode_to_string")))
+#endif
+const char* gm_filter_mode_to_string(uint32_t value) {
+    for (int i = 0; g_filter_mode_mappings[i].name != NULL; i++) {
+        if (g_filter_mode_mappings[i].value == value) {
+            return g_filter_mode_mappings[i].name;
+        }
+    }
+    return "nearest";
+}
+
+// Address mode enum <-> string conversions
+static const EnumMapping g_address_mode_mappings[] = {
+    {"clamp-to-edge", 0x00000001},
+    {"repeat", 0x00000002},
+    {"mirror-repeat", 0x00000003},
+    {NULL, 0}
+};
+
+#ifdef __wasm__
+__attribute__((export_name("gm_address_mode_to_string")))
+#endif
+const char* gm_address_mode_to_string(uint32_t value) {
+    for (int i = 0; g_address_mode_mappings[i].name != NULL; i++) {
+        if (g_address_mode_mappings[i].value == value) {
+            return g_address_mode_mappings[i].name;
+        }
+    }
+    return "clamp-to-edge";
+}
+
+// Blend factor enum <-> string conversions
+static const EnumMapping g_blend_factor_mappings[] = {
+    {"zero", 0x00000001},
+    {"one", 0x00000002},
+    {"src-alpha", 0x00000005},
+    {"one-minus-src-alpha", 0x00000006},
+    {"dst-alpha", 0x00000009},
+    {"one-minus-dst-alpha", 0x0000000A},
+    {NULL, 0}
+};
+
+#ifdef __wasm__
+__attribute__((export_name("gm_blend_factor_to_string")))
+#endif
+const char* gm_blend_factor_to_string(uint32_t value) {
+    for (int i = 0; g_blend_factor_mappings[i].name != NULL; i++) {
+        if (g_blend_factor_mappings[i].value == value) {
+            return g_blend_factor_mappings[i].name;
+        }
+    }
+    return "zero";
+}
+
+// Blend operation enum <-> string conversions
+static const EnumMapping g_blend_operation_mappings[] = {
+    {"add", 0x00000001},
+    {"subtract", 0x00000002},
+    {"reverse-subtract", 0x00000003},
+    {"min", 0x00000004},
+    {"max", 0x00000005},
+    {NULL, 0}
+};
+
+#ifdef __wasm__
+__attribute__((export_name("gm_blend_operation_to_string")))
+#endif
+const char* gm_blend_operation_to_string(uint32_t value) {
+    for (int i = 0; g_blend_operation_mappings[i].name != NULL; i++) {
+        if (g_blend_operation_mappings[i].value == value) {
+            return g_blend_operation_mappings[i].name;
+        }
+    }
+    return "add";
+}
+
+// Buffer binding type enum <-> string conversions
+static const EnumMapping g_buffer_binding_type_mappings[] = {
+    {"uniform", 0x00000002},
+    {"storage", 0x00000003},
+    {"read-only-storage", 0x00000004},
+    {NULL, 0}
+};
+
+#ifdef __wasm__
+__attribute__((export_name("gm_buffer_binding_type_to_string")))
+#endif
+const char* gm_buffer_binding_type_to_string(uint32_t value) {
+    for (int i = 0; g_buffer_binding_type_mappings[i].name != NULL; i++) {
+        if (g_buffer_binding_type_mappings[i].value == value) {
+            return g_buffer_binding_type_mappings[i].name;
+        }
+    }
+    return "uniform";
+}
+
+// Sampler type enum <-> string conversions
+static const EnumMapping g_sampler_type_mappings[] = {
+    {"filtering", 0x00000002},
+    {"non-filtering", 0x00000003},
+    {"comparison", 0x00000004},
+    {NULL, 0}
+};
+
+#ifdef __wasm__
+__attribute__((export_name("gm_sampler_type_to_string")))
+#endif
+const char* gm_sampler_type_to_string(uint32_t value) {
+    for (int i = 0; g_sampler_type_mappings[i].name != NULL; i++) {
+        if (g_sampler_type_mappings[i].value == value) {
+            return g_sampler_type_mappings[i].name;
+        }
+    }
+    return "filtering";
+}
+
+// Texture sample type enum <-> string conversions
+static const EnumMapping g_texture_sample_type_mappings[] = {
+    {"float", 0x00000002},
+    {"unfilterable-float", 0x00000003},
+    {"depth", 0x00000004},
+    {"sint", 0x00000005},
+    {"uint", 0x00000006},
+    {NULL, 0}
+};
+
+#ifdef __wasm__
+__attribute__((export_name("gm_texture_sample_type_to_string")))
+#endif
+const char* gm_texture_sample_type_to_string(uint32_t value) {
+    for (int i = 0; g_texture_sample_type_mappings[i].name != NULL; i++) {
+        if (g_texture_sample_type_mappings[i].value == value) {
+            return g_texture_sample_type_mappings[i].name;
+        }
+    }
+    return "float";
+}
+
+// Texture view dimension enum <-> string conversions
+static const EnumMapping g_texture_view_dimension_mappings[] = {
+    {"1d", 0x00000001},
+    {"2d", 0x00000002},
+    {"2d-array", 0x00000003},
+    {"cube", 0x00000004},
+    {"cube-array", 0x00000005},
+    {"3d", 0x00000006},
+    {NULL, 0}
+};
+
+#ifdef __wasm__
+__attribute__((export_name("gm_texture_view_dimension_to_string")))
+#endif
+const char* gm_texture_view_dimension_to_string(uint32_t value) {
+    for (int i = 0; g_texture_view_dimension_mappings[i].name != NULL; i++) {
+        if (g_texture_view_dimension_mappings[i].value == value) {
+            return g_texture_view_dimension_mappings[i].name;
+        }
+    }
+    return "2d";
+}
+
+// Vertex step mode enum <-> string conversions
+static const EnumMapping g_vertex_step_mode_mappings[] = {
+    {"vertex", 0x00000001},
+    {"instance", 0x00000002},
+    {NULL, 0}
+};
+
+#ifdef __wasm__
+__attribute__((export_name("gm_vertex_step_mode_to_string")))
+#endif
+const char* gm_vertex_step_mode_to_string(uint32_t value) {
+    for (int i = 0; g_vertex_step_mode_mappings[i].name != NULL; i++) {
+        if (g_vertex_step_mode_mappings[i].value == value) {
+            return g_vertex_step_mode_mappings[i].name;
+        }
+    }
+    return "vertex";
 }
 
 // Main entry point - called from JavaScript after WASM is loaded
