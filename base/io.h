@@ -13,3 +13,5 @@ void println_explicit(string fmt, size_t arg_count, ...);
 
 #define println(fmt, ...) \
     println_explicit(fmt, COUNT_ARGS(__VA_ARGS__) __VA_OPT__(,) APPLY_WITH_COUNT(COUNT_ARGS(__VA_ARGS__) __VA_OPT__(,) __VA_ARGS__))
+
+#define PRINT_LOG(x) println(str_lit("{}:{} in {}(): {}"), str_lit(__FILE__), __LINE__, str_lit(__func__), str_lit(x))
