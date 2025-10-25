@@ -820,6 +820,7 @@
             const gm_get_default_map = wasmInstance.exports.gm_get_default_map;
             const gm_get_map_width = wasmInstance.exports.gm_get_map_width;
             const gm_get_map_height = wasmInstance.exports.gm_get_map_height;
+            const gm_get_temp_buffer = wasmInstance.exports.gm_get_temp_buffer;
             const mapWidth = gm_get_map_width();
             const mapHeight = gm_get_map_height();
             const mapPtr = gm_get_default_map();
@@ -868,10 +869,10 @@
             });
             console.log('[WebGPU] Canvas configured');
 
-            // Find starting position using WASM (mapPtr already points to flattened map in WASM memory)
-            // Allocate memory for output parameters startX, startZ, startYaw
-            const startParamsPtr = mapPtr + mapWidth * mapHeight * 4 + 4;
-            const startXPtr = startParamsPtr;
+            // Find starting position using WASM
+            // Use temp buffer for output parameters (startX, startZ, startYaw)
+            const tempBufferPtr = gm_get_temp_buffer();
+            const startXPtr = tempBufferPtr;
             const startZPtr = startXPtr + 4;
             const startYawPtr = startZPtr + 4;
 
@@ -1044,9 +1045,9 @@
             console.log(`Mesh generated: ${positions.length/3} vertices, ${indices.length/3} triangles`);
 
             // Initialize game state in WASM
-            // Allocate after the map and temp variables
-            const gameStateSize = 512;
-            const gameStatePtr = startYawPtr + 4 + 64; // After startYaw with padding
+            // Get pointer to static game state instance from WASM
+            const gm_get_game_state_ptr = wasmInstance.exports.gm_get_game_state_ptr;
+            const gameStatePtr = gm_get_game_state_ptr();
             const gm_init_game_state = wasmInstance.exports.gm_init_game_state;
             const gm_set_key_state = wasmInstance.exports.gm_set_key_state;
             const gm_add_mouse_delta = wasmInstance.exports.gm_add_mouse_delta;

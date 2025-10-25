@@ -1745,6 +1745,15 @@ void gm_update_perf_metrics(GameState *state, float frame_time, float js_time,
 // ============================================================================
 
 static GameState *g_game_state = NULL;
+static GameState g_static_game_state;  // Static instance for WASM to use
+
+// Get a pointer to the static game state (for JavaScript to use)
+#ifdef __wasm__
+__attribute__((export_name("gm_get_game_state_ptr")))
+#endif
+GameState* gm_get_game_state_ptr(void) {
+    return &g_static_game_state;
+}
 
 // Main render frame function - called every frame
 void gm_render_frame(GameState *state) {
@@ -1840,6 +1849,9 @@ static const int g_default_map[MAP_HEIGHT][MAP_WIDTH] = {
 // Flatten the default map to 1D array  
 static int g_default_map_flattened[MAP_HEIGHT * MAP_WIDTH];
 
+// Static buffer for temporary allocations (e.g., for JavaScript to use as output parameters)
+static uint8_t g_temp_buffer[4096];
+
 // Export the default map data for JavaScript to use
 #ifdef __wasm__
 __attribute__((export_name("gm_get_default_map")))
@@ -1856,6 +1868,14 @@ int* gm_get_default_map(void) {
         initialized = 1;
     }
     return g_default_map_flattened;
+}
+
+// Export a temporary buffer for JavaScript to use for output parameters
+#ifdef __wasm__
+__attribute__((export_name("gm_get_temp_buffer")))
+#endif
+void* gm_get_temp_buffer(void) {
+    return g_temp_buffer;
 }
 
 // Export map dimensions
