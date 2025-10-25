@@ -89,6 +89,9 @@ typedef struct {
     uint32_t frame_count;
     double last_fps_update_time;  // Time of last FPS calculation
     uint32_t fps_frame_count;     // Frames since last FPS calculation
+
+    // Platform event tracking
+    uint32_t last_resize_id;      // Last observed resize flag
 } GameState;
 
 // Initialize game state with starting position and map

@@ -1408,6 +1408,9 @@ void gm_init_game_state(GameState *state, int *map, int width, int height,
     state->frame_count = 0;
     state->last_fps_update_time = 0.0;
     state->fps_frame_count = 0;
+
+    // Platform event tracking
+    state->last_resize_id = 0;
 }
 
 // Set key state
@@ -2028,6 +2031,18 @@ void gm_frame(void) {
         if (!gm_initialize_engine()) {
             return;
         }
+    }
+
+    // Skip rendering if tab is hidden
+    if (!platform_get_visibility()) {
+        return;
+    }
+
+    // Check for resize events
+    uint32_t resize_id = platform_get_resize_flag();
+    if (resize_id != g_game_state_instance.last_resize_id) {
+        g_game_state_instance.last_resize_id = resize_id;
+        // Canvas size will be re-queried in gm_render_frame
     }
 
     GMInputSnapshot snapshot = {0};

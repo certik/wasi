@@ -928,6 +928,7 @@
             });
 
             let memory = null;
+            let lastResizeId = 0;
 
             const platformAPI = {
                 get_canvas_size: (widthPtr, heightPtr) => {
@@ -936,6 +937,8 @@
                     view[heightPtr / 4] = canvas.height;
                 },
                 get_time: () => performance.now(),
+                get_resize_flag: () => lastResizeId,
+                get_visibility: () => document.visibilityState === 'visible' ? 1 : 0,
                 get_host_config: (configPtr) => {
                     if (!hostConfigReady) {
                         return 0;
@@ -995,18 +998,38 @@
 
             const gm_frame = wasmInstance.exports.gm_frame;
 
+            // Pause rendering when tab is hidden
+            let animationFrameId = null;
+            let isPaused = false;
+
             function frame() {
                 gm_frame();
-                requestAnimationFrame(frame);
+                animationFrameId = requestAnimationFrame(frame);
             }
 
-            requestAnimationFrame(frame);
+            animationFrameId = requestAnimationFrame(frame);
 
             window.addEventListener('resize', () => {
                 canvas.width = window.innerWidth;
                 canvas.height = window.innerHeight;
                 webgpuHost.configureContext(canvasFormat);
                 webgpuHost.createDepthTexture(canvas.width, canvas.height);
+                lastResizeId++;
+            });
+
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'hidden') {
+                    isPaused = true;
+                    if (animationFrameId !== null) {
+                        cancelAnimationFrame(animationFrameId);
+                        animationFrameId = null;
+                    }
+                } else {
+                    if (isPaused) {
+                        isPaused = false;
+                        animationFrameId = requestAnimationFrame(frame);
+                    }
+                }
             });
         }
 

@@ -34,6 +34,14 @@ void platform_get_canvas_size(int *width, int *height);
 PLATFORM_IMPORT("get_time")
 double platform_get_time(void);
 
+// Get resize flag (increments when canvas resizes)
+PLATFORM_IMPORT("get_resize_flag")
+uint32_t platform_get_resize_flag(void);
+
+// Get visibility state (1 = visible, 0 = hidden)
+PLATFORM_IMPORT("get_visibility")
+int platform_get_visibility(void);
+
 // ============================================================================
 // Engine Callbacks (Host <-> Game Module)
 // ============================================================================
