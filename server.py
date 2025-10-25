@@ -22,7 +22,7 @@ def main():
         print()
         print(f"To view the game, open:")
         print()
-        print(f"http://localhost:{actual_port}/gm.html")
+        print(f"\033[1mhttp://localhost:{actual_port}/gm.html\033[0m")
         print()
         print("Press Ctrl+C to stop the server")
         try:
