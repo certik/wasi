@@ -2006,13 +2006,8 @@ static int gm_initialize_engine(void) {
     PRINT_LOG("wgpu device/queue");
     g_wgpu_device = (WGPUDevice)(uintptr_t)config.device_handle;
     g_wgpu_queue = (WGPUQueue)(uintptr_t)config.queue_handle;
-    g_wall_texture_view = (WGPUTextureView)(uintptr_t)config.wall_texture_view;
-    g_floor_texture_view = (WGPUTextureView)(uintptr_t)config.floor_texture_view;
-    g_ceiling_texture_view = (WGPUTextureView)(uintptr_t)config.ceiling_texture_view;
 
-    if (g_wgpu_device == NULL || g_wgpu_queue == NULL ||
-        g_wall_texture_view == NULL || g_floor_texture_view == NULL ||
-        g_ceiling_texture_view == NULL) {
+    if (g_wgpu_device == NULL || g_wgpu_queue == NULL) {
         return 0;
     }
 
