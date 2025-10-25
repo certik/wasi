@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Simple HTTP server for serving static files."""
-
 import http.server
 import socketserver
 import os
 
-PORT = 8000
+PORT = 0  # Bind to 0 to auto-select a free port
 
 class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
     def end_headers(self):
@@ -17,16 +16,20 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
 
 def main():
     with socketserver.TCPServer(("", PORT), MyHTTPRequestHandler) as httpd:
-        print(f"Server running at http://localhost:{PORT}/")
+        actual_port = httpd.server_address[1]  # Get the auto-assigned port
+        print(f"Server running at http://localhost:{actual_port}/")
         print(f"Serving files from: {os.getcwd()}")
         print()
-        print(f"Open http://localhost:{PORT}/gm.html to view the game")
+        print(f"To view the game, open:")
+        print()
+        print(f"http://localhost:{actual_port}/gm.html")
         print()
         print("Press Ctrl+C to stop the server")
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:
             print("\nServer stopped.")
+            httpd.shutdown()  # Explicit shutdown for cleaner exit
 
 if __name__ == "__main__":
     main()
