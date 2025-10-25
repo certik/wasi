@@ -930,6 +930,10 @@
             let memory = null;
             let lastResizeId = 0;
 
+            // Texture request tracking
+            const textureLoadRequests = new Map();
+            let nextTextureRequestId = 1;
+
             const platformAPI = {
                 get_canvas_size: (widthPtr, heightPtr) => {
                     const view = new Int32Array(memory.buffer);
@@ -960,6 +964,67 @@
                     dv.setFloat32(4, mouseDeltaY, true);
                     mouseDeltaX = 0;
                     mouseDeltaY = 0;
+                },
+                request_texture_load: (urlPtr, urlLen) => {
+                    if (!memory) {
+                        console.error('[Texture] Memory not initialized');
+                        return 0;
+                    }
+                    const url = readString(urlPtr, urlLen);
+                    const requestId = nextTextureRequestId++;
+
+                    const request = {
+                        id: requestId,
+                        status: 'loading',  // 'loading', 'ready', 'error'
+                        textureView: null,
+                        textureViewHandle: 0,
+                    };
+
+                    textureLoadRequests.set(requestId, request);
+
+                    console.log(`[Texture] Request ${requestId}: loading ${url}`);
+
+                    // Load texture asynchronously
+                    createTextureFromUrl(device, url, `texture-req-${requestId}`)
+                        .then((view) => {
+                            request.textureView = view;
+                            request.textureViewHandle = webgpuHost.registerTextureView(view);
+                            request.status = 'ready';
+                            console.log(`[Texture] Request ${requestId} ready, handle=${request.textureViewHandle}`);
+                        })
+                        .catch((err) => {
+                            console.error(`[Texture] Request ${requestId} failed:`, err);
+                            request.status = 'error';
+                        });
+
+                    return requestId;
+                },
+                poll_texture_load: (requestId, handleOutPtr) => {
+                    const request = textureLoadRequests.get(requestId);
+                    if (!request) {
+                        console.warn(`[Texture] Poll: unknown request ${requestId}`);
+                        return -1;  // Invalid request ID
+                    }
+
+                    if (request.status === 'loading') {
+                        return 0;  // Still loading
+                    }
+
+                    if (request.status === 'error') {
+                        return -1;  // Failed
+                    }
+
+                    // Ready! Write handle to output pointer
+                    const view = new DataView(memory.buffer);
+                    view.setUint32(handleOutPtr, request.textureViewHandle, true);
+                    return 1;  // Ready
+                },
+                cancel_texture_load: (requestId) => {
+                    const request = textureLoadRequests.get(requestId);
+                    if (request) {
+                        console.log(`[Texture] Cancelled request ${requestId}`);
+                        textureLoadRequests.delete(requestId);
+                    }
                 },
             };
 

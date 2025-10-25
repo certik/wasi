@@ -54,3 +54,27 @@ int platform_get_host_config(GMHostConfig *config);
 // Retrieve the current input snapshot (keyboard + mouse) from the host.
 PLATFORM_IMPORT("get_input_state")
 void platform_get_input_state(GMInputSnapshot *snapshot);
+
+// ============================================================================
+// Texture Loading (Async)
+// ============================================================================
+
+// Request loading a texture from a URL.
+// Returns: request_handle (>0) on success, 0 on failure
+// The URL is read from WASM memory at the given pointer/length.
+PLATFORM_IMPORT("request_texture_load")
+uint32_t platform_request_texture_load(const char* url, uint32_t url_len);
+
+// Poll the status of a texture load request.
+// Returns:
+//   0 = still loading
+//   1 = ready (texture_view_handle_out is populated)
+//  -1 = error (load failed)
+// On success (1), writes the WebGPU texture view handle to *texture_view_handle_out
+PLATFORM_IMPORT("poll_texture_load")
+int platform_poll_texture_load(uint32_t request_handle, uint32_t *texture_view_handle_out);
+
+// Cancel a pending texture load request and free resources.
+// Safe to call even if request is already complete.
+PLATFORM_IMPORT("cancel_texture_load")
+void platform_cancel_texture_load(uint32_t request_handle);

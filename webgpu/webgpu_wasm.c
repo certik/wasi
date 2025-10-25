@@ -735,3 +735,9 @@ WGPUTextureView wgpu_get_depth_texture_view(uint32_t width, uint32_t height) {
     uint32_t handle = webgpu_host_get_depth_texture_view(width, height);
     return (WGPUTextureView)(uintptr_t)handle;
 }
+
+void wgpuBindGroupRelease(WGPUBindGroup bindGroup) {
+    // In WASM, bind groups are just handles managed by JavaScript.
+    // Release is a no-op since JS side manages the WebGPU object lifecycle.
+    (void)bindGroup;
+}

@@ -163,6 +163,29 @@ typedef struct GMInputSnapshot {
     float mouse_delta_y;
 } GMInputSnapshot;
 
+typedef enum {
+    TEX_LOAD_STATE_IDLE = 0,       // No loading in progress
+    TEX_LOAD_STATE_REQUESTING,     // Submitting requests
+    TEX_LOAD_STATE_POLLING,        // Waiting for all to complete
+    TEX_LOAD_STATE_READY,          // All loaded, ready to apply
+    TEX_LOAD_STATE_ERROR,          // One or more failed
+} TextureLoadState;
+
+typedef struct {
+    uint32_t request_handle;
+    uint32_t texture_view_handle;
+    int ready;   // 0=pending, 1=ready, -1=error
+} TextureRequest;
+
+typedef struct {
+    TextureLoadState state;
+    TextureRequest wall;
+    TextureRequest floor;
+    TextureRequest ceiling;
+} TextureLoadSession;
+
+static TextureLoadSession g_texture_session = {0};
+
 typedef struct {
     float *positions;
     float *uvs;
@@ -1185,6 +1208,17 @@ static int gm_create_render_pipelines(uint32_t color_format_enum) {
     return 0;
 }
 
+static void gm_destroy_bind_groups(void) {
+    if (g_bind_groups[GM_BIND_GROUP_MAIN] != NULL) {
+        wgpuBindGroupRelease(g_bind_groups[GM_BIND_GROUP_MAIN]);
+        g_bind_groups[GM_BIND_GROUP_MAIN] = NULL;
+    }
+    if (g_bind_groups[GM_BIND_GROUP_OVERLAY] != NULL) {
+        wgpuBindGroupRelease(g_bind_groups[GM_BIND_GROUP_OVERLAY]);
+        g_bind_groups[GM_BIND_GROUP_OVERLAY] = NULL;
+    }
+}
+
 static int gm_create_bind_groups(void) {
     if (g_wgpu_device == NULL) {
         return -1;
@@ -2023,6 +2057,86 @@ static int gm_initialize_engine(void) {
     return 1;
 }
 
+// Request new textures to be loaded dynamically.
+// URLs must be null-terminated strings.
+// This initiates async loading; textures will be applied automatically when ready.
+void gm_request_textures(const char* wall_url, const char* floor_url, const char* ceiling_url) {
+    // Cancel any pending session
+    if (g_texture_session.state == TEX_LOAD_STATE_POLLING) {
+        platform_cancel_texture_load(g_texture_session.wall.request_handle);
+        platform_cancel_texture_load(g_texture_session.floor.request_handle);
+        platform_cancel_texture_load(g_texture_session.ceiling.request_handle);
+    }
+
+    // Submit all three requests
+    g_texture_session.wall.request_handle = platform_request_texture_load(
+        wall_url, (uint32_t)strlen(wall_url));
+    g_texture_session.floor.request_handle = platform_request_texture_load(
+        floor_url, (uint32_t)strlen(floor_url));
+    g_texture_session.ceiling.request_handle = platform_request_texture_load(
+        ceiling_url, (uint32_t)strlen(ceiling_url));
+
+    if (g_texture_session.wall.request_handle == 0 ||
+        g_texture_session.floor.request_handle == 0 ||
+        g_texture_session.ceiling.request_handle == 0) {
+        g_texture_session.state = TEX_LOAD_STATE_ERROR;
+        return;
+    }
+
+    // Mark all as pending
+    g_texture_session.wall.ready = 0;
+    g_texture_session.floor.ready = 0;
+    g_texture_session.ceiling.ready = 0;
+
+    g_texture_session.state = TEX_LOAD_STATE_POLLING;
+}
+
+// Get current texture loading state.
+int gm_get_texture_load_state(void) {
+    return (int)g_texture_session.state;
+}
+
+// Poll all pending texture requests and update session state.
+static void gm_poll_texture_session(void) {
+    if (g_texture_session.state != TEX_LOAD_STATE_POLLING) {
+        return;
+    }
+
+    // Poll each request
+    if (g_texture_session.wall.ready == 0) {
+        g_texture_session.wall.ready = platform_poll_texture_load(
+            g_texture_session.wall.request_handle,
+            &g_texture_session.wall.texture_view_handle);
+    }
+
+    if (g_texture_session.floor.ready == 0) {
+        g_texture_session.floor.ready = platform_poll_texture_load(
+            g_texture_session.floor.request_handle,
+            &g_texture_session.floor.texture_view_handle);
+    }
+
+    if (g_texture_session.ceiling.ready == 0) {
+        g_texture_session.ceiling.ready = platform_poll_texture_load(
+            g_texture_session.ceiling.request_handle,
+            &g_texture_session.ceiling.texture_view_handle);
+    }
+
+    // Check if any failed
+    if (g_texture_session.wall.ready < 0 ||
+        g_texture_session.floor.ready < 0 ||
+        g_texture_session.ceiling.ready < 0) {
+        g_texture_session.state = TEX_LOAD_STATE_ERROR;
+        return;
+    }
+
+    // Check if all ready
+    if (g_texture_session.wall.ready == 1 &&
+        g_texture_session.floor.ready == 1 &&
+        g_texture_session.ceiling.ready == 1) {
+        g_texture_session.state = TEX_LOAD_STATE_READY;
+    }
+}
+
 #ifdef __wasm__
 __attribute__((export_name("gm_frame")))
 #endif
@@ -2030,6 +2144,24 @@ void gm_frame(void) {
     if (!g_engine_initialized) {
         if (!gm_initialize_engine()) {
             return;
+        }
+    }
+
+    // Poll pending texture loading
+    gm_poll_texture_session();
+
+    if (g_texture_session.state == TEX_LOAD_STATE_READY) {
+        // Apply new textures
+        g_wall_texture_view = (WGPUTextureView)(uintptr_t)g_texture_session.wall.texture_view_handle;
+        g_floor_texture_view = (WGPUTextureView)(uintptr_t)g_texture_session.floor.texture_view_handle;
+        g_ceiling_texture_view = (WGPUTextureView)(uintptr_t)g_texture_session.ceiling.texture_view_handle;
+
+        // Rebuild bind groups with new textures
+        gm_destroy_bind_groups();
+        if (gm_create_bind_groups() == 0) {
+            g_texture_session.state = TEX_LOAD_STATE_IDLE;
+        } else {
+            g_texture_session.state = TEX_LOAD_STATE_ERROR;
         }
     }
 

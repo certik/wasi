@@ -197,3 +197,8 @@ WGPUTextureView wgpu_get_depth_texture_view(uint32_t width, uint32_t height) {
     FATAL_ERROR("WebGPU is not supported on this platform build.");
     return NULL;
 }
+
+void wgpuBindGroupRelease(WGPUBindGroup bindGroup) {
+    (void)bindGroup;
+    FATAL_ERROR("WebGPU is not supported on this platform build.");
+}

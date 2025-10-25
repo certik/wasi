@@ -128,3 +128,16 @@ void gm_update_perf_metrics(GameState *state, float frame_time, float js_time,
 
 // Main engine entry point invoked by the host each frame.
 void gm_frame(void);
+
+// ============================================================================
+// Dynamic Texture Loading
+// ============================================================================
+
+// Request new textures to be loaded asynchronously.
+// Textures will be swapped in automatically when all three are ready.
+// URLs must be valid HTTP(S) URLs or data: URLs.
+void gm_request_textures(const char* wall_url, const char* floor_url, const char* ceiling_url);
+
+// Get current texture loading state.
+// Returns: 0=idle, 1=requesting, 2=polling, 3=ready, 4=error
+int gm_get_texture_load_state(void);

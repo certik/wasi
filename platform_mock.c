@@ -36,3 +36,22 @@ void platform_get_input_state(GMInputSnapshot *snapshot) {
     (void)snapshot;
     FATAL_ERROR("platform_get_input_state is not supported on native builds");
 }
+
+uint32_t platform_request_texture_load(const char* url, uint32_t url_len) {
+    (void)url;
+    (void)url_len;
+    FATAL_ERROR("platform_request_texture_load is not supported on native builds");
+    return 0;
+}
+
+int platform_poll_texture_load(uint32_t request_handle, uint32_t *texture_view_handle_out) {
+    (void)request_handle;
+    (void)texture_view_handle_out;
+    FATAL_ERROR("platform_poll_texture_load is not supported on native builds");
+    return -1;
+}
+
+void platform_cancel_texture_load(uint32_t request_handle) {
+    (void)request_handle;
+    FATAL_ERROR("platform_cancel_texture_load is not supported on native builds");
+}
