@@ -127,16 +127,24 @@ After each change:
 
 ## Expected Outcome
 
-**Realistic goal after Phase 2:**
-- Reduce `gm.html` from ~1,166 to ~1,000-1,100 lines
+**Achieved after Phase 2:**
+- Reduced `gm.html` from 1,166 to 1,150 lines (16 line reduction)
+- Reduced `init` function from 554 to 541 lines (13 line reduction)
 - All game logic and data structures in `gm.c`
 - HTML contains only necessary browser API interactions
 - Clear separation between infrastructure (WebGPU bridge) and game code
+- Improved code organization with helper functions
+- Better performance through direct WASM memory access
 
-**Current achievement:**
+**Phase 1 achievement:**
 - Moved ~430 lines of enum logic to C
 - Created foundation for consistent enum handling
 - Improved maintainability and type safety
+
+**Total improvement:**
+- Line reduction: 46 lines (430 from Phase 1 enum migration + 16 from Phase 2 refactoring)
+- Code quality: Better organization, reduced duplication, improved performance
+- Maintainability: Clearer patterns, consolidated initialization, helper functions
 
 ## Key Insight
 
