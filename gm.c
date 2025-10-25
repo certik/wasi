@@ -2,6 +2,7 @@
 #include <webgpu/webgpu.h>
 #include <platform.h>
 #include <base/scratch.h>
+#include <base/buddy.h>
 #include <base/format.h>
 #include <base/base_string.h>
 #include <base/mem.h>
@@ -2135,6 +2136,13 @@ static void gm_poll_texture_session(void) {
         g_texture_session.ceiling.ready == 1) {
         g_texture_session.state = TEX_LOAD_STATE_READY;
     }
+}
+
+#ifdef __wasm__
+__attribute__((export_name("gm_init")))
+#endif
+void gm_init(void) {
+    buddy_init();
 }
 
 #ifdef __wasm__

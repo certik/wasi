@@ -1061,7 +1061,10 @@
             memory = wasmInstance.exports.memory;
             webgpuHost.setMemory(memory);
 
+            const gm_init = wasmInstance.exports.gm_init;
             const gm_frame = wasmInstance.exports.gm_frame;
+
+            gm_init();
 
             // Pause rendering when tab is hidden
             let animationFrameId = null;
