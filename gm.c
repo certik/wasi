@@ -1461,51 +1461,30 @@ void gm_add_mouse_delta(GameState *state, float dx, float dy) {
 }
 
 // Toggle functions for GameState flags
-#ifdef __wasm__
-__attribute__((export_name("gm_toggle_map_visible")))
-#endif
 void gm_toggle_map_visible(GameState *state) {
     state->map_visible = !state->map_visible;
 }
 
-#ifdef __wasm__
-__attribute__((export_name("gm_toggle_map_relative_mode")))
-#endif
 void gm_toggle_map_relative_mode(GameState *state) {
     state->map_relative_mode = !state->map_relative_mode;
 }
 
-#ifdef __wasm__
-__attribute__((export_name("gm_toggle_hud_visible")))
-#endif
 void gm_toggle_hud_visible(GameState *state) {
     state->hud_visible = !state->hud_visible;
 }
 
-#ifdef __wasm__
-__attribute__((export_name("gm_toggle_textures_enabled")))
-#endif
 void gm_toggle_textures_enabled(GameState *state) {
     state->textures_enabled = !state->textures_enabled;
 }
 
-#ifdef __wasm__
-__attribute__((export_name("gm_toggle_triangle_mode")))
-#endif
 void gm_toggle_triangle_mode(GameState *state) {
     state->triangle_mode = !state->triangle_mode;
 }
 
-#ifdef __wasm__
-__attribute__((export_name("gm_toggle_debug_mode")))
-#endif
 void gm_toggle_debug_mode(GameState *state) {
     state->debug_mode = !state->debug_mode;
 }
 
-#ifdef __wasm__
-__attribute__((export_name("gm_toggle_horizontal_movement")))
-#endif
 void gm_toggle_horizontal_movement(GameState *state) {
     state->horizontal_movement = !state->horizontal_movement;
 }
