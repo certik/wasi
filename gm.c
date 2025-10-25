@@ -6,6 +6,7 @@
 #include <base/format.h>
 #include <base/base_string.h>
 #include <base/mem.h>
+#include <base/io.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -1991,11 +1992,15 @@ static void gm_apply_input(GameState *state, const GMInputSnapshot *snapshot) {
 }
 
 static int gm_initialize_engine(void) {
+    PRINT_LOG("gm_initialize_engine()");
     GMHostConfig config = {0};
+    PRINT_LOG("getting host ready");
     if (!platform_get_host_config(&config)) {
         return 0;  // Host not ready yet.
     }
 
+
+    PRINT_LOG("wgpu device/queue");
     g_wgpu_device = (WGPUDevice)(uintptr_t)config.device_handle;
     g_wgpu_queue = (WGPUQueue)(uintptr_t)config.queue_handle;
     g_wall_texture_view = (WGPUTextureView)(uintptr_t)config.wall_texture_view;
@@ -2008,43 +2013,55 @@ static int gm_initialize_engine(void) {
         return 0;
     }
 
+    PRINT_LOG("start position");
     int *map = gm_get_flattened_default_map();
     float start_x = 0.0f;
     float start_z = 0.0f;
     float start_yaw = 0.0f;
     if (!find_start_position(map, MAP_WIDTH, MAP_HEIGHT, &start_x, &start_z, &start_yaw)) {
+        PRINT_LOG("start position failed");
         return 0;
     }
 
+    PRINT_LOG("generate_mesh");
     MeshData *mesh = generate_mesh(map, MAP_WIDTH, MAP_HEIGHT);
     if (mesh == NULL) {
         return 0;
     }
 
+    PRINT_LOG("gpu buffers");
     if (gm_create_gpu_buffers() != 0) {
         return 0;
     }
 
+    PRINT_LOG("map buffers");
     gm_upload_overlay_map_buffer(map);
 
+    PRINT_LOG("shader modules");
     if (gm_create_shader_modules() != 0) {
         return 0;
     }
+    PRINT_LOG("bind groups layout");
     if (gm_create_bind_group_layouts() != 0) {
         return 0;
     }
+    PRINT_LOG("pipeline layout");
     if (gm_create_pipeline_layouts() != 0) {
         return 0;
     }
+    PRINT_LOG("render pipeline");
     if (gm_create_render_pipelines(config.preferred_color_format) != 0) {
         return 0;
     }
+    PRINT_LOG("bind groups");
     if (gm_create_bind_groups() != 0) {
         return 0;
     }
 
+    PRINT_LOG("map buffer");
     gm_upload_overlay_map_buffer(map);
 
+    PRINT_LOG("init game state");
     gm_init_game_state(
         &g_game_state_instance,
         map,
@@ -2054,6 +2071,8 @@ static int gm_initialize_engine(void) {
         start_z,
         start_yaw);
 
+
+    PRINT_LOG("Initialization complete");
     g_engine_initialized = 1;
     return 1;
 }

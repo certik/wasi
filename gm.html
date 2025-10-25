@@ -970,6 +970,14 @@
                         console.error('[Texture] Memory not initialized');
                         return 0;
                     }
+                    function readString(ptr, length) {
+                        if (!ptr || length === 0) {
+                            return '';
+                        }
+                        const bytes = new Uint8Array(memory.buffer, ptr, length);
+                        const decoder = new TextDecoder('utf-8');
+                        return decoder.decode(bytes);
+                    }
                     const url = readString(urlPtr, urlLen);
                     const requestId = nextTextureRequestId++;
 
