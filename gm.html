@@ -814,6 +814,18 @@
                 return new TextDecoder().decode(bytes.slice(ptr, end));
             }
             
+            // Helper: Get GPU resource handles from WASM table
+            function getGPUHandles(getTableFunc, getCountFunc, getResourceFunc) {
+                const count = getCountFunc();
+                const tablePtr = getTableFunc();
+                const handleView = new Uint32Array(memory.buffer, tablePtr, count);
+                const resources = [];
+                for (let i = 0; i < count; i++) {
+                    resources.push(getResourceFunc(handleView[i]));
+                }
+                return resources;
+            }
+            
             // Helper: Enum conversion functions using WASM exports
             const gm_texture_format_to_string = wasmInstance.exports.gm_texture_format_to_string;
             const gm_texture_format_from_string = wasmInstance.exports.gm_texture_format_from_string;
@@ -841,17 +853,6 @@
             const mapWidth = gm_get_map_width();
             const mapHeight = gm_get_map_height();
             const mapPtr = gm_get_default_map();
-            
-            // Read map from WASM memory
-            const flatMapView = new Int32Array(memory.buffer, mapPtr, mapWidth * mapHeight);
-            const map = [];
-            for (let z = 0; z < mapHeight; z++) {
-                const row = [];
-                for (let x = 0; x < mapWidth; x++) {
-                    row.push(flatMapView[z * mapWidth + x]);
-                }
-                map.push(row);
-            }
             
             // Get other WASM exports
             const find_start_position = wasmInstance.exports.find_start_position;
@@ -904,14 +905,6 @@
                 startZ = floatView[startZPtr / 4];
                 startYaw = floatView[startYawPtr / 4];
 
-                // Update JavaScript map array with cleared marker (get fresh buffer reference)
-                const wasmMemory = new Int32Array(memory.buffer);
-                for (let z = 0; z < mapHeight; z++) {
-                    for (let x = 0; x < mapWidth; x++) {
-                        map[z][x] = wasmMemory[mapPtr / 4 + z * mapWidth + x];
-                    }
-                }
-
                 const dirName = startYaw < -1.0 ? 'North' : startYaw < 1.0 ? 'East' : startYaw < 2.0 ? 'South' : 'West';
                 console.log(`Starting at (${startX}, ${startZ}) facing ${dirName} with yaw=${startYaw}`);
             } else {
@@ -947,33 +940,28 @@
             const triangleIDs = new Float32Array(memory.buffer, triangleIDsPtr, vertexCount);
             const indices = new Uint16Array(memory.buffer, indicesPtr, indexCount);
 
-            // Create map data array for collision detection (still needed by JavaScript)
-            const mapDataArray = new Uint32Array(mapWidth * mapHeight);
-            for (let z = 0; z < mapHeight; z++) {
-                for (let x = 0; x < mapWidth; x++) {
-                    mapDataArray[z * mapWidth + x] = map[z][x];
-                }
-            }
-
             const bufferInitResult = gm_create_gpu_buffers();
             if (bufferInitResult !== 0) {
                 throw new Error(`gm_create_gpu_buffers failed with code ${bufferInitResult}`);
             }
 
-            const bufferHandleCount = gm_get_gpu_buffer_count();
-            const bufferTablePtr = gm_get_gpu_buffer_table();
-            const bufferHandleView = new Uint32Array(memory.buffer, bufferTablePtr, bufferHandleCount);
-            positionBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.POSITIONS]);
-            uvBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.UVS]);
-            surfaceTypeBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.SURFACE_TYPES]);
-            triangleIDBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.TRIANGLE_IDS]);
-            normalBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.NORMALS]);
-            indexBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.INDICES]);
-            uniformBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.UNIFORM]);
-            overlayUniformBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.OVERLAY_UNIFORM]);
-            overlayTextBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.OVERLAY_TEXT]);
-            const overlayMapBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.OVERLAY_MAP]);
-            overlayVertexBuffer = webgpuHost.getBuffer(bufferHandleView[GMBufferSlot.OVERLAY_VERTEX]);
+            // Extract GPU buffer handles
+            const buffers = getGPUHandles(
+                gm_get_gpu_buffer_table,
+                gm_get_gpu_buffer_count,
+                webgpuHost.getBuffer.bind(webgpuHost)
+            );
+            positionBuffer = buffers[GMBufferSlot.POSITIONS];
+            uvBuffer = buffers[GMBufferSlot.UVS];
+            surfaceTypeBuffer = buffers[GMBufferSlot.SURFACE_TYPES];
+            triangleIDBuffer = buffers[GMBufferSlot.TRIANGLE_IDS];
+            normalBuffer = buffers[GMBufferSlot.NORMALS];
+            indexBuffer = buffers[GMBufferSlot.INDICES];
+            uniformBuffer = buffers[GMBufferSlot.UNIFORM];
+            overlayUniformBuffer = buffers[GMBufferSlot.OVERLAY_UNIFORM];
+            overlayTextBuffer = buffers[GMBufferSlot.OVERLAY_TEXT];
+            const overlayMapBuffer = buffers[GMBufferSlot.OVERLAY_MAP];
+            overlayVertexBuffer = buffers[GMBufferSlot.OVERLAY_VERTEX];
             uniformFloatCount = gm_get_uniform_float_count();
 
             const shaderInitResult = gm_create_shader_modules();
@@ -981,13 +969,13 @@
                 throw new Error(`gm_create_shader_modules failed with code ${shaderInitResult}`);
             }
 
-            const shaderHandleCount = gm_get_shader_module_count();
-            const shaderTablePtr = gm_get_shader_module_table();
-            const shaderHandleView = new Uint32Array(memory.buffer, shaderTablePtr, shaderHandleCount);
-            const vsModule = webgpuHost.getShaderModule(shaderHandleView[0]);
-            const fsModule = webgpuHost.getShaderModule(shaderHandleView[1]);
-            const overlayVsModule = webgpuHost.getShaderModule(shaderHandleView[2]);
-            const overlayFsModule = webgpuHost.getShaderModule(shaderHandleView[3]);
+            // Extract shader module handles
+            const shaders = getGPUHandles(
+                gm_get_shader_module_table,
+                gm_get_shader_module_count,
+                webgpuHost.getShaderModule.bind(webgpuHost)
+            );
+            const [vsModule, fsModule, overlayVsModule, overlayFsModule] = shaders;
 
             // Check for shader compilation errors
             vsModule.getCompilationInfo().then(info => {
@@ -1031,40 +1019,36 @@
             const ceilingHandle = webgpuHost.registerTextureView(ceilingTextureView);
             gm_register_texture_views(wallHandle, floorHandle, ceilingHandle);
 
-            let pipelineInit = gm_create_bind_group_layouts();
+            // Initialize all WebGPU pipelines (bind group layouts, pipeline layouts, render pipelines, bind groups)
+            const gm_initialize_pipelines = wasmInstance.exports.gm_initialize_pipelines;
+            const pipelineInit = gm_initialize_pipelines(preferredFormatEnum);
             if (pipelineInit !== 0) {
-                throw new Error(`gm_create_bind_group_layouts failed with code ${pipelineInit}`);
-            }
-            pipelineInit = gm_create_pipeline_layouts();
-            if (pipelineInit !== 0) {
-                throw new Error(`gm_create_pipeline_layouts failed with code ${pipelineInit}`);
-            }
-            pipelineInit = gm_create_render_pipelines(preferredFormatEnum);
-            if (pipelineInit !== 0) {
-                throw new Error(`gm_create_render_pipelines failed with code ${pipelineInit}`);
-            }
-            pipelineInit = gm_create_bind_groups();
-            if (pipelineInit !== 0) {
-                throw new Error(`gm_create_bind_groups failed with code ${pipelineInit}`);
+                throw new Error(`gm_initialize_pipelines failed with code ${pipelineInit}`);
             }
 
-            const bindGroupHandleCount = gm_get_bind_group_count();
-            const bindGroupTablePtr = gm_get_bind_group_table();
-            const bindGroupHandleView = new Uint32Array(memory.buffer, bindGroupTablePtr, bindGroupHandleCount);
-            bindGroup = webgpuHost.getBindGroup(bindGroupHandleView[0]);
-            overlayBindGroup = webgpuHost.getBindGroup(bindGroupHandleView[1]);
+            // Extract bind group and pipeline handles
+            const bindGroups = getGPUHandles(
+                gm_get_bind_group_table,
+                gm_get_bind_group_count,
+                webgpuHost.getBindGroup.bind(webgpuHost)
+            );
+            [bindGroup, overlayBindGroup] = bindGroups;
 
-            const pipelineHandleCount = gm_get_render_pipeline_count();
-            const pipelineTablePtr = gm_get_render_pipeline_table();
-            const pipelineHandleView = new Uint32Array(memory.buffer, pipelineTablePtr, pipelineHandleCount);
-            pipeline = webgpuHost.getRenderPipeline(pipelineHandleView[0]);
-            overlayPipeline = webgpuHost.getRenderPipeline(pipelineHandleView[1]);
+            const pipelines = getGPUHandles(
+                gm_get_render_pipeline_table,
+                gm_get_render_pipeline_count,
+                webgpuHost.getRenderPipeline.bind(webgpuHost)
+            );
+            [pipeline, overlayPipeline] = pipelines;
 
             console.log('Pipelines and bind groups created successfully via WASM');
 
             overlayUniformFloatCount = 24;
             const overlayTextCapacity = 256;
-            device.queue.writeBuffer(overlayMapBuffer, 0, mapDataArray);
+            
+            // Write map data from WASM memory directly to GPU buffer
+            const mapDataView = new Uint32Array(memory.buffer, mapPtr, mapWidth * mapHeight);
+            device.queue.writeBuffer(overlayMapBuffer, 0, mapDataView);
 
             // Depth texture
             depthTexture = device.createTexture({

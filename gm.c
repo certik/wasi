@@ -1338,6 +1338,38 @@ uint32_t gm_get_render_pipeline_count(void) {
     return GM_RENDER_PIPELINE_COUNT;
 }
 
+// Consolidated WebGPU pipeline initialization
+// Creates bind group layouts, pipeline layouts, render pipelines, and bind groups
+// Returns 0 on success, negative error code on failure
+#ifdef __wasm__
+__attribute__((export_name("gm_initialize_pipelines")))
+#endif
+int gm_initialize_pipelines(uint32_t color_format_enum) {
+    int result;
+    
+    result = gm_create_bind_group_layouts();
+    if (result != 0) {
+        return result;  // Pass through error code
+    }
+    
+    result = gm_create_pipeline_layouts();
+    if (result != 0) {
+        return result;
+    }
+    
+    result = gm_create_render_pipelines(color_format_enum);
+    if (result != 0) {
+        return result;
+    }
+    
+    result = gm_create_bind_groups();
+    if (result != 0) {
+        return result;
+    }
+    
+    return 0;
+}
+
 // ============================================================================
 // Game Logic Implementation
 // ============================================================================
