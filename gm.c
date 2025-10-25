@@ -15,6 +15,10 @@ __attribute__((import_module("env"), import_name("sinf")))
 extern float sinf(float x);
 #endif
 
+// Platform-specific WebGPU context functions
+WGPUTextureView wgpu_context_get_current_texture_view(void);
+WGPUTextureView wgpu_get_depth_texture_view(uint32_t width, uint32_t height);
+
 #include "gm_shaders.inc"
 
 #define GM_UNIFORM_FLOAT_COUNT 12
@@ -1778,14 +1782,84 @@ static void gm_render_frame(GameState *state) {
         state, (float)canvas_width, (float)canvas_height,
         overlay_text->length, overlay_text->max_line_length);
 
-    // Render via platform and get timing
-    double js_time, gpu_copy_time, gpu_render_time;
-    double total_frame_time = platform_render_frame(
-        (uint32_t)(uintptr_t)uniform_data,
-        (uint32_t)(uintptr_t)overlay_uniform_data,
-        (uint32_t)(uintptr_t)overlay_text->glyph_data,
-        overlay_text->length,
-        &js_time, &gpu_copy_time, &gpu_render_time);
+    // === GPU RENDERING ===
+    double gpu_start_time = platform_get_time();
+
+    // Update GPU buffers
+    wgpuQueueWriteBuffer(g_wgpu_queue, g_gpu_buffers[GM_BUFFER_UNIFORM], 0,
+                         uniform_data, GM_UNIFORM_FLOAT_COUNT * sizeof(float));
+    wgpuQueueWriteBuffer(g_wgpu_queue, g_gpu_buffers[GM_BUFFER_OVERLAY_UNIFORM], 0,
+                         overlay_uniform_data, GM_OVERLAY_UNIFORM_FLOAT_COUNT * sizeof(float));
+    if (overlay_text->length > 0) {
+        wgpuQueueWriteBuffer(g_wgpu_queue, g_gpu_buffers[GM_BUFFER_OVERLAY_TEXT], 0,
+                             overlay_text->glyph_data, overlay_text->length * sizeof(uint32_t));
+    }
+
+    double buffer_update_time = platform_get_time();
+
+    // Create command encoder
+    WGPUCommandEncoderDescriptor encoder_desc = {0};
+    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(g_wgpu_device, &encoder_desc);
+
+    // Get texture views
+    WGPUTextureView color_view = wgpu_context_get_current_texture_view();
+    WGPUTextureView depth_view = wgpu_get_depth_texture_view((uint32_t)canvas_width, (uint32_t)canvas_height);
+
+    // Begin render pass
+    WGPURenderPassColorAttachment color_attachment = {
+        .view = color_view,
+        .loadOp = WGPULoadOp_Clear,
+        .storeOp = WGPUStoreOp_Store,
+        .clearValue = {.r = 0.5f, .g = 0.7f, .b = 1.0f, .a = 1.0f},
+    };
+
+    WGPURenderPassDepthStencilAttachment depth_attachment = {
+        .view = depth_view,
+        .depthLoadOp = WGPULoadOp_Clear,
+        .depthStoreOp = WGPUStoreOp_Store,
+        .depthClearValue = 1.0f,
+    };
+
+    WGPURenderPassDescriptor render_pass_desc = {
+        .colorAttachmentCount = 1,
+        .colorAttachments = &color_attachment,
+        .depthStencilAttachment = &depth_attachment,
+    };
+
+    WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &render_pass_desc);
+
+    // Draw main geometry
+    wgpuRenderPassEncoderSetPipeline(pass, g_render_pipelines[GM_RENDER_PIPELINE_MAIN]);
+    wgpuRenderPassEncoderSetBindGroup(pass, 0, g_bind_groups[GM_BIND_GROUP_MAIN], 0, NULL);
+    wgpuRenderPassEncoderSetVertexBuffer(pass, 0, g_gpu_buffers[GM_BUFFER_POSITIONS], 0, 0);
+    wgpuRenderPassEncoderSetVertexBuffer(pass, 1, g_gpu_buffers[GM_BUFFER_UVS], 0, 0);
+    wgpuRenderPassEncoderSetVertexBuffer(pass, 2, g_gpu_buffers[GM_BUFFER_SURFACE_TYPES], 0, 0);
+    wgpuRenderPassEncoderSetVertexBuffer(pass, 3, g_gpu_buffers[GM_BUFFER_TRIANGLE_IDS], 0, 0);
+    wgpuRenderPassEncoderSetVertexBuffer(pass, 4, g_gpu_buffers[GM_BUFFER_NORMALS], 0, 0);
+    wgpuRenderPassEncoderSetIndexBuffer(pass, g_gpu_buffers[GM_BUFFER_INDICES], WGPUIndexFormat_Uint16, 0, 0);
+    wgpuRenderPassEncoderDrawIndexed(pass, g_mesh_data.index_count, 1, 0, 0, 0);
+
+    // Draw overlay
+    wgpuRenderPassEncoderSetPipeline(pass, g_render_pipelines[GM_RENDER_PIPELINE_OVERLAY]);
+    wgpuRenderPassEncoderSetBindGroup(pass, 0, g_bind_groups[GM_BIND_GROUP_OVERLAY], 0, NULL);
+    wgpuRenderPassEncoderSetVertexBuffer(pass, 0, g_gpu_buffers[GM_BUFFER_OVERLAY_VERTEX], 0, 0);
+    wgpuRenderPassEncoderDraw(pass, 4, 1, 0, 0);
+
+    // End render pass
+    wgpuRenderPassEncoderEnd(pass);
+
+    // Finish and submit
+    WGPUCommandBufferDescriptor cmd_buffer_desc = {0};
+    WGPUCommandBuffer command_buffer = wgpuCommandEncoderFinish(encoder, &cmd_buffer_desc);
+    wgpuQueueSubmit(g_wgpu_queue, 1, &command_buffer);
+
+    double gpu_end_time = platform_get_time();
+
+    // Calculate timing
+    double js_time = gpu_start_time - frame_start_time;
+    double gpu_copy_time = buffer_update_time - gpu_start_time;
+    double gpu_render_time = gpu_end_time - buffer_update_time;
+    double total_frame_time = gpu_end_time - frame_start_time;
 
     // Update performance metrics
     gm_update_perf_metrics(state, (float)total_frame_time, (float)js_time,
@@ -1918,15 +1992,7 @@ static int gm_initialize_engine(void) {
         return 0;
     }
 
-    platform_register_uniform_info(
-        GM_UNIFORM_FLOAT_COUNT,
-        GM_OVERLAY_UNIFORM_FLOAT_COUNT,
-        GM_OVERLAY_TEXT_CAPACITY,
-        GM_MAP_CELL_COUNT);
-    platform_register_gpu_buffers((uint32_t)(uintptr_t)&g_gpu_buffers[0], GM_BUFFER_COUNT);
-    platform_register_bind_groups((uint32_t)(uintptr_t)&g_bind_groups[0], GM_BIND_GROUP_COUNT);
-    platform_register_render_pipelines((uint32_t)(uintptr_t)&g_render_pipelines[0], GM_RENDER_PIPELINE_COUNT);
-    platform_register_mesh_info(mesh->vertex_count, mesh->index_count);
+    gm_upload_overlay_map_buffer(map);
 
     gm_init_game_state(
         &g_game_state_instance,

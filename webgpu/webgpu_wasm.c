@@ -42,6 +42,51 @@ WASM_IMPORT("webgpu", "device_create_sampler")
 uint32_t webgpu_host_device_create_sampler(uint32_t device_handle,
         uint32_t descriptor_ptr);
 
+// Command encoding and rendering
+WASM_IMPORT("webgpu", "device_create_command_encoder")
+uint32_t webgpu_host_device_create_command_encoder(uint32_t device_handle);
+
+WASM_IMPORT("webgpu", "command_encoder_begin_render_pass")
+uint32_t webgpu_host_command_encoder_begin_render_pass(uint32_t encoder_handle,
+        uint32_t descriptor_ptr);
+
+WASM_IMPORT("webgpu", "render_pass_set_pipeline")
+void webgpu_host_render_pass_set_pipeline(uint32_t pass_handle, uint32_t pipeline_handle);
+
+WASM_IMPORT("webgpu", "render_pass_set_bind_group")
+void webgpu_host_render_pass_set_bind_group(uint32_t pass_handle, uint32_t group_index,
+        uint32_t bind_group_handle);
+
+WASM_IMPORT("webgpu", "render_pass_set_vertex_buffer")
+void webgpu_host_render_pass_set_vertex_buffer(uint32_t pass_handle, uint32_t slot,
+        uint32_t buffer_handle);
+
+WASM_IMPORT("webgpu", "render_pass_set_index_buffer")
+void webgpu_host_render_pass_set_index_buffer(uint32_t pass_handle, uint32_t buffer_handle,
+        uint32_t format);
+
+WASM_IMPORT("webgpu", "render_pass_draw_indexed")
+void webgpu_host_render_pass_draw_indexed(uint32_t pass_handle, uint32_t index_count);
+
+WASM_IMPORT("webgpu", "render_pass_draw")
+void webgpu_host_render_pass_draw(uint32_t pass_handle, uint32_t vertex_count);
+
+WASM_IMPORT("webgpu", "render_pass_end")
+void webgpu_host_render_pass_end(uint32_t pass_handle);
+
+WASM_IMPORT("webgpu", "command_encoder_finish")
+uint32_t webgpu_host_command_encoder_finish(uint32_t encoder_handle);
+
+WASM_IMPORT("webgpu", "queue_submit")
+void webgpu_host_queue_submit(uint32_t queue_handle, uint32_t command_buffer_handle);
+
+// Context operations
+WASM_IMPORT("webgpu", "context_get_current_texture_view")
+uint32_t webgpu_host_context_get_current_texture_view(void);
+
+WASM_IMPORT("webgpu", "get_depth_texture_view")
+uint32_t webgpu_host_get_depth_texture_view(uint32_t width, uint32_t height);
+
 typedef enum {
     GM_WASM_RESOURCE_BUFFER = 0,
     GM_WASM_RESOURCE_SAMPLER = 1,
@@ -156,6 +201,29 @@ typedef struct __attribute__((packed)) {
     float lod_max_clamp;
     uint32_t compare;
 } GMWasmSamplerDescriptor;
+
+typedef struct __attribute__((packed)) {
+    uint32_t texture_view_handle;
+    uint32_t load_op;
+    uint32_t store_op;
+    float clear_r;
+    float clear_g;
+    float clear_b;
+    float clear_a;
+} GMWasmColorAttachment;
+
+typedef struct __attribute__((packed)) {
+    uint32_t texture_view_handle;
+    uint32_t depth_load_op;
+    uint32_t depth_store_op;
+    float depth_clear_value;
+} GMWasmDepthStencilAttachment;
+
+typedef struct __attribute__((packed)) {
+    uint32_t color_attachment_ptr;
+    uint32_t color_attachment_count;
+    uint32_t depth_stencil_attachment_ptr;
+} GMWasmRenderPassDescriptor;
 
 static uint32_t gm_wasm_string_length(WGPUStringView view) {
     if (view.data == NULL) {
@@ -516,4 +584,154 @@ WGPURenderPipeline wgpuDeviceCreateRenderPipeline(WGPUDevice device,
             (uint32_t)(uintptr_t)device,
             (uint32_t)(uintptr_t)&desc);
     return (WGPURenderPipeline)(uintptr_t)handle;
+}
+
+// Command encoder and rendering operations
+WGPUCommandEncoder wgpuDeviceCreateCommandEncoder(WGPUDevice device,
+        WGPUCommandEncoderDescriptor const * descriptor) {
+    (void)descriptor;
+    uint32_t handle = webgpu_host_device_create_command_encoder(
+            (uint32_t)(uintptr_t)device);
+    return (WGPUCommandEncoder)(uintptr_t)handle;
+}
+
+WGPURenderPassEncoder wgpuCommandEncoderBeginRenderPass(WGPUCommandEncoder commandEncoder,
+        WGPURenderPassDescriptor const * descriptor) {
+    if (descriptor == NULL) {
+        return NULL;
+    }
+
+    // Convert color attachments
+    uint32_t color_count = descriptor->colorAttachmentCount;
+    if (color_count > 4) {
+        color_count = 4;
+    }
+    GMWasmColorAttachment color_attachments[color_count > 0 ? color_count : 1];
+    for (uint32_t i = 0; i < color_count; i++) {
+        const WGPURenderPassColorAttachment *src = &descriptor->colorAttachments[i];
+        GMWasmColorAttachment *dst = &color_attachments[i];
+        dst->texture_view_handle = (uint32_t)(uintptr_t)src->view;
+        dst->load_op = (uint32_t)src->loadOp;
+        dst->store_op = (uint32_t)src->storeOp;
+        dst->clear_r = src->clearValue.r;
+        dst->clear_g = src->clearValue.g;
+        dst->clear_b = src->clearValue.b;
+        dst->clear_a = src->clearValue.a;
+    }
+
+    // Convert depth-stencil attachment
+    GMWasmDepthStencilAttachment depth_attachment = {0};
+    uint32_t depth_ptr = 0;
+    if (descriptor->depthStencilAttachment != NULL) {
+        const WGPURenderPassDepthStencilAttachment *src = descriptor->depthStencilAttachment;
+        depth_attachment.texture_view_handle = (uint32_t)(uintptr_t)src->view;
+        depth_attachment.depth_load_op = (uint32_t)src->depthLoadOp;
+        depth_attachment.depth_store_op = (uint32_t)src->depthStoreOp;
+        depth_attachment.depth_clear_value = src->depthClearValue;
+        depth_ptr = (uint32_t)(uintptr_t)&depth_attachment;
+    }
+
+    GMWasmRenderPassDescriptor desc = {
+        .color_attachment_ptr = (uint32_t)(uintptr_t)color_attachments,
+        .color_attachment_count = color_count,
+        .depth_stencil_attachment_ptr = depth_ptr,
+    };
+
+    uint32_t handle = webgpu_host_command_encoder_begin_render_pass(
+            (uint32_t)(uintptr_t)commandEncoder,
+            (uint32_t)(uintptr_t)&desc);
+    return (WGPURenderPassEncoder)(uintptr_t)handle;
+}
+
+void wgpuRenderPassEncoderSetPipeline(WGPURenderPassEncoder renderPassEncoder,
+        WGPURenderPipeline pipeline) {
+    webgpu_host_render_pass_set_pipeline(
+            (uint32_t)(uintptr_t)renderPassEncoder,
+            (uint32_t)(uintptr_t)pipeline);
+}
+
+void wgpuRenderPassEncoderSetBindGroup(WGPURenderPassEncoder renderPassEncoder,
+        uint32_t groupIndex, WGPUBindGroup group, size_t dynamicOffsetCount,
+        uint32_t const * dynamicOffsets) {
+    (void)dynamicOffsetCount;
+    (void)dynamicOffsets;
+    webgpu_host_render_pass_set_bind_group(
+            (uint32_t)(uintptr_t)renderPassEncoder,
+            groupIndex,
+            (uint32_t)(uintptr_t)group);
+}
+
+void wgpuRenderPassEncoderSetVertexBuffer(WGPURenderPassEncoder renderPassEncoder,
+        uint32_t slot, WGPUBuffer buffer, uint64_t offset, uint64_t size) {
+    (void)offset;
+    (void)size;
+    webgpu_host_render_pass_set_vertex_buffer(
+            (uint32_t)(uintptr_t)renderPassEncoder,
+            slot,
+            (uint32_t)(uintptr_t)buffer);
+}
+
+void wgpuRenderPassEncoderSetIndexBuffer(WGPURenderPassEncoder renderPassEncoder,
+        WGPUBuffer buffer, WGPUIndexFormat format, uint64_t offset, uint64_t size) {
+    (void)offset;
+    (void)size;
+    webgpu_host_render_pass_set_index_buffer(
+            (uint32_t)(uintptr_t)renderPassEncoder,
+            (uint32_t)(uintptr_t)buffer,
+            (uint32_t)format);
+}
+
+void wgpuRenderPassEncoderDrawIndexed(WGPURenderPassEncoder renderPassEncoder,
+        uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex,
+        int32_t baseVertex, uint32_t firstInstance) {
+    (void)instanceCount;
+    (void)firstIndex;
+    (void)baseVertex;
+    (void)firstInstance;
+    webgpu_host_render_pass_draw_indexed(
+            (uint32_t)(uintptr_t)renderPassEncoder,
+            indexCount);
+}
+
+void wgpuRenderPassEncoderDraw(WGPURenderPassEncoder renderPassEncoder,
+        uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex,
+        uint32_t firstInstance) {
+    (void)instanceCount;
+    (void)firstVertex;
+    (void)firstInstance;
+    webgpu_host_render_pass_draw(
+            (uint32_t)(uintptr_t)renderPassEncoder,
+            vertexCount);
+}
+
+void wgpuRenderPassEncoderEnd(WGPURenderPassEncoder renderPassEncoder) {
+    webgpu_host_render_pass_end((uint32_t)(uintptr_t)renderPassEncoder);
+}
+
+WGPUCommandBuffer wgpuCommandEncoderFinish(WGPUCommandEncoder commandEncoder,
+        WGPUCommandBufferDescriptor const * descriptor) {
+    (void)descriptor;
+    uint32_t handle = webgpu_host_command_encoder_finish(
+            (uint32_t)(uintptr_t)commandEncoder);
+    return (WGPUCommandBuffer)(uintptr_t)handle;
+}
+
+void wgpuQueueSubmit(WGPUQueue queue, size_t commandCount,
+        WGPUCommandBuffer const * commands) {
+    if (commandCount > 0 && commands != NULL) {
+        webgpu_host_queue_submit(
+                (uint32_t)(uintptr_t)queue,
+                (uint32_t)(uintptr_t)commands[0]);
+    }
+}
+
+// Context operations (platform-specific)
+WGPUTextureView wgpu_context_get_current_texture_view(void) {
+    uint32_t handle = webgpu_host_context_get_current_texture_view();
+    return (WGPUTextureView)(uintptr_t)handle;
+}
+
+WGPUTextureView wgpu_get_depth_texture_view(uint32_t width, uint32_t height) {
+    uint32_t handle = webgpu_host_get_depth_texture_view(width, height);
+    return (WGPUTextureView)(uintptr_t)handle;
 }

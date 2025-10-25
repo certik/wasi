@@ -11,20 +11,6 @@
 <body>
     <canvas id="canvas"></canvas>
     <script type="module">
-        // GMBufferSlot enum - keep in sync with gm.c
-        const GMBufferSlot = Object.freeze({
-            POSITIONS: 0,
-            UVS: 1,
-            SURFACE_TYPES: 2,
-            TRIANGLE_IDS: 3,
-            NORMALS: 4,
-            INDICES: 5,
-            UNIFORM: 6,
-            OVERLAY_UNIFORM: 7,
-            OVERLAY_TEXT: 8,
-            OVERLAY_MAP: 9,
-            OVERLAY_VERTEX: 10,
-        });
 
         function createWasmWebGPUHost(adapter, device) {
             let memory = null;
@@ -429,6 +415,10 @@
                 return { format, depthWriteEnabled, depthCompare };
             }
 
+            const commandEncoders = new Map();
+            const renderPassEncoders = new Map();
+            const commandBuffers = new Map();
+
             const imports = {
                 create_instance() {
                     return 1;
@@ -574,6 +564,170 @@
                     const pipeline = targetDevice.createRenderPipeline(descriptor);
                     const handle = nextHandle++;
                     renderPipelines.set(handle, pipeline);
+                    return handle;
+                },
+                device_create_command_encoder(deviceHandleParam) {
+                    const targetDevice = devices.get(deviceHandleParam);
+                    const encoder = targetDevice.createCommandEncoder();
+                    const handle = nextHandle++;
+                    commandEncoders.set(handle, encoder);
+                    return handle;
+                },
+                command_encoder_begin_render_pass(encoderHandle, descriptorPtr) {
+                    requireMemory();
+                    const encoder = commandEncoders.get(encoderHandle);
+                    const dv = new DataView(memory.buffer);
+                    const colorAttachmentPtr = dv.getUint32(descriptorPtr, true);
+                    const colorAttachmentCount = dv.getUint32(descriptorPtr + 4, true);
+                    const depthStencilPtr = dv.getUint32(descriptorPtr + 8, true);
+
+                    const colorAttachments = [];
+                    const colorStride = 28;
+                    for (let i = 0; i < colorAttachmentCount; i++) {
+                        const base = colorAttachmentPtr + i * colorStride;
+                        const viewHandle = dv.getUint32(base, true);
+                        const loadOp = dv.getUint32(base + 4, true);
+                        const storeOp = dv.getUint32(base + 8, true);
+                        const clearR = dv.getFloat32(base + 12, true);
+                        const clearG = dv.getFloat32(base + 16, true);
+                        const clearB = dv.getFloat32(base + 20, true);
+                        const clearA = dv.getFloat32(base + 24, true);
+
+                        const view = textureViews.get(viewHandle);
+                        if (!view) {
+                            throw new Error(`Unknown texture view handle ${viewHandle}`);
+                        }
+
+                        colorAttachments.push({
+                            view,
+                            loadOp: loadOp === 0x00000001 ? 'load' : 'clear',
+                            storeOp: storeOp === 0x00000001 ? 'store' : 'discard',
+                            clearValue: { r: clearR, g: clearG, b: clearB, a: clearA },
+                        });
+                    }
+
+                    const descriptor = { colorAttachments };
+
+                    if (depthStencilPtr !== 0) {
+                        const viewHandle = dv.getUint32(depthStencilPtr, true);
+                        const depthLoadOp = dv.getUint32(depthStencilPtr + 4, true);
+                        const depthStoreOp = dv.getUint32(depthStencilPtr + 8, true);
+                        const depthClearValue = dv.getFloat32(depthStencilPtr + 12, true);
+
+                        const view = textureViews.get(viewHandle);
+                        if (!view) {
+                            throw new Error(`Unknown depth texture view handle ${viewHandle}`);
+                        }
+
+                        descriptor.depthStencilAttachment = {
+                            view,
+                            depthLoadOp: depthLoadOp === 0x00000001 ? 'load' : 'clear',
+                            depthStoreOp: depthStoreOp === 0x00000001 ? 'store' : 'discard',
+                            depthClearValue,
+                        };
+                    }
+
+                    const pass = encoder.beginRenderPass(descriptor);
+                    const handle = nextHandle++;
+                    renderPassEncoders.set(handle, pass);
+                    return handle;
+                },
+                render_pass_set_pipeline(passHandle, pipelineHandle) {
+                    const pass = renderPassEncoders.get(passHandle);
+                    const pipeline = renderPipelines.get(pipelineHandle);
+                    if (!pass || !pipeline) {
+                        throw new Error('Invalid pass or pipeline handle');
+                    }
+                    pass.setPipeline(pipeline);
+                },
+                render_pass_set_bind_group(passHandle, groupIndex, bindGroupHandle) {
+                    const pass = renderPassEncoders.get(passHandle);
+                    const bindGroup = bindGroups.get(bindGroupHandle);
+                    if (!pass || !bindGroup) {
+                        throw new Error('Invalid pass or bind group handle');
+                    }
+                    pass.setBindGroup(groupIndex, bindGroup);
+                },
+                render_pass_set_vertex_buffer(passHandle, slot, bufferHandle) {
+                    const pass = renderPassEncoders.get(passHandle);
+                    const buffer = buffers.get(bufferHandle);
+                    if (!pass || !buffer) {
+                        throw new Error('Invalid pass or buffer handle');
+                    }
+                    pass.setVertexBuffer(slot, buffer);
+                },
+                render_pass_set_index_buffer(passHandle, bufferHandle, format) {
+                    const pass = renderPassEncoders.get(passHandle);
+                    const buffer = buffers.get(bufferHandle);
+                    if (!pass || !buffer) {
+                        throw new Error('Invalid pass or buffer handle');
+                    }
+                    const indexFormat = format === 0x00000001 ? 'uint16' : 'uint32';
+                    pass.setIndexBuffer(buffer, indexFormat);
+                },
+                render_pass_draw_indexed(passHandle, indexCount) {
+                    const pass = renderPassEncoders.get(passHandle);
+                    if (!pass) {
+                        throw new Error('Invalid pass handle');
+                    }
+                    pass.drawIndexed(indexCount);
+                },
+                render_pass_draw(passHandle, vertexCount) {
+                    const pass = renderPassEncoders.get(passHandle);
+                    if (!pass) {
+                        throw new Error('Invalid pass handle');
+                    }
+                    pass.draw(vertexCount);
+                },
+                render_pass_end(passHandle) {
+                    const pass = renderPassEncoders.get(passHandle);
+                    if (!pass) {
+                        throw new Error('Invalid pass handle');
+                    }
+                    pass.end();
+                    renderPassEncoders.delete(passHandle);
+                },
+                command_encoder_finish(encoderHandle) {
+                    const encoder = commandEncoders.get(encoderHandle);
+                    if (!encoder) {
+                        throw new Error('Invalid encoder handle');
+                    }
+                    const commandBuffer = encoder.finish();
+                    const handle = nextHandle++;
+                    commandBuffers.set(handle, commandBuffer);
+                    commandEncoders.delete(encoderHandle);
+                    return handle;
+                },
+                queue_submit(queueHandleParam, commandBufferHandle) {
+                    const queue = queues.get(queueHandleParam);
+                    const commandBuffer = commandBuffers.get(commandBufferHandle);
+                    if (!queue || !commandBuffer) {
+                        throw new Error('Invalid queue or command buffer handle');
+                    }
+                    queue.submit([commandBuffer]);
+                    commandBuffers.delete(commandBufferHandle);
+                },
+                context_get_current_texture_view() {
+                    const textureView = context.getCurrentTexture().createView();
+                    const handle = nextHandle++;
+                    textureViews.set(handle, textureView);
+                    return handle;
+                },
+                get_depth_texture_view(width, height) {
+                    if (depthTexture && (depthTexture.width !== width || depthTexture.height !== height)) {
+                        depthTexture.destroy();
+                        depthTexture = null;
+                    }
+                    if (!depthTexture) {
+                        depthTexture = device.createTexture({
+                            size: [width, height, 1],
+                            format: 'depth24plus',
+                            usage: GPUTextureUsage.RENDER_ATTACHMENT,
+                        });
+                    }
+                    const view = depthTexture.createView();
+                    const handle = nextHandle++;
+                    textureViews.set(handle, view);
                     return handle;
                 },
             };
@@ -724,26 +878,6 @@
             };
             let hostConfigReady = true;
 
-            const engineState = {
-                uniformFloatCount: 0,
-                overlayUniformFloatCount: 0,
-                overlayTextCapacity: 0,
-                mapCellCount: 0,
-                vertexCount: 0,
-                indexCount: 0,
-                buffers: [],
-                bindGroups: [],
-                pipelines: [],
-            };
-
-            let uniformBuffer = null;
-            let overlayUniformBuffer = null;
-            let overlayTextBuffer = null;
-            let overlayVertexBuffer = null;
-            let bindGroup = null;
-            let overlayBindGroup = null;
-            let pipeline = null;
-            let overlayPipeline = null;
 
             const keyStates = new Uint8Array(256);
             let mouseDeltaX = 0;
@@ -800,8 +934,6 @@
 
             let memory = null;
 
-            let frameCounter = 0;
-
             const platformAPI = {
                 get_canvas_size: (widthPtr, heightPtr) => {
                     const view = new Int32Array(memory.buffer);
@@ -809,87 +941,6 @@
                     view[heightPtr / 4] = canvas.height;
                 },
                 get_time: () => performance.now(),
-                request_animation_frame: () => {
-                    requestAnimationFrame(frame);
-                },
-                render_frame: (uniformDataPtr, overlayUniformDataPtr, overlayTextDataPtr, overlayTextLength,
-                               jsTimeOutPtr, gpuCopyTimeOutPtr, gpuRenderTimeOutPtr) => {
-                    frameCounter++;
-                    if (!pipeline || !bindGroup || !uniformBuffer) {
-                        if (frameCounter <= 10 || frameCounter % 60 === 0) {
-                            console.warn('[GM] render_frame missing resources', {
-                                pipelineReady: !!pipeline,
-                                bindGroupReady: !!bindGroup,
-                                uniformReady: !!uniformBuffer,
-                                frameCounter,
-                            });
-                        }
-                        return 0;
-                    }
-
-                    const frameStartTime = performance.now();
-
-                    const uniformData = new Float32Array(memory.buffer, uniformDataPtr, engineState.uniformFloatCount);
-                    const overlayUniformData = new Float32Array(memory.buffer, overlayUniformDataPtr, engineState.overlayUniformFloatCount);
-                    const overlayTextData = new Uint32Array(memory.buffer, overlayTextDataPtr, overlayTextLength);
-
-                    device.queue.writeBuffer(uniformBuffer, 0, uniformData);
-                    device.queue.writeBuffer(overlayUniformBuffer, 0, overlayUniformData);
-                    if (overlayTextLength > 0) {
-                        device.queue.writeBuffer(overlayTextBuffer, 0, overlayTextData);
-                    }
-
-                    const jsEndTime = performance.now();
-                    const jsTime = jsEndTime - frameStartTime;
-
-                    const commandEncoder = device.createCommandEncoder();
-                    const textureView = context.getCurrentTexture().createView();
-                    const depthView = depthTexture.createView();
-
-                    const renderPass = commandEncoder.beginRenderPass({
-                        colorAttachments: [{
-                            view: textureView,
-                            clearValue: { r: 0.5, g: 0.7, b: 1.0, a: 1.0 },
-                            loadOp: 'clear',
-                            storeOp: 'store',
-                        }],
-                        depthStencilAttachment: {
-                            view: depthView,
-                            depthClearValue: 1.0,
-                            depthLoadOp: 'clear',
-                            depthStoreOp: 'store',
-                        },
-                    });
-
-                    renderPass.setPipeline(pipeline);
-                    renderPass.setBindGroup(0, bindGroup);
-                    renderPass.setVertexBuffer(0, engineState.buffers[GMBufferSlot.POSITIONS]);
-                    renderPass.setVertexBuffer(1, engineState.buffers[GMBufferSlot.UVS]);
-                    renderPass.setVertexBuffer(2, engineState.buffers[GMBufferSlot.SURFACE_TYPES]);
-                    renderPass.setVertexBuffer(3, engineState.buffers[GMBufferSlot.TRIANGLE_IDS]);
-                    renderPass.setVertexBuffer(4, engineState.buffers[GMBufferSlot.NORMALS]);
-                    renderPass.setIndexBuffer(engineState.buffers[GMBufferSlot.INDICES], 'uint16');
-                    renderPass.drawIndexed(engineState.indexCount);
-
-                    renderPass.setPipeline(overlayPipeline);
-                    renderPass.setBindGroup(0, overlayBindGroup);
-                    renderPass.setVertexBuffer(0, overlayVertexBuffer);
-                    renderPass.draw(4);
-                    renderPass.end();
-
-                    device.queue.submit([commandEncoder.finish()]);
-
-                    const gpuRenderEndTime = performance.now();
-                    const gpuRenderTime = gpuRenderEndTime - jsEndTime;
-                    const totalFrameTime = gpuRenderEndTime - frameStartTime;
-
-                    const timings = new Float64Array(memory.buffer);
-                    timings[jsTimeOutPtr / 8] = jsTime;
-                    timings[gpuCopyTimeOutPtr / 8] = 0.0;
-                    timings[gpuRenderTimeOutPtr / 8] = gpuRenderTime;
-
-                    return totalFrameTime;
-                },
                 get_host_config: (configPtr) => {
                     if (!hostConfigReady) {
                         return 0;
@@ -902,44 +953,6 @@
                     view.setUint32(16, hostConfigHandles.ceilingTexture, true);
                     view.setUint32(20, hostConfigHandles.preferredFormat, true);
                     return 1;
-                },
-                register_uniform_info: (uniformFloatCount, overlayUniformFloatCount, overlayTextCapacity, mapCellCount) => {
-                    console.log('[GM] register_uniform_info', { uniformFloatCount, overlayUniformFloatCount, overlayTextCapacity, mapCellCount });
-                    engineState.uniformFloatCount = uniformFloatCount;
-                    engineState.overlayUniformFloatCount = overlayUniformFloatCount;
-                    engineState.overlayTextCapacity = overlayTextCapacity;
-                    engineState.mapCellCount = mapCellCount;
-                },
-                register_gpu_buffers: (handlesPtr, count) => {
-                    const handlesView = new Uint32Array(memory.buffer, handlesPtr, count);
-                    const handles = Array.from(handlesView);
-                    engineState.buffers = handles.map((handle) => webgpuHost.getBuffer(handle));
-                    console.log('[GM] register_gpu_buffers', { count, handles });
-                    uniformBuffer = engineState.buffers[GMBufferSlot.UNIFORM];
-                    overlayUniformBuffer = engineState.buffers[GMBufferSlot.OVERLAY_UNIFORM];
-                    overlayTextBuffer = engineState.buffers[GMBufferSlot.OVERLAY_TEXT];
-                    overlayVertexBuffer = engineState.buffers[GMBufferSlot.OVERLAY_VERTEX];
-                },
-                register_bind_groups: (handlesPtr, count) => {
-                    const handlesView = new Uint32Array(memory.buffer, handlesPtr, count);
-                    const handles = Array.from(handlesView);
-                    engineState.bindGroups = handles.map((handle) => webgpuHost.getBindGroup(handle));
-                    console.log('[GM] register_bind_groups', { count, handles });
-                    bindGroup = engineState.bindGroups[0];
-                    overlayBindGroup = engineState.bindGroups[1];
-                },
-                register_render_pipelines: (handlesPtr, count) => {
-                    const handlesView = new Uint32Array(memory.buffer, handlesPtr, count);
-                    const handles = Array.from(handlesView);
-                    engineState.pipelines = handles.map((handle) => webgpuHost.getRenderPipeline(handle));
-                    console.log('[GM] register_render_pipelines', { count, handles });
-                    pipeline = engineState.pipelines[0];
-                    overlayPipeline = engineState.pipelines[1];
-                },
-                register_mesh_info: (vertexCount, indexCount) => {
-                    console.log('[GM] register_mesh_info', { vertexCount, indexCount });
-                    engineState.vertexCount = vertexCount;
-                    engineState.indexCount = indexCount;
                 },
                 get_input_state: (snapshotPtr) => {
                     const keysView = new Uint8Array(memory.buffer, snapshotPtr, 256);
