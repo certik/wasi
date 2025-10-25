@@ -347,8 +347,10 @@ test_gm_macos = { cmd="./gm_macos", depends-on=["build_gm_macos"] }
 
 build_gm_sdl_macos = """
 clang \
+    -x objective-c \
     -o gm \
     gm_sdl.c \
+    -I . \
     -I$CONDA_PREFIX/include \
     -L$CONDA_PREFIX/lib \
     -Wl,-rpath,$CONDA_PREFIX/lib \
