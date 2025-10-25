@@ -2198,10 +2198,11 @@ void gm_frame(void) {
             gm_destroy_bind_groups();
             if (gm_create_bind_groups() == 0) {
                 g_texture_session.state = TEX_LOAD_STATE_IDLE;
+                g_textures_loaded = true;
             } else {
+                PRINT_LOG("bind groups failed");
                 g_texture_session.state = TEX_LOAD_STATE_ERROR;
             }
-            g_textures_loaded = true;
         } else {
             PRINT_LOG("Textures not ready");
         }
