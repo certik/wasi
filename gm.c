@@ -2056,10 +2056,6 @@ static int gm_initialize_engine(void) {
     if (gm_create_render_pipelines(config.preferred_color_format) != 0) {
         return 0;
     }
-    PRINT_LOG("bind groups");
-    if (gm_create_bind_groups() != 0) {
-        return 0;
-    }
 
     PRINT_LOG("map buffer");
     gm_upload_overlay_map_buffer(map);
