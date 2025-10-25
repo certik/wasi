@@ -2158,6 +2158,7 @@ __attribute__((export_name("gm_init")))
 #endif
 void gm_init(void) {
     buddy_init();
+    PRINT_LOG("gm_init finished");
 }
 
 #ifdef __wasm__
