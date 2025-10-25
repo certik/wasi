@@ -11,6 +11,10 @@ string str_from_cstr_len_view(char *cstr, uint64_t size) {
     return (string){cstr, size};
 }
 
+string str_from_cstr_len_view_const(const char *cstr, uint64_t size) {
+    return (string){(char*)cstr, size};
+}
+
 char *str_to_cstr_copy(Arena *arena, string str) {
     char *cstr = arena_alloc_array(arena, char, str.size+1);
     memcpy(cstr, str.str, str.size);
