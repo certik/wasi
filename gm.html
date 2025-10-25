@@ -950,9 +950,6 @@
                     const view = new DataView(memory.buffer, configPtr, 24);
                     view.setUint32(0, hostConfigHandles.device, true);
                     view.setUint32(4, hostConfigHandles.queue, true);
-                    view.setUint32(8, hostConfigHandles.wallTexture, true);
-                    view.setUint32(12, hostConfigHandles.floorTexture, true);
-                    view.setUint32(16, hostConfigHandles.ceilingTexture, true);
                     view.setUint32(20, hostConfigHandles.preferredFormat, true);
                     return 1;
                 },
