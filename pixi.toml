@@ -133,7 +133,6 @@ clang \
     -Wl,--export=gm_get_gpu_buffer_table \
     -Wl,--export=gm_get_gpu_buffer_count \
     -Wl,--export=gm_get_uniform_float_count \
-    -Wl,--export=gm_get_uniform_buffer_size \
     -Wl,--export=gm_create_shader_modules \
     -Wl,--export=gm_get_shader_module_table \
     -Wl,--export=gm_get_shader_module_count \
