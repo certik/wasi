@@ -1841,7 +1841,9 @@ static const int g_default_map[MAP_HEIGHT][MAP_WIDTH] = {
 static int g_default_map_flattened[MAP_HEIGHT * MAP_WIDTH];
 
 // Export the default map data for JavaScript to use
+#ifdef __wasm__
 __attribute__((export_name("gm_get_default_map")))
+#endif
 int* gm_get_default_map(void) {
     // Flatten the map on first call
     static int initialized = 0;
@@ -1857,12 +1859,16 @@ int* gm_get_default_map(void) {
 }
 
 // Export map dimensions
+#ifdef __wasm__
 __attribute__((export_name("gm_get_map_width")))
+#endif
 int gm_get_map_width(void) {
     return MAP_WIDTH;
 }
 
+#ifdef __wasm__
 __attribute__((export_name("gm_get_map_height")))
+#endif
 int gm_get_map_height(void) {
     return MAP_HEIGHT;
 }
