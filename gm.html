@@ -676,14 +676,130 @@
             const wasmBytes = await wasmResponse.arrayBuffer();
             const webgpuHost = createWasmWebGPUHost(adapter, device);
 
-            // Variables that will be initialized later but used in platformAPI
-            let indexCount, uniformFloatCount, overlayUniformFloatCount;
-            let positionBuffer, uvBuffer, surfaceTypeBuffer, triangleIDBuffer, normalBuffer, indexBuffer;
-            let uniformBuffer, overlayUniformBuffer, overlayTextBuffer, overlayVertexBuffer;
-            let pipeline, overlayPipeline, bindGroup, overlayBindGroup;
-            let depthTexture;
+            const textureFormatEnum = {
+                'rgba8unorm': 0x00000016,
+                'rgba8unorm-srgb': 0x00000017,
+                'bgra8unorm': 0x0000001B,
+                'bgra8unorm-srgb': 0x0000001C,
+            };
 
-            // Platform API implementation
+            const canvasFormat = navigator.gpu.getPreferredCanvasFormat();
+            const preferredFormatEnum = textureFormatEnum[canvasFormat] ?? textureFormatEnum['bgra8unorm'];
+
+            context.configure({
+                device,
+                format: canvasFormat,
+                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST,
+            });
+
+            function createDepthTexture() {
+                return device.createTexture({
+                    size: [canvas.width, canvas.height, 1],
+                    format: 'depth24plus',
+                    usage: GPUTextureUsage.RENDER_ATTACHMENT,
+                });
+            }
+
+            let depthTexture = createDepthTexture();
+
+            const defaultTextures = {
+                wall: 'https://threejs.org/examples/textures/brick_diffuse.jpg',
+                floor: 'https://threejs.org/examples/textures/hardwood2_diffuse.jpg',
+                ceiling: 'https://threejs.org/examples/textures/lava/cloud.png',
+            };
+
+            const [wallTextureView, floorTextureView, ceilingTextureView] = await Promise.all([
+                createTextureFromUrl(device, defaultTextures.wall, 'wall-texture'),
+                createTextureFromUrl(device, defaultTextures.floor, 'floor-texture'),
+                createTextureFromUrl(device, defaultTextures.ceiling, 'ceiling-texture'),
+            ]);
+
+            const hostConfigHandles = {
+                device: webgpuHost.handles.device,
+                queue: webgpuHost.handles.queue,
+                wallTexture: webgpuHost.registerTextureView(wallTextureView),
+                floorTexture: webgpuHost.registerTextureView(floorTextureView),
+                ceilingTexture: webgpuHost.registerTextureView(ceilingTextureView),
+                preferredFormat: preferredFormatEnum,
+            };
+            let hostConfigReady = true;
+
+            const engineState = {
+                uniformFloatCount: 0,
+                overlayUniformFloatCount: 0,
+                overlayTextCapacity: 0,
+                mapCellCount: 0,
+                vertexCount: 0,
+                indexCount: 0,
+                buffers: [],
+                bindGroups: [],
+                pipelines: [],
+            };
+
+            let uniformBuffer = null;
+            let overlayUniformBuffer = null;
+            let overlayTextBuffer = null;
+            let overlayVertexBuffer = null;
+            let bindGroup = null;
+            let overlayBindGroup = null;
+            let pipeline = null;
+            let overlayPipeline = null;
+
+            const keyStates = new Uint8Array(256);
+            let mouseDeltaX = 0;
+            let mouseDeltaY = 0;
+
+            const arrowKeyMap = {
+                'arrowleft': '<'.charCodeAt(0),
+                'arrowright': '>'.charCodeAt(0),
+                'arrowup': '^'.charCodeAt(0),
+                'arrowdown': 'v'.charCodeAt(0),
+            };
+
+            function resolveKeyCode(event) {
+                const key = event.key.toLowerCase();
+                if (arrowKeyMap[key] !== undefined) {
+                    return arrowKeyMap[key];
+                }
+                if (key.length === 1) {
+                    return key.charCodeAt(0);
+                }
+                return null;
+            }
+
+            document.addEventListener('keydown', (event) => {
+                const code = resolveKeyCode(event);
+                if (code !== null) {
+                    keyStates[code] = 1;
+                    event.preventDefault();
+                }
+            });
+
+            document.addEventListener('keyup', (event) => {
+                const code = resolveKeyCode(event);
+                if (code !== null) {
+                    keyStates[code] = 0;
+                    event.preventDefault();
+                }
+            });
+
+            canvas.addEventListener('click', () => canvas.requestPointerLock());
+
+            function onMouseMove(event) {
+                mouseDeltaX += event.movementX;
+                mouseDeltaY += event.movementY;
+            }
+
+            document.addEventListener('pointerlockchange', () => {
+                if (document.pointerLockElement === canvas) {
+                    document.addEventListener('mousemove', onMouseMove);
+                } else {
+                    document.removeEventListener('mousemove', onMouseMove);
+                }
+            });
+
+            let memory = null;
+
             const platformAPI = {
                 get_canvas_size: (widthPtr, heightPtr) => {
                     const view = new Int32Array(memory.buffer);
@@ -692,33 +808,32 @@
                 },
                 get_time: () => performance.now(),
                 request_animation_frame: () => {
-                    requestAnimationFrame(() => {
-                        wasmInstance.exports.gm_on_animation_frame();
-                    });
+                    requestAnimationFrame(frame);
                 },
                 render_frame: (uniformDataPtr, overlayUniformDataPtr, overlayTextDataPtr, overlayTextLength,
-                              jsTimeOutPtr, gpuCopyTimeOutPtr, gpuRenderTimeOutPtr) => {
+                               jsTimeOutPtr, gpuCopyTimeOutPtr, gpuRenderTimeOutPtr) => {
+                    if (!pipeline || !bindGroup || !uniformBuffer) {
+                        return 0;
+                    }
+
                     const frameStartTime = performance.now();
 
-                    // Get data from WASM memory
-                    const uniformData = new Float32Array(memory.buffer, uniformDataPtr, uniformFloatCount);
-                    const overlayUniformData = new Float32Array(memory.buffer, overlayUniformDataPtr, overlayUniformFloatCount);
+                    const uniformData = new Float32Array(memory.buffer, uniformDataPtr, engineState.uniformFloatCount);
+                    const overlayUniformData = new Float32Array(memory.buffer, overlayUniformDataPtr, engineState.overlayUniformFloatCount);
                     const overlayTextData = new Uint32Array(memory.buffer, overlayTextDataPtr, overlayTextLength);
 
-                    // Upload uniform buffers
                     device.queue.writeBuffer(uniformBuffer, 0, uniformData);
                     device.queue.writeBuffer(overlayUniformBuffer, 0, overlayUniformData);
-                    device.queue.writeBuffer(overlayTextBuffer, 0, overlayTextData);
+                    if (overlayTextLength > 0) {
+                        device.queue.writeBuffer(overlayTextBuffer, 0, overlayTextData);
+                    }
 
                     const jsEndTime = performance.now();
                     const jsTime = jsEndTime - frameStartTime;
 
-                    const gpuCopyEndTime = performance.now();
-                    const gpuCopyTime = gpuCopyEndTime - jsEndTime;
-
-                    // Encode GPU commands
                     const commandEncoder = device.createCommandEncoder();
                     const textureView = context.getCurrentTexture().createView();
+                    const depthView = depthTexture.createView();
 
                     const renderPass = commandEncoder.beginRenderPass({
                         colorAttachments: [{
@@ -728,25 +843,23 @@
                             storeOp: 'store',
                         }],
                         depthStencilAttachment: {
-                            view: depthTexture.createView(),
+                            view: depthView,
                             depthClearValue: 1.0,
                             depthLoadOp: 'clear',
-                            depthStoreOp: 'store'
-                        }
+                            depthStoreOp: 'store',
+                        },
                     });
 
-                    // Main geometry pass
                     renderPass.setPipeline(pipeline);
                     renderPass.setBindGroup(0, bindGroup);
-                    renderPass.setVertexBuffer(0, positionBuffer);
-                    renderPass.setVertexBuffer(1, uvBuffer);
-                    renderPass.setVertexBuffer(2, surfaceTypeBuffer);
-                    renderPass.setVertexBuffer(3, triangleIDBuffer);
-                    renderPass.setVertexBuffer(4, normalBuffer);
-                    renderPass.setIndexBuffer(indexBuffer, 'uint16');
-                    renderPass.drawIndexed(indexCount);
+                    renderPass.setVertexBuffer(0, engineState.buffers[GMBufferSlot.POSITIONS]);
+                    renderPass.setVertexBuffer(1, engineState.buffers[GMBufferSlot.UVS]);
+                    renderPass.setVertexBuffer(2, engineState.buffers[GMBufferSlot.SURFACE_TYPES]);
+                    renderPass.setVertexBuffer(3, engineState.buffers[GMBufferSlot.TRIANGLE_IDS]);
+                    renderPass.setVertexBuffer(4, engineState.buffers[GMBufferSlot.NORMALS]);
+                    renderPass.setIndexBuffer(engineState.buffers[GMBufferSlot.INDICES], 'uint16');
+                    renderPass.drawIndexed(engineState.indexCount);
 
-                    // Overlay pass
                     renderPass.setPipeline(overlayPipeline);
                     renderPass.setBindGroup(0, overlayBindGroup);
                     renderPass.setVertexBuffer(0, overlayVertexBuffer);
@@ -756,21 +869,69 @@
                     device.queue.submit([commandEncoder.finish()]);
 
                     const gpuRenderEndTime = performance.now();
-                    const gpuRenderTime = gpuRenderEndTime - gpuCopyEndTime;
+                    const gpuRenderTime = gpuRenderEndTime - jsEndTime;
                     const totalFrameTime = gpuRenderEndTime - frameStartTime;
 
-                    // Write timing data back to WASM
-                    const floatView = new Float64Array(memory.buffer);
-                    floatView[jsTimeOutPtr / 8] = jsTime;
-                    floatView[gpuCopyTimeOutPtr / 8] = gpuCopyTime;
-                    floatView[gpuRenderTimeOutPtr / 8] = gpuRenderTime;
+                    const timings = new Float64Array(memory.buffer);
+                    timings[jsTimeOutPtr / 8] = jsTime;
+                    timings[gpuCopyTimeOutPtr / 8] = 0.0;
+                    timings[gpuRenderTimeOutPtr / 8] = gpuRenderTime;
 
                     return totalFrameTime;
                 },
+                get_host_config: (configPtr) => {
+                    if (!hostConfigReady) {
+                        return 0;
+                    }
+                    const view = new DataView(memory.buffer, configPtr, 24);
+                    view.setUint32(0, hostConfigHandles.device, true);
+                    view.setUint32(4, hostConfigHandles.queue, true);
+                    view.setUint32(8, hostConfigHandles.wallTexture, true);
+                    view.setUint32(12, hostConfigHandles.floorTexture, true);
+                    view.setUint32(16, hostConfigHandles.ceilingTexture, true);
+                    view.setUint32(20, hostConfigHandles.preferredFormat, true);
+                    return 1;
+                },
+                register_uniform_info: (uniformFloatCount, overlayUniformFloatCount, overlayTextCapacity, mapCellCount) => {
+                    engineState.uniformFloatCount = uniformFloatCount;
+                    engineState.overlayUniformFloatCount = overlayUniformFloatCount;
+                    engineState.overlayTextCapacity = overlayTextCapacity;
+                    engineState.mapCellCount = mapCellCount;
+                },
+                register_gpu_buffers: (handlesPtr, count) => {
+                    const handles = new Uint32Array(memory.buffer, handlesPtr, count);
+                    engineState.buffers = handles.map((handle) => webgpuHost.getBuffer(handle));
+                    uniformBuffer = engineState.buffers[GMBufferSlot.UNIFORM];
+                    overlayUniformBuffer = engineState.buffers[GMBufferSlot.OVERLAY_UNIFORM];
+                    overlayTextBuffer = engineState.buffers[GMBufferSlot.OVERLAY_TEXT];
+                    overlayVertexBuffer = engineState.buffers[GMBufferSlot.OVERLAY_VERTEX];
+                },
+                register_bind_groups: (handlesPtr, count) => {
+                    const handles = new Uint32Array(memory.buffer, handlesPtr, count);
+                    engineState.bindGroups = handles.map((handle) => webgpuHost.getBindGroup(handle));
+                    bindGroup = engineState.bindGroups[0];
+                    overlayBindGroup = engineState.bindGroups[1];
+                },
+                register_render_pipelines: (handlesPtr, count) => {
+                    const handles = new Uint32Array(memory.buffer, handlesPtr, count);
+                    engineState.pipelines = handles.map((handle) => webgpuHost.getRenderPipeline(handle));
+                    pipeline = engineState.pipelines[0];
+                    overlayPipeline = engineState.pipelines[1];
+                },
+                register_mesh_info: (vertexCount, indexCount) => {
+                    engineState.vertexCount = vertexCount;
+                    engineState.indexCount = indexCount;
+                },
+                get_input_state: (snapshotPtr) => {
+                    const keysView = new Uint8Array(memory.buffer, snapshotPtr, 256);
+                    keysView.set(keyStates);
+                    const dv = new DataView(memory.buffer, snapshotPtr + 256, 8);
+                    dv.setFloat32(0, mouseDeltaX, true);
+                    dv.setFloat32(4, mouseDeltaY, true);
+                    mouseDeltaX = 0;
+                    mouseDeltaY = 0;
+                },
             };
-
-            // Declare memory variable for WASI imports to use
-            let memory;
 
             const wasmModule = await WebAssembly.instantiate(wasmBytes, {
                 env: {
@@ -780,7 +941,6 @@
                 platform: platformAPI,
                 wasi_snapshot_preview1: {
                     fd_write: (fd, iovs, iovs_len, nwritten) => {
-                        // Simple implementation for stdout/stderr
                         let written = 0;
                         const view = new DataView(memory.buffer);
                         const decoder = new TextDecoder();
@@ -805,342 +965,26 @@
             const wasmInstance = wasmModule.instance;
             memory = wasmInstance.exports.memory;
             webgpuHost.setMemory(memory);
-            
-            // Helper: Read C string from WASM memory
-            function readCString(ptr) {
-                const bytes = new Uint8Array(memory.buffer);
-                let end = ptr;
-                while (bytes[end] !== 0) end++;
-                return new TextDecoder().decode(bytes.slice(ptr, end));
-            }
-            
-            // Helper: Get GPU resource handles from WASM table
-            function getGPUHandles(getTableFunc, getCountFunc, getResourceFunc) {
-                const count = getCountFunc();
-                const tablePtr = getTableFunc();
-                const handleView = new Uint32Array(memory.buffer, tablePtr, count);
-                const resources = [];
-                for (let i = 0; i < count; i++) {
-                    resources.push(getResourceFunc(handleView[i]));
-                }
-                return resources;
-            }
-            
-            // Helper: Enum conversion functions using WASM exports
-            const gm_texture_format_to_string = wasmInstance.exports.gm_texture_format_to_string;
-            const gm_texture_format_from_string = wasmInstance.exports.gm_texture_format_from_string;
-            
-            function textureFormatFromEnum(value) {
-                const strPtr = gm_texture_format_to_string(value);
-                return readCString(strPtr);
-            }
-            
-            function enumFromTextureFormat(name) {
-                // Write string to temporary buffer (or use existing string in memory)
-                // For now, we'll encode it
-                const encoder = new TextEncoder();
-                const bytes = encoder.encode(name + '\0');
-                const tempPtr = wasmInstance.exports.gm_get_temp_buffer();
-                new Uint8Array(memory.buffer).set(bytes, tempPtr);
-                return gm_texture_format_from_string(tempPtr);
-            }
-            
-            // Get map data from WASM instead of hardcoding in JavaScript
-            const gm_get_default_map = wasmInstance.exports.gm_get_default_map;
-            const gm_get_map_width = wasmInstance.exports.gm_get_map_width;
-            const gm_get_map_height = wasmInstance.exports.gm_get_map_height;
-            const gm_get_temp_buffer = wasmInstance.exports.gm_get_temp_buffer;
-            const mapWidth = gm_get_map_width();
-            const mapHeight = gm_get_map_height();
-            const mapPtr = gm_get_default_map();
-            
-            // Get other WASM exports
-            const find_start_position = wasmInstance.exports.find_start_position;
-            const generate_mesh = wasmInstance.exports.generate_mesh;
-            const gm_get_preferred_canvas_format = wasmInstance.exports.gm_get_preferred_canvas_format;
-            const gm_register_webgpu_handles = wasmInstance.exports.gm_register_webgpu_handles;
-            const gm_create_gpu_buffers = wasmInstance.exports.gm_create_gpu_buffers;
-            const gm_get_gpu_buffer_count = wasmInstance.exports.gm_get_gpu_buffer_count;
-            const gm_get_gpu_buffer_table = wasmInstance.exports.gm_get_gpu_buffer_table;
-            const gm_create_shader_modules = wasmInstance.exports.gm_create_shader_modules;
-            const gm_get_shader_module_count = wasmInstance.exports.gm_get_shader_module_count;
-            const gm_get_shader_module_table = wasmInstance.exports.gm_get_shader_module_table;
-            const gm_get_uniform_float_count = wasmInstance.exports.gm_get_uniform_float_count;
-            const gm_register_texture_views = wasmInstance.exports.gm_register_texture_views;
-            const gm_create_bind_group_layouts = wasmInstance.exports.gm_create_bind_group_layouts;
-            const gm_create_pipeline_layouts = wasmInstance.exports.gm_create_pipeline_layouts;
-            const gm_create_render_pipelines = wasmInstance.exports.gm_create_render_pipelines;
-            const gm_create_bind_groups = wasmInstance.exports.gm_create_bind_groups;
-            const gm_get_bind_group_table = wasmInstance.exports.gm_get_bind_group_table;
-            const gm_get_bind_group_count = wasmInstance.exports.gm_get_bind_group_count;
-            const gm_get_render_pipeline_table = wasmInstance.exports.gm_get_render_pipeline_table;
-            const gm_get_render_pipeline_count = wasmInstance.exports.gm_get_render_pipeline_count;
-            gm_register_webgpu_handles(webgpuHost.handles.device, webgpuHost.handles.queue);
 
-            const preferredFormatEnum = gm_get_preferred_canvas_format();
-            const format = textureFormatFromEnum(preferredFormatEnum);
-            console.log(`[WebGPU] Preferred canvas format (via WASM): ${format} (enum 0x${preferredFormatEnum.toString(16)})`);
-            context.configure({
-                device,
-                format,
-                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST
-            });
-            console.log('[WebGPU] Canvas configured');
+            const gm_frame = wasmInstance.exports.gm_frame;
 
-            // Find starting position using WASM
-            // Use temp buffer for output parameters (startX, startZ, startYaw)
-            const tempBufferPtr = gm_get_temp_buffer();
-            const startXPtr = tempBufferPtr;
-            const startZPtr = startXPtr + 4;
-            const startYawPtr = startZPtr + 4;
-
-            // Call WASM function
-            const found = find_start_position(mapPtr, mapWidth, mapHeight, startXPtr, startZPtr, startYawPtr);
-
-            let startX, startZ, startYaw;
-            if (found) {
-                // Read results from WASM memory (get fresh buffer reference after call)
-                const floatView = new Float32Array(memory.buffer);
-                startX = floatView[startXPtr / 4];
-                startZ = floatView[startZPtr / 4];
-                startYaw = floatView[startYawPtr / 4];
-
-                const dirName = startYaw < -1.0 ? 'North' : startYaw < 1.0 ? 'East' : startYaw < 2.0 ? 'South' : 'West';
-                console.log(`Starting at (${startX}, ${startZ}) facing ${dirName} with yaw=${startYaw}`);
-            } else {
-                throw new Error('Starting position not found in map!');
+            function frame() {
+                gm_frame();
+                requestAnimationFrame(frame);
             }
 
-            // Generate meshes using WASM
+            requestAnimationFrame(frame);
 
-            // Call WASM generate_mesh function
-            const meshDataPtr = generate_mesh(mapPtr, mapWidth, mapHeight);
-
-            // Read MeshData structure from WASM memory (get fresh buffer reference after call)
-            const meshDataView = new Uint32Array(memory.buffer, meshDataPtr, 11); // 11 uint32 fields
-            const positionsPtr = meshDataView[0];
-            const uvsPtr = meshDataView[1];
-            const normalsPtr = meshDataView[2];
-            const surfaceTypesPtr = meshDataView[3];
-            const triangleIDsPtr = meshDataView[4];
-            const indicesPtr = meshDataView[5];
-            const positionCount = meshDataView[6];
-            const uvCount = meshDataView[7];
-            const normalCount = meshDataView[8];
-            const vertexCount = meshDataView[9];
-            indexCount = meshDataView[10];
-
-            console.log(`Mesh: ${vertexCount} vertices, ${indexCount} indices, ${indexCount/3} triangles`);
-
-            // Extract arrays from WASM memory
-            const positions = new Float32Array(memory.buffer, positionsPtr, positionCount);
-            const uvs = new Float32Array(memory.buffer, uvsPtr, uvCount);
-            const normals = new Float32Array(memory.buffer, normalsPtr, normalCount);
-            const surfaceTypes = new Float32Array(memory.buffer, surfaceTypesPtr, vertexCount);
-            const triangleIDs = new Float32Array(memory.buffer, triangleIDsPtr, vertexCount);
-            const indices = new Uint16Array(memory.buffer, indicesPtr, indexCount);
-
-            const bufferInitResult = gm_create_gpu_buffers();
-            if (bufferInitResult !== 0) {
-                throw new Error(`gm_create_gpu_buffers failed with code ${bufferInitResult}`);
-            }
-
-            // Extract GPU buffer handles
-            const buffers = getGPUHandles(
-                gm_get_gpu_buffer_table,
-                gm_get_gpu_buffer_count,
-                webgpuHost.getBuffer.bind(webgpuHost)
-            );
-            positionBuffer = buffers[GMBufferSlot.POSITIONS];
-            uvBuffer = buffers[GMBufferSlot.UVS];
-            surfaceTypeBuffer = buffers[GMBufferSlot.SURFACE_TYPES];
-            triangleIDBuffer = buffers[GMBufferSlot.TRIANGLE_IDS];
-            normalBuffer = buffers[GMBufferSlot.NORMALS];
-            indexBuffer = buffers[GMBufferSlot.INDICES];
-            uniformBuffer = buffers[GMBufferSlot.UNIFORM];
-            overlayUniformBuffer = buffers[GMBufferSlot.OVERLAY_UNIFORM];
-            overlayTextBuffer = buffers[GMBufferSlot.OVERLAY_TEXT];
-            const overlayMapBuffer = buffers[GMBufferSlot.OVERLAY_MAP];
-            overlayVertexBuffer = buffers[GMBufferSlot.OVERLAY_VERTEX];
-            uniformFloatCount = gm_get_uniform_float_count();
-
-            const shaderInitResult = gm_create_shader_modules();
-            if (shaderInitResult !== 0) {
-                throw new Error(`gm_create_shader_modules failed with code ${shaderInitResult}`);
-            }
-
-            // Extract shader module handles
-            const shaders = getGPUHandles(
-                gm_get_shader_module_table,
-                gm_get_shader_module_count,
-                webgpuHost.getShaderModule.bind(webgpuHost)
-            );
-            const [vsModule, fsModule, overlayVsModule, overlayFsModule] = shaders;
-
-            // Check for shader compilation errors
-            vsModule.getCompilationInfo().then(info => {
-                if (info.messages.length > 0) {
-                    console.error('[Shader] Vertex shader compilation messages:', info.messages);
-                }
-            });
-            fsModule.getCompilationInfo().then(info => {
-                if (info.messages.length > 0) {
-                    console.error('[Shader] Fragment shader compilation messages:', info.messages);
-                }
-            });
-
-            console.log('Shaders compiled successfully');
-
-            // Get texture URLs from WASM
-            const gm_get_wall_texture_url = wasmInstance.exports.gm_get_wall_texture_url;
-            const gm_get_floor_texture_url = wasmInstance.exports.gm_get_floor_texture_url;
-            const gm_get_ceiling_texture_url = wasmInstance.exports.gm_get_ceiling_texture_url;
-            
-            const wallTextureUrl = readCString(gm_get_wall_texture_url());
-            const floorTextureUrl = readCString(gm_get_floor_texture_url());
-            const ceilingTextureUrl = readCString(gm_get_ceiling_texture_url());
-            
-            console.log('[Texture] Starting to load all textures...');
-            console.log('[Texture] Wall URL:', wallTextureUrl);
-            console.log('[Texture] Floor URL:', floorTextureUrl);
-            console.log('[Texture] Ceiling URL:', ceilingTextureUrl);
-            
-            const [wallTextureView, floorTextureView, ceilingTextureView] = await Promise.all([
-                createTextureFromUrl(device, wallTextureUrl, 'wall-texture'),
-                createTextureFromUrl(device, floorTextureUrl, 'floor-texture'),
-                createTextureFromUrl(device, ceilingTextureUrl, 'ceiling-texture')
-            ]);
-            console.log('[Texture] All textures loaded successfully');
-            console.log('[Texture] Wall texture view:', wallTextureView);
-            console.log('[Texture] Floor texture view:', floorTextureView);
-            console.log('[Texture] Ceiling texture view:', ceilingTextureView);
-            const wallHandle = webgpuHost.registerTextureView(wallTextureView);
-            const floorHandle = webgpuHost.registerTextureView(floorTextureView);
-            const ceilingHandle = webgpuHost.registerTextureView(ceilingTextureView);
-            gm_register_texture_views(wallHandle, floorHandle, ceilingHandle);
-
-            // Initialize all WebGPU pipelines (bind group layouts, pipeline layouts, render pipelines, bind groups)
-            const gm_initialize_pipelines = wasmInstance.exports.gm_initialize_pipelines;
-            const pipelineInit = gm_initialize_pipelines(preferredFormatEnum);
-            if (pipelineInit !== 0) {
-                throw new Error(`gm_initialize_pipelines failed with code ${pipelineInit}`);
-            }
-
-            // Extract bind group and pipeline handles
-            const bindGroups = getGPUHandles(
-                gm_get_bind_group_table,
-                gm_get_bind_group_count,
-                webgpuHost.getBindGroup.bind(webgpuHost)
-            );
-            [bindGroup, overlayBindGroup] = bindGroups;
-
-            const pipelines = getGPUHandles(
-                gm_get_render_pipeline_table,
-                gm_get_render_pipeline_count,
-                webgpuHost.getRenderPipeline.bind(webgpuHost)
-            );
-            [pipeline, overlayPipeline] = pipelines;
-
-            console.log('Pipelines and bind groups created successfully via WASM');
-
-            overlayUniformFloatCount = 24;
-            const overlayTextCapacity = 256;
-            
-            // Write map data from WASM memory directly to GPU buffer
-            const mapDataView = new Uint32Array(memory.buffer, mapPtr, mapWidth * mapHeight);
-            device.queue.writeBuffer(overlayMapBuffer, 0, mapDataView);
-
-            // Depth texture
-            depthTexture = device.createTexture({
-                size: [canvas.width, canvas.height, 1],
-                format: 'depth24plus',
-                usage: GPUTextureUsage.RENDER_ATTACHMENT
-            });
-            console.log(`Mesh generated: ${positions.length/3} vertices, ${indices.length/3} triangles`);
-
-            // Initialize game state in WASM
-            // Get pointer to static game state instance from WASM
-            const gm_get_game_state_ptr = wasmInstance.exports.gm_get_game_state_ptr;
-            const gameStatePtr = gm_get_game_state_ptr();
-            const gm_init_game_state = wasmInstance.exports.gm_init_game_state;
-            const gm_set_key_state = wasmInstance.exports.gm_set_key_state;
-            const gm_add_mouse_delta = wasmInstance.exports.gm_add_mouse_delta;
-            const gm_update_frame = wasmInstance.exports.gm_update_frame;
-            const gm_get_uniform_data = wasmInstance.exports.gm_get_uniform_data;
-            const gm_build_overlay_text = wasmInstance.exports.gm_build_overlay_text;
-            const gm_get_overlay_uniform_data = wasmInstance.exports.gm_get_overlay_uniform_data;
-            const gm_update_perf_metrics = wasmInstance.exports.gm_update_perf_metrics;
-
-            gm_init_game_state(gameStatePtr, mapPtr, mapWidth, mapHeight, startX, startZ, startYaw);
-            console.log('Game state initialized at', gameStatePtr);
-
-            // Debug: read back camera position
-            const debugView = new Float32Array(memory.buffer, gameStatePtr, 12);
-            console.log(`[Debug] Initial camera: (${debugView[0]}, ${debugView[1]}, ${debugView[2]}), yaw=${debugView[3]}, pitch=${debugView[4]}`);
-
-            // Get the key press handler function
-            const gm_handle_key_press = wasmInstance.exports.gm_handle_key_press;
-
-            // Map arrow keys to special characters for C code
-            const keyMap = {
-                'arrowleft': '<'.charCodeAt(0),
-                'arrowright': '>'.charCodeAt(0),
-                'arrowup': '^'.charCodeAt(0),
-                'arrowdown': 'v'.charCodeAt(0),
-            };
-
-            document.addEventListener('keydown', (e) => {
-                const key = e.key.toLowerCase();
-                if (!e.repeat) {
-                    // Handle toggle keys via C function
-                    gm_handle_key_press(gameStatePtr, key.charCodeAt(0));
-                }
-                // Send movement key codes to WASM
-                const keyCode = keyMap[key] || key.charCodeAt(0);
-                if (key === 'w' || key === 'a' || key === 's' || key === 'd') {
-                    console.log(`[Input] Key ${key} pressed, code=${keyCode}`);
-                }
-                gm_set_key_state(gameStatePtr, keyCode, 1);
-            });
-
-            document.addEventListener('keyup', (e) => {
-                const key = e.key.toLowerCase();
-                const keyCode = keyMap[key] || key.charCodeAt(0);
-                gm_set_key_state(gameStatePtr, keyCode, 0);
-            });
-
-            canvas.addEventListener('click', () => canvas.requestPointerLock());
-
-            function onMouseMove(e) {
-                gm_add_mouse_delta(gameStatePtr, e.movementX, e.movementY);
-            }
-
-            document.addEventListener('pointerlockchange', () => {
-                if (document.pointerLockElement === canvas) {
-                    document.addEventListener('mousemove', onMouseMove);
-                } else {
-                    document.removeEventListener('mousemove', onMouseMove);
-                }
-            });
-
-            // Start render loop - C will drive the loop via platform API
-            const gm_set_active_game_state = wasmInstance.exports.gm_set_active_game_state;
-            const gm_on_animation_frame = wasmInstance.exports.gm_on_animation_frame;
-
-            gm_set_active_game_state(gameStatePtr);
-            gm_on_animation_frame();  // Start the render loop
-
-            // Resize
             window.addEventListener('resize', () => {
                 canvas.width = window.innerWidth;
                 canvas.height = window.innerHeight;
-                // Recreate depth texture
-                depthTexture.destroy();
-                depthTexture = device.createTexture({
-                    size: [canvas.width, canvas.height, 1],
-                    format: 'depth24plus',
-                    usage: GPUTextureUsage.RENDER_ATTACHMENT
+                context.configure({
+                    device,
+                    format: canvasFormat,
+                    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST,
                 });
+                depthTexture.destroy();
+                depthTexture = createDepthTexture();
             });
         }
 

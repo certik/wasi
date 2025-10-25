@@ -5,10 +5,10 @@
 #include <base/format.h>
 #include <base/base_string.h>
 #include <base/mem.h>
+#include <stdint.h>
+#include <string.h>
 
-// Math functions for WASM (imported from JavaScript)
 #ifdef __wasm__
-// These will be imported from JavaScript, overriding the builtins
 __attribute__((import_module("env"), import_name("cosf")))
 extern float cosf(float x);
 __attribute__((import_module("env"), import_name("sinf")))
@@ -131,11 +131,21 @@ int find_start_position(int *map, int width, int height,
     return 0;
 }
 
-// ============================================================================
-// Mesh Generation
-// ============================================================================
+typedef struct GMHostConfig {
+    uint32_t device_handle;
+    uint32_t queue_handle;
+    uint32_t wall_texture_view;
+    uint32_t floor_texture_view;
+    uint32_t ceiling_texture_view;
+    uint32_t preferred_color_format;
+} GMHostConfig;
 
-// Context for building mesh geometry
+typedef struct GMInputSnapshot {
+    uint8_t key_states[256];
+    float mouse_delta_x;
+    float mouse_delta_y;
+} GMInputSnapshot;
+
 typedef struct {
     float *positions;
     float *uvs;
@@ -159,12 +169,10 @@ typedef struct {
     float window_margin;
 } MeshGenContext;
 
-// Helper: Check if cell is solid
 static inline int is_solid_cell(int value) {
     return value == 1 || value == 2 || value == 3;
 }
 
-// Helper: Push values to position array
 static inline void push_position(MeshGenContext *ctx, float x, float y, float z) {
     ctx->positions[ctx->position_idx++] = x;
     ctx->positions[ctx->position_idx++] = y;
@@ -172,35 +180,29 @@ static inline void push_position(MeshGenContext *ctx, float x, float y, float z)
     ctx->vertex_idx++;
 }
 
-// Helper: Push values to UV array
 static inline void push_uv(MeshGenContext *ctx, float u, float v) {
     ctx->uvs[ctx->uv_idx++] = u;
     ctx->uvs[ctx->uv_idx++] = v;
 }
 
-// Helper: Push values to normal array
 static inline void push_normal(MeshGenContext *ctx, float x, float y, float z) {
     ctx->normals[ctx->normal_idx++] = x;
     ctx->normals[ctx->normal_idx++] = y;
     ctx->normals[ctx->normal_idx++] = z;
 }
 
-// Helper: Push surface type
 static inline void push_surface_type(MeshGenContext *ctx, float type) {
     ctx->surface_types[ctx->vertex_idx - 1] = type;
 }
 
-// Helper: Push triangle ID
 static inline void push_triangle_id(MeshGenContext *ctx, float id) {
     ctx->triangle_ids[ctx->vertex_idx - 1] = id;
 }
 
-// Helper: Push index
 static inline void push_index(MeshGenContext *ctx, uint16_t idx) {
     ctx->indices[ctx->index_idx++] = idx;
 }
 
-// Push a quad for north-facing wall segment
 static void push_north_segment_range(MeshGenContext *ctx, float x0, float x1, float z,
                                      float y0, float y1, int normalize_u, float surface_type) {
     float v0 = y0 * ctx->inv_wall_height;
@@ -209,7 +211,6 @@ static void push_north_segment_range(MeshGenContext *ctx, float x0, float x1, fl
 
     uint16_t base = ctx->index_offset;
 
-    // 4 vertices for quad
     push_position(ctx, x0, y0, z);
     push_uv(ctx, 0.0f, v0);
     push_normal(ctx, 0.0f, 0.0f, -1.0f);
@@ -234,7 +235,6 @@ static void push_north_segment_range(MeshGenContext *ctx, float x0, float x1, fl
     push_surface_type(ctx, surface_type);
     push_triangle_id(ctx, 0.0f);
 
-    // 6 indices for 2 triangles
     push_index(ctx, base + 0);
     push_index(ctx, base + 1);
     push_index(ctx, base + 2);
@@ -631,32 +631,6 @@ MeshData* generate_mesh(int *map, int width, int height) {
     return &g_mesh_data;
 }
 
-// Query the preferred canvas texture format via the WebGPU bridge.
-uint32_t gm_get_preferred_canvas_format(void) {
-    WGPUSurfaceCapabilities caps = WGPU_SURFACE_CAPABILITIES_INIT;
-
-    WGPUStatus status = wgpuSurfaceGetCapabilities(NULL, NULL, &caps);
-    if (status != WGPUStatus_Success || caps.formatCount == 0 || caps.formats == NULL) {
-        return (uint32_t)WGPUTextureFormat_BGRA8Unorm;
-    }
-
-    uint32_t preferred = (uint32_t)caps.formats[0];
-    wgpuSurfaceCapabilitiesFreeMembers(caps);
-    return preferred;
-}
-
-void gm_register_webgpu_handles(uint32_t device_handle, uint32_t queue_handle) {
-    g_wgpu_device = (WGPUDevice)(uintptr_t)device_handle;
-    g_wgpu_queue = (WGPUQueue)(uintptr_t)queue_handle;
-}
-
-void gm_register_texture_views(uint32_t wall_view_handle, uint32_t floor_view_handle,
-        uint32_t ceiling_view_handle) {
-    g_wall_texture_view = (WGPUTextureView)(uintptr_t)wall_view_handle;
-    g_floor_texture_view = (WGPUTextureView)(uintptr_t)floor_view_handle;
-    g_ceiling_texture_view = (WGPUTextureView)(uintptr_t)ceiling_view_handle;
-}
-
 static WGPUShaderModule gm_create_shader_module_from_source(const char *source, size_t length) {
     if (source == NULL || length == 0 || g_wgpu_device == NULL) {
         return NULL;
@@ -691,7 +665,7 @@ static WGPUBuffer gm_create_buffer_with_data(const void *data, size_t size,
     return buffer;
 }
 
-int gm_create_gpu_buffers(void) {
+static int gm_create_gpu_buffers(void) {
     if (g_wgpu_device == NULL || g_wgpu_queue == NULL) {
         return -1;
     }
@@ -792,23 +766,7 @@ int gm_create_gpu_buffers(void) {
     return 0;
 }
 
-uint32_t gm_get_gpu_buffer_table(void) {
-    return (uint32_t)(uintptr_t)g_gpu_buffers;
-}
-
-uint32_t gm_get_gpu_buffer_count(void) {
-    return GM_BUFFER_COUNT;
-}
-
-uint32_t gm_get_uniform_float_count(void) {
-    return GM_UNIFORM_FLOAT_COUNT;
-}
-
-uint32_t gm_get_uniform_buffer_size(void) {
-    return GM_UNIFORM_FLOAT_COUNT * (uint32_t)sizeof(float);
-}
-
-int gm_create_shader_modules(void) {
+static int gm_create_shader_modules(void) {
     if (g_wgpu_device == NULL) {
         return -1;
     }
@@ -840,15 +798,7 @@ int gm_create_shader_modules(void) {
     return 0;
 }
 
-uint32_t gm_get_shader_module_table(void) {
-    return (uint32_t)(uintptr_t)g_shader_modules;
-}
-
-uint32_t gm_get_shader_module_count(void) {
-    return GM_SHADER_COUNT;
-}
-
-int gm_create_bind_group_layouts(void) {
+static int gm_create_bind_group_layouts(void) {
     if (g_wgpu_device == NULL) {
         return -1;
     }
@@ -860,7 +810,7 @@ int gm_create_bind_group_layouts(void) {
             .buffer = {
                 .type = WGPUBufferBindingType_Uniform,
                 .hasDynamicOffset = WGPU_FALSE,
-                .minBindingSize = gm_get_uniform_buffer_size(),
+                .minBindingSize = (uint64_t)GM_UNIFORM_FLOAT_COUNT * sizeof(float),
             },
         },
         {
@@ -958,7 +908,7 @@ int gm_create_bind_group_layouts(void) {
     return 0;
 }
 
-int gm_create_pipeline_layouts(void) {
+static int gm_create_pipeline_layouts(void) {
     if (g_wgpu_device == NULL) {
         return -1;
     }
@@ -971,6 +921,7 @@ int gm_create_pipeline_layouts(void) {
         .bindGroupLayoutCount = 1,
         .bindGroupLayouts = &g_bind_group_layouts[GM_BIND_GROUP_LAYOUT_MAIN],
     };
+
     g_pipeline_layouts[GM_PIPELINE_LAYOUT_MAIN] = wgpuDeviceCreatePipelineLayout(
             g_wgpu_device, &main_desc);
     if (g_pipeline_layouts[GM_PIPELINE_LAYOUT_MAIN] == NULL) {
@@ -981,6 +932,7 @@ int gm_create_pipeline_layouts(void) {
         .bindGroupLayoutCount = 1,
         .bindGroupLayouts = &g_bind_group_layouts[GM_BIND_GROUP_LAYOUT_OVERLAY],
     };
+
     g_pipeline_layouts[GM_PIPELINE_LAYOUT_OVERLAY] = wgpuDeviceCreatePipelineLayout(
             g_wgpu_device, &overlay_desc);
     if (g_pipeline_layouts[GM_PIPELINE_LAYOUT_OVERLAY] == NULL) {
@@ -990,7 +942,7 @@ int gm_create_pipeline_layouts(void) {
     return 0;
 }
 
-int gm_create_render_pipelines(uint32_t color_format_enum) {
+static int gm_create_render_pipelines(uint32_t color_format_enum) {
     if (g_wgpu_device == NULL) {
         return -1;
     }
@@ -1216,7 +1168,7 @@ int gm_create_render_pipelines(uint32_t color_format_enum) {
     return 0;
 }
 
-int gm_create_bind_groups(void) {
+static int gm_create_bind_groups(void) {
     if (g_wgpu_device == NULL) {
         return -1;
     }
@@ -1244,7 +1196,7 @@ int gm_create_bind_groups(void) {
         }
     }
 
-    const uint64_t uniform_buffer_size = gm_get_uniform_buffer_size();
+    const uint64_t uniform_buffer_size = (uint64_t)GM_UNIFORM_FLOAT_COUNT * sizeof(float);
     WGPUBindGroupEntry main_entries[5] = {
         {
             .binding = 0,
@@ -1322,59 +1274,10 @@ int gm_create_bind_groups(void) {
     return 0;
 }
 
-uint32_t gm_get_bind_group_table(void) {
-    return (uint32_t)(uintptr_t)g_bind_groups;
-}
-
-uint32_t gm_get_bind_group_count(void) {
-    return GM_BIND_GROUP_COUNT;
-}
-
-uint32_t gm_get_render_pipeline_table(void) {
-    return (uint32_t)(uintptr_t)g_render_pipelines;
-}
-
-uint32_t gm_get_render_pipeline_count(void) {
-    return GM_RENDER_PIPELINE_COUNT;
-}
-
-// Consolidated WebGPU pipeline initialization
-// Creates bind group layouts, pipeline layouts, render pipelines, and bind groups
-// Returns 0 on success, negative error code on failure
-#ifdef __wasm__
-__attribute__((export_name("gm_initialize_pipelines")))
-#endif
-int gm_initialize_pipelines(uint32_t color_format_enum) {
-    int result;
-    
-    result = gm_create_bind_group_layouts();
-    if (result != 0) {
-        return result;  // Pass through error code
-    }
-    
-    result = gm_create_pipeline_layouts();
-    if (result != 0) {
-        return result;
-    }
-    
-    result = gm_create_render_pipelines(color_format_enum);
-    if (result != 0) {
-        return result;
-    }
-    
-    result = gm_create_bind_groups();
-    if (result != 0) {
-        return result;
-    }
-    
-    return 0;
-}
-
 // ============================================================================
 // Game Logic Implementation
 // ============================================================================
 
-// Overlay text constants
 #define GLYPH_WIDTH 8
 #define GLYPH_HEIGHT 8
 #define GLYPH_SPACING 0
@@ -1389,21 +1292,22 @@ int gm_initialize_pipelines(uint32_t color_format_enum) {
 #define SPACE_CODE 32
 #define PERF_SMOOTHING 0.9f
 
-// Static buffers for overlay text and uniforms
 static uint32_t g_overlay_text_buffer[GM_OVERLAY_TEXT_CAPACITY];
 static float g_uniform_buffer[GM_UNIFORM_FLOAT_COUNT];
 static float g_overlay_uniform_buffer[GM_OVERLAY_UNIFORM_FLOAT_COUNT];
 
-// Convert character to glyph code
 static inline uint32_t char_to_glyph_code(char ch) {
     return (uint32_t)(uint8_t)ch;
 }
 
-// Utility: clamp pitch to valid range
 static inline float clamp_pitch(float pitch) {
     const float max_pitch = PI / 2.0f - 0.01f;
-    if (pitch < -max_pitch) return -max_pitch;
-    if (pitch > max_pitch) return max_pitch;
+    if (pitch < -max_pitch) {
+        return -max_pitch;
+    }
+    if (pitch > max_pitch) {
+        return max_pitch;
+    }
     return pitch;
 }
 
@@ -1501,39 +1405,36 @@ void gm_add_mouse_delta(GameState *state, float dx, float dy) {
 }
 
 // Toggle functions for GameState flags
-void gm_toggle_map_visible(GameState *state) {
+static void gm_toggle_map_visible(GameState *state) {
     state->map_visible = !state->map_visible;
 }
 
-void gm_toggle_map_relative_mode(GameState *state) {
+static void gm_toggle_map_relative_mode(GameState *state) {
     state->map_relative_mode = !state->map_relative_mode;
 }
 
-void gm_toggle_hud_visible(GameState *state) {
+static void gm_toggle_hud_visible(GameState *state) {
     state->hud_visible = !state->hud_visible;
 }
 
-void gm_toggle_textures_enabled(GameState *state) {
+static void gm_toggle_textures_enabled(GameState *state) {
     state->textures_enabled = !state->textures_enabled;
 }
 
-void gm_toggle_triangle_mode(GameState *state) {
+static void gm_toggle_triangle_mode(GameState *state) {
     state->triangle_mode = !state->triangle_mode;
 }
 
-void gm_toggle_debug_mode(GameState *state) {
+static void gm_toggle_debug_mode(GameState *state) {
     state->debug_mode = !state->debug_mode;
 }
 
-void gm_toggle_horizontal_movement(GameState *state) {
+static void gm_toggle_horizontal_movement(GameState *state) {
     state->horizontal_movement = !state->horizontal_movement;
 }
 
 // Handle key press for toggle keys
-#ifdef __wasm__
-__attribute__((export_name("gm_handle_key_press")))
-#endif
-void gm_handle_key_press(GameState *state, uint8_t key_code) {
+static void gm_handle_key_press(GameState *state, uint8_t key_code) {
     // Handle toggle keys
     switch (key_code) {
         case 'm':  // Toggle map visibility
@@ -1846,19 +1747,8 @@ void gm_update_perf_metrics(GameState *state, float frame_time, float js_time,
 // Main Render Loop
 // ============================================================================
 
-static GameState *g_game_state = NULL;
-static GameState g_static_game_state;  // Static instance for WASM to use
-
-// Get a pointer to the static game state (for JavaScript to use)
-#ifdef __wasm__
-__attribute__((export_name("gm_get_game_state_ptr")))
-#endif
-GameState* gm_get_game_state_ptr(void) {
-    return &g_static_game_state;
-}
-
 // Main render frame function - called every frame
-void gm_render_frame(GameState *state) {
+static void gm_render_frame(GameState *state) {
     double frame_start_time = platform_get_time();
 
     // Calculate FPS every 500ms
@@ -1900,26 +1790,13 @@ void gm_render_frame(GameState *state) {
     // Update performance metrics
     gm_update_perf_metrics(state, (float)total_frame_time, (float)js_time,
                           (float)gpu_copy_time, (float)gpu_render_time);
-
-    // Request next frame
-    platform_request_animation_frame();
 }
 
-// Callback for platform to call on each frame
-void gm_on_animation_frame(void) {
-    if (g_game_state) {
-        gm_render_frame(g_game_state);
-    }
-}
 
-// Set the active game state
-void gm_set_active_game_state(GameState *state) {
-    g_game_state = state;
-}
+// ============================================================================
+// Host-Driven Engine Wiring
+// ============================================================================
 
-// Default map definition
-// 1 = wall, 2 = wall with north/south window, 3 = wall with east/west window
-// 0 = floor, 5-8 = starting position with direction
 static const int g_default_map[MAP_HEIGHT][MAP_WIDTH] = {
     {1,1,1,1,1,1,1,1,1,1},
     {1,7,0,0,0,0,0,0,0,1},
@@ -1933,508 +1810,152 @@ static const int g_default_map[MAP_HEIGHT][MAP_WIDTH] = {
     {1,1,1,1,1,1,1,1,1,1}
 };
 
-// Flatten the default map to 1D array  
-static int g_default_map_flattened[MAP_HEIGHT * MAP_WIDTH];
+static int g_flattened_map[MAP_HEIGHT * MAP_WIDTH];
+static int g_flattened_map_ready = 0;
 
-// Static buffer for temporary allocations (e.g., for JavaScript to use as output parameters)
-static uint8_t g_temp_buffer[4096];
-
-// Export the default map data for JavaScript to use
-#ifdef __wasm__
-__attribute__((export_name("gm_get_default_map")))
-#endif
-int* gm_get_default_map(void) {
-    // Flatten the map on first call
-    static int initialized = 0;
-    if (!initialized) {
+static int* gm_get_flattened_default_map(void) {
+    if (!g_flattened_map_ready) {
         for (int z = 0; z < MAP_HEIGHT; z++) {
             for (int x = 0; x < MAP_WIDTH; x++) {
-                g_default_map_flattened[z * MAP_WIDTH + x] = g_default_map[z][x];
+                g_flattened_map[z * MAP_WIDTH + x] = g_default_map[z][x];
             }
         }
-        initialized = 1;
+        g_flattened_map_ready = 1;
     }
-    return g_default_map_flattened;
+    return g_flattened_map;
 }
 
-// Export a temporary buffer for JavaScript to use for output parameters
-#ifdef __wasm__
-__attribute__((export_name("gm_get_temp_buffer")))
-#endif
-void* gm_get_temp_buffer(void) {
-    return g_temp_buffer;
+static GameState g_game_state_instance;
+static int g_engine_initialized = 0;
+
+static void gm_upload_overlay_map_buffer(const int *map_data) {
+    if (g_wgpu_queue == NULL || g_gpu_buffers[GM_BUFFER_OVERLAY_MAP] == NULL) {
+        return;
+    }
+
+    uint32_t encoded_map[GM_MAP_CELL_COUNT];
+    for (int i = 0; i < GM_MAP_CELL_COUNT; i++) {
+        int value = map_data[i];
+        if (value < 0) {
+            value = 0;
+        }
+        encoded_map[i] = (uint32_t)value;
+    }
+
+    wgpuQueueWriteBuffer(
+        g_wgpu_queue,
+        g_gpu_buffers[GM_BUFFER_OVERLAY_MAP],
+        0,
+        encoded_map,
+        sizeof(encoded_map));
 }
 
-// Export map dimensions
-#ifdef __wasm__
-__attribute__((export_name("gm_get_map_width")))
-#endif
-int gm_get_map_width(void) {
-    return MAP_WIDTH;
-}
+static void gm_apply_input(GameState *state, const GMInputSnapshot *snapshot) {
+    static const uint8_t toggle_keys[] = {'m', 'r', 'h', 't', 'i', 'b', 'f'};
 
-#ifdef __wasm__
-__attribute__((export_name("gm_get_map_height")))
-#endif
-int gm_get_map_height(void) {
-    return MAP_HEIGHT;
-}
-
-// Texture URL configuration - these are the default textures
-static const char* g_wall_texture_url = "https://threejs.org/examples/textures/brick_diffuse.jpg";
-static const char* g_floor_texture_url = "https://threejs.org/examples/textures/hardwood2_diffuse.jpg";
-static const char* g_ceiling_texture_url = "https://threejs.org/examples/textures/lava/cloud.png";
-
-#ifdef __wasm__
-__attribute__((export_name("gm_get_wall_texture_url")))
-#endif
-const char* gm_get_wall_texture_url(void) {
-    return g_wall_texture_url;
-}
-
-#ifdef __wasm__
-__attribute__((export_name("gm_get_floor_texture_url")))
-#endif
-const char* gm_get_floor_texture_url(void) {
-    return g_floor_texture_url;
-}
-
-#ifdef __wasm__
-__attribute__((export_name("gm_get_ceiling_texture_url")))
-#endif
-const char* gm_get_ceiling_texture_url(void) {
-    return g_ceiling_texture_url;
-}
-
-// ============================================================================
-// WebGPU Enum String Conversions
-// ============================================================================
-
-// Texture format enum <-> string conversions
-typedef struct {
-    const char* name;
-    uint32_t value;
-} EnumMapping;
-
-static const EnumMapping g_texture_format_mappings[] = {
-    {"rgba8unorm", 0x00000016},
-    {"rgba8unorm-srgb", 0x00000017},
-    {"bgra8unorm", 0x0000001B},
-    {"bgra8unorm-srgb", 0x0000001C},
-    {"stencil8", 0x0000002C},
-    {"depth16unorm", 0x0000002D},
-    {"depth24plus", 0x0000002E},
-    {"depth24plus-stencil8", 0x0000002F},
-    {"depth32float", 0x00000030},
-    {"depth32float-stencil8", 0x00000031},
-    {NULL, 0}  // Sentinel
-};
-
-#ifdef __wasm__
-__attribute__((export_name("gm_texture_format_from_string")))
-#endif
-uint32_t gm_texture_format_from_string(const char* name) {
-    if (!name) return 0x0000001B;  // Default to bgra8unorm
-    
-    for (int i = 0; g_texture_format_mappings[i].name != NULL; i++) {
-        if (strcmp(name, g_texture_format_mappings[i].name) == 0) {
-            return g_texture_format_mappings[i].value;
+    for (size_t i = 0; i < sizeof(toggle_keys); i++) {
+        uint8_t code = toggle_keys[i];
+        if (snapshot->key_states[code] && !state->keys[code]) {
+            gm_handle_key_press(state, code);
         }
     }
-    
-    // Unknown format, return default
-    return 0x0000001B;  // bgra8unorm
+
+    memcpy(state->keys, snapshot->key_states, sizeof(snapshot->key_states));
+    state->mouse_delta_x = snapshot->mouse_delta_x;
+    state->mouse_delta_y = snapshot->mouse_delta_y;
+}
+
+static int gm_initialize_engine(void) {
+    GMHostConfig config = {0};
+    if (!platform_get_host_config(&config)) {
+        return 0;  // Host not ready yet.
+    }
+
+    g_wgpu_device = (WGPUDevice)(uintptr_t)config.device_handle;
+    g_wgpu_queue = (WGPUQueue)(uintptr_t)config.queue_handle;
+    g_wall_texture_view = (WGPUTextureView)(uintptr_t)config.wall_texture_view;
+    g_floor_texture_view = (WGPUTextureView)(uintptr_t)config.floor_texture_view;
+    g_ceiling_texture_view = (WGPUTextureView)(uintptr_t)config.ceiling_texture_view;
+
+    if (g_wgpu_device == NULL || g_wgpu_queue == NULL ||
+        g_wall_texture_view == NULL || g_floor_texture_view == NULL ||
+        g_ceiling_texture_view == NULL) {
+        return 0;
+    }
+
+    int *map = gm_get_flattened_default_map();
+    float start_x = 0.0f;
+    float start_z = 0.0f;
+    float start_yaw = 0.0f;
+    if (!find_start_position(map, MAP_WIDTH, MAP_HEIGHT, &start_x, &start_z, &start_yaw)) {
+        return 0;
+    }
+
+    MeshData *mesh = generate_mesh(map, MAP_WIDTH, MAP_HEIGHT);
+    if (mesh == NULL) {
+        return 0;
+    }
+
+    if (gm_create_gpu_buffers() != 0) {
+        return 0;
+    }
+
+    gm_upload_overlay_map_buffer(map);
+
+    if (gm_create_shader_modules() != 0) {
+        return 0;
+    }
+    if (gm_create_bind_group_layouts() != 0) {
+        return 0;
+    }
+    if (gm_create_pipeline_layouts() != 0) {
+        return 0;
+    }
+    if (gm_create_render_pipelines(config.preferred_color_format) != 0) {
+        return 0;
+    }
+    if (gm_create_bind_groups() != 0) {
+        return 0;
+    }
+
+    platform_register_uniform_info(
+        GM_UNIFORM_FLOAT_COUNT,
+        GM_OVERLAY_UNIFORM_FLOAT_COUNT,
+        GM_OVERLAY_TEXT_CAPACITY,
+        GM_MAP_CELL_COUNT);
+    platform_register_gpu_buffers((uint32_t)(uintptr_t)&g_gpu_buffers[0], GM_BUFFER_COUNT);
+    platform_register_bind_groups((uint32_t)(uintptr_t)&g_bind_groups[0], GM_BIND_GROUP_COUNT);
+    platform_register_render_pipelines((uint32_t)(uintptr_t)&g_render_pipelines[0], GM_RENDER_PIPELINE_COUNT);
+    platform_register_mesh_info(mesh->vertex_count, mesh->index_count);
+
+    gm_init_game_state(
+        &g_game_state_instance,
+        map,
+        MAP_WIDTH,
+        MAP_HEIGHT,
+        start_x,
+        start_z,
+        start_yaw);
+
+    g_engine_initialized = 1;
+    return 1;
 }
 
 #ifdef __wasm__
-__attribute__((export_name("gm_texture_format_to_string")))
+__attribute__((export_name("gm_frame")))
 #endif
-const char* gm_texture_format_to_string(uint32_t value) {
-    for (int i = 0; g_texture_format_mappings[i].name != NULL; i++) {
-        if (g_texture_format_mappings[i].value == value) {
-            return g_texture_format_mappings[i].name;
+void gm_frame(void) {
+    if (!g_engine_initialized) {
+        if (!gm_initialize_engine()) {
+            return;
         }
     }
-    
-    // Unknown format, return default
-    return "bgra8unorm";
+
+    GMInputSnapshot snapshot = {0};
+    platform_get_input_state(&snapshot);
+    gm_apply_input(&g_game_state_instance, &snapshot);
+    gm_render_frame(&g_game_state_instance);
 }
 
-// Vertex format enum <-> string conversions
-static const EnumMapping g_vertex_format_mappings[] = {
-    {"float32", 0x0000001C},
-    {"float32x2", 0x0000001D},
-    {"float32x3", 0x0000001E},
-    {"float32x4", 0x0000001F},
-    {NULL, 0}
-};
 
-#ifdef __wasm__
-__attribute__((export_name("gm_vertex_format_to_string")))
-#endif
-const char* gm_vertex_format_to_string(uint32_t value) {
-    for (int i = 0; g_vertex_format_mappings[i].name != NULL; i++) {
-        if (g_vertex_format_mappings[i].value == value) {
-            return g_vertex_format_mappings[i].name;
-        }
-    }
-    return "float32";
-}
 
-// Primitive topology enum <-> string conversions
-static const EnumMapping g_primitive_topology_mappings[] = {
-    {"point-list", 0x00000001},
-    {"line-list", 0x00000002},
-    {"line-strip", 0x00000003},
-    {"triangle-list", 0x00000004},
-    {"triangle-strip", 0x00000005},
-    {NULL, 0}
-};
-
-#ifdef __wasm__
-__attribute__((export_name("gm_primitive_topology_to_string")))
-#endif
-const char* gm_primitive_topology_to_string(uint32_t value) {
-    for (int i = 0; g_primitive_topology_mappings[i].name != NULL; i++) {
-        if (g_primitive_topology_mappings[i].value == value) {
-            return g_primitive_topology_mappings[i].name;
-        }
-    }
-    return "triangle-list";
-}
-
-// Cull mode enum <-> string conversions
-static const EnumMapping g_cull_mode_mappings[] = {
-    {"none", 0x00000001},
-    {"front", 0x00000002},
-    {"back", 0x00000003},
-    {NULL, 0}
-};
-
-#ifdef __wasm__
-__attribute__((export_name("gm_cull_mode_to_string")))
-#endif
-const char* gm_cull_mode_to_string(uint32_t value) {
-    for (int i = 0; g_cull_mode_mappings[i].name != NULL; i++) {
-        if (g_cull_mode_mappings[i].value == value) {
-            return g_cull_mode_mappings[i].name;
-        }
-    }
-    return "none";
-}
-
-// Front face enum <-> string conversions
-static const EnumMapping g_front_face_mappings[] = {
-    {"ccw", 0x00000001},
-    {"cw", 0x00000002},
-    {NULL, 0}
-};
-
-#ifdef __wasm__
-__attribute__((export_name("gm_front_face_to_string")))
-#endif
-const char* gm_front_face_to_string(uint32_t value) {
-    for (int i = 0; g_front_face_mappings[i].name != NULL; i++) {
-        if (g_front_face_mappings[i].value == value) {
-            return g_front_face_mappings[i].name;
-        }
-    }
-    return "ccw";
-}
-
-// Compare function enum <-> string conversions
-static const EnumMapping g_compare_function_mappings[] = {
-    {"less", 0x00000002},
-    {"less-equal", 0x00000004},
-    {"greater", 0x00000005},
-    {"always", 0x00000008},
-    {NULL, 0}
-};
-
-#ifdef __wasm__
-__attribute__((export_name("gm_compare_function_to_string")))
-#endif
-const char* gm_compare_function_to_string(uint32_t value) {
-    for (int i = 0; g_compare_function_mappings[i].name != NULL; i++) {
-        if (g_compare_function_mappings[i].value == value) {
-            return g_compare_function_mappings[i].name;
-        }
-    }
-    return "less";
-}
-
-// Filter mode enum <-> string conversions
-static const EnumMapping g_filter_mode_mappings[] = {
-    {"nearest", 0x00000001},
-    {"linear", 0x00000002},
-    {NULL, 0}
-};
-
-#ifdef __wasm__
-__attribute__((export_name("gm_filter_mode_to_string")))
-#endif
-const char* gm_filter_mode_to_string(uint32_t value) {
-    for (int i = 0; g_filter_mode_mappings[i].name != NULL; i++) {
-        if (g_filter_mode_mappings[i].value == value) {
-            return g_filter_mode_mappings[i].name;
-        }
-    }
-    return "nearest";
-}
-
-// Address mode enum <-> string conversions
-static const EnumMapping g_address_mode_mappings[] = {
-    {"clamp-to-edge", 0x00000001},
-    {"repeat", 0x00000002},
-    {"mirror-repeat", 0x00000003},
-    {NULL, 0}
-};
-
-#ifdef __wasm__
-__attribute__((export_name("gm_address_mode_to_string")))
-#endif
-const char* gm_address_mode_to_string(uint32_t value) {
-    for (int i = 0; g_address_mode_mappings[i].name != NULL; i++) {
-        if (g_address_mode_mappings[i].value == value) {
-            return g_address_mode_mappings[i].name;
-        }
-    }
-    return "clamp-to-edge";
-}
-
-// Blend factor enum <-> string conversions
-static const EnumMapping g_blend_factor_mappings[] = {
-    {"zero", 0x00000001},
-    {"one", 0x00000002},
-    {"src-alpha", 0x00000005},
-    {"one-minus-src-alpha", 0x00000006},
-    {"dst-alpha", 0x00000009},
-    {"one-minus-dst-alpha", 0x0000000A},
-    {NULL, 0}
-};
-
-#ifdef __wasm__
-__attribute__((export_name("gm_blend_factor_to_string")))
-#endif
-const char* gm_blend_factor_to_string(uint32_t value) {
-    for (int i = 0; g_blend_factor_mappings[i].name != NULL; i++) {
-        if (g_blend_factor_mappings[i].value == value) {
-            return g_blend_factor_mappings[i].name;
-        }
-    }
-    return "zero";
-}
-
-// Blend operation enum <-> string conversions
-static const EnumMapping g_blend_operation_mappings[] = {
-    {"add", 0x00000001},
-    {"subtract", 0x00000002},
-    {"reverse-subtract", 0x00000003},
-    {"min", 0x00000004},
-    {"max", 0x00000005},
-    {NULL, 0}
-};
-
-#ifdef __wasm__
-__attribute__((export_name("gm_blend_operation_to_string")))
-#endif
-const char* gm_blend_operation_to_string(uint32_t value) {
-    for (int i = 0; g_blend_operation_mappings[i].name != NULL; i++) {
-        if (g_blend_operation_mappings[i].value == value) {
-            return g_blend_operation_mappings[i].name;
-        }
-    }
-    return "add";
-}
-
-// Buffer binding type enum <-> string conversions
-static const EnumMapping g_buffer_binding_type_mappings[] = {
-    {"uniform", 0x00000002},
-    {"storage", 0x00000003},
-    {"read-only-storage", 0x00000004},
-    {NULL, 0}
-};
-
-#ifdef __wasm__
-__attribute__((export_name("gm_buffer_binding_type_to_string")))
-#endif
-const char* gm_buffer_binding_type_to_string(uint32_t value) {
-    for (int i = 0; g_buffer_binding_type_mappings[i].name != NULL; i++) {
-        if (g_buffer_binding_type_mappings[i].value == value) {
-            return g_buffer_binding_type_mappings[i].name;
-        }
-    }
-    return "uniform";
-}
-
-// Sampler type enum <-> string conversions
-static const EnumMapping g_sampler_type_mappings[] = {
-    {"filtering", 0x00000002},
-    {"non-filtering", 0x00000003},
-    {"comparison", 0x00000004},
-    {NULL, 0}
-};
-
-#ifdef __wasm__
-__attribute__((export_name("gm_sampler_type_to_string")))
-#endif
-const char* gm_sampler_type_to_string(uint32_t value) {
-    for (int i = 0; g_sampler_type_mappings[i].name != NULL; i++) {
-        if (g_sampler_type_mappings[i].value == value) {
-            return g_sampler_type_mappings[i].name;
-        }
-    }
-    return "filtering";
-}
-
-// Texture sample type enum <-> string conversions
-static const EnumMapping g_texture_sample_type_mappings[] = {
-    {"float", 0x00000002},
-    {"unfilterable-float", 0x00000003},
-    {"depth", 0x00000004},
-    {"sint", 0x00000005},
-    {"uint", 0x00000006},
-    {NULL, 0}
-};
-
-#ifdef __wasm__
-__attribute__((export_name("gm_texture_sample_type_to_string")))
-#endif
-const char* gm_texture_sample_type_to_string(uint32_t value) {
-    for (int i = 0; g_texture_sample_type_mappings[i].name != NULL; i++) {
-        if (g_texture_sample_type_mappings[i].value == value) {
-            return g_texture_sample_type_mappings[i].name;
-        }
-    }
-    return "float";
-}
-
-// Texture view dimension enum <-> string conversions
-static const EnumMapping g_texture_view_dimension_mappings[] = {
-    {"1d", 0x00000001},
-    {"2d", 0x00000002},
-    {"2d-array", 0x00000003},
-    {"cube", 0x00000004},
-    {"cube-array", 0x00000005},
-    {"3d", 0x00000006},
-    {NULL, 0}
-};
-
-#ifdef __wasm__
-__attribute__((export_name("gm_texture_view_dimension_to_string")))
-#endif
-const char* gm_texture_view_dimension_to_string(uint32_t value) {
-    for (int i = 0; g_texture_view_dimension_mappings[i].name != NULL; i++) {
-        if (g_texture_view_dimension_mappings[i].value == value) {
-            return g_texture_view_dimension_mappings[i].name;
-        }
-    }
-    return "2d";
-}
-
-// Vertex step mode enum <-> string conversions
-static const EnumMapping g_vertex_step_mode_mappings[] = {
-    {"vertex", 0x00000001},
-    {"instance", 0x00000002},
-    {NULL, 0}
-};
-
-#ifdef __wasm__
-__attribute__((export_name("gm_vertex_step_mode_to_string")))
-#endif
-const char* gm_vertex_step_mode_to_string(uint32_t value) {
-    for (int i = 0; g_vertex_step_mode_mappings[i].name != NULL; i++) {
-        if (g_vertex_step_mode_mappings[i].value == value) {
-            return g_vertex_step_mode_mappings[i].name;
-        }
-    }
-    return "vertex";
-}
-
-// ============================================================================
-// Enum Value Exports for JavaScript
-// ============================================================================
-
-// GMBufferSlot enum values
-#ifdef __wasm__
-__attribute__((export_name("gm_enum_buffer_positions")))
-#endif
-uint32_t gm_enum_buffer_positions(void) { return GM_BUFFER_POSITIONS; }
-
-#ifdef __wasm__
-__attribute__((export_name("gm_enum_buffer_uvs")))
-#endif
-uint32_t gm_enum_buffer_uvs(void) { return GM_BUFFER_UVS; }
-
-#ifdef __wasm__
-__attribute__((export_name("gm_enum_buffer_surface_types")))
-#endif
-uint32_t gm_enum_buffer_surface_types(void) { return GM_BUFFER_SURFACE_TYPES; }
-
-#ifdef __wasm__
-__attribute__((export_name("gm_enum_buffer_triangle_ids")))
-#endif
-uint32_t gm_enum_buffer_triangle_ids(void) { return GM_BUFFER_TRIANGLE_IDS; }
-
-#ifdef __wasm__
-__attribute__((export_name("gm_enum_buffer_normals")))
-#endif
-uint32_t gm_enum_buffer_normals(void) { return GM_BUFFER_NORMALS; }
-
-#ifdef __wasm__
-__attribute__((export_name("gm_enum_buffer_indices")))
-#endif
-uint32_t gm_enum_buffer_indices(void) { return GM_BUFFER_INDICES; }
-
-#ifdef __wasm__
-__attribute__((export_name("gm_enum_buffer_uniform")))
-#endif
-uint32_t gm_enum_buffer_uniform(void) { return GM_BUFFER_UNIFORM; }
-
-#ifdef __wasm__
-__attribute__((export_name("gm_enum_buffer_overlay_uniform")))
-#endif
-uint32_t gm_enum_buffer_overlay_uniform(void) { return GM_BUFFER_OVERLAY_UNIFORM; }
-
-#ifdef __wasm__
-__attribute__((export_name("gm_enum_buffer_overlay_text")))
-#endif
-uint32_t gm_enum_buffer_overlay_text(void) { return GM_BUFFER_OVERLAY_TEXT; }
-
-#ifdef __wasm__
-__attribute__((export_name("gm_enum_buffer_overlay_map")))
-#endif
-uint32_t gm_enum_buffer_overlay_map(void) { return GM_BUFFER_OVERLAY_MAP; }
-
-#ifdef __wasm__
-__attribute__((export_name("gm_enum_buffer_overlay_vertex")))
-#endif
-uint32_t gm_enum_buffer_overlay_vertex(void) { return GM_BUFFER_OVERLAY_VERTEX; }
-
-// GMResourceType enum values
-#ifdef __wasm__
-__attribute__((export_name("gm_enum_resource_buffer")))
-#endif
-uint32_t gm_enum_resource_buffer(void) { return GM_RESOURCE_BUFFER; }
-
-#ifdef __wasm__
-__attribute__((export_name("gm_enum_resource_sampler")))
-#endif
-uint32_t gm_enum_resource_sampler(void) { return GM_RESOURCE_SAMPLER; }
-
-#ifdef __wasm__
-__attribute__((export_name("gm_enum_resource_texture_view")))
-#endif
-uint32_t gm_enum_resource_texture_view(void) { return GM_RESOURCE_TEXTURE_VIEW; }
-
-#ifdef __wasm__
-__attribute__((export_name("gm_enum_resource_storage_texture")))
-#endif
-uint32_t gm_enum_resource_storage_texture(void) { return GM_RESOURCE_STORAGE_TEXTURE; }
-
-// Main entry point - called from JavaScript after WASM is loaded
-void gm_main(void) {
-    // Currently no initialization needed here
-    // All initialization happens through specific exported functions
-    // called from JavaScript as needed
-}

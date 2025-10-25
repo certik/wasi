@@ -34,3 +34,48 @@ double platform_render_frame(uint32_t uniformDataPtr, uint32_t overlayUniformDat
     FATAL_ERROR("platform_render_frame is not supported on native builds");
     return 0.0;
 }
+
+int platform_get_host_config(GMHostConfig *config) {
+    (void)config;
+    FATAL_ERROR("platform_get_host_config is not supported on native builds");
+    return 0;
+}
+
+void platform_register_uniform_info(uint32_t uniform_float_count,
+        uint32_t overlay_uniform_float_count, uint32_t overlay_text_capacity,
+        uint32_t map_cell_count) {
+    (void)uniform_float_count;
+    (void)overlay_uniform_float_count;
+    (void)overlay_text_capacity;
+    (void)map_cell_count;
+    FATAL_ERROR("platform_register_uniform_info is not supported on native builds");
+}
+
+void platform_register_gpu_buffers(uint32_t handles_ptr, uint32_t count) {
+    (void)handles_ptr;
+    (void)count;
+    FATAL_ERROR("platform_register_gpu_buffers is not supported on native builds");
+}
+
+void platform_register_bind_groups(uint32_t handles_ptr, uint32_t count) {
+    (void)handles_ptr;
+    (void)count;
+    FATAL_ERROR("platform_register_bind_groups is not supported on native builds");
+}
+
+void platform_register_render_pipelines(uint32_t handles_ptr, uint32_t count) {
+    (void)handles_ptr;
+    (void)count;
+    FATAL_ERROR("platform_register_render_pipelines is not supported on native builds");
+}
+
+void platform_register_mesh_info(uint32_t vertex_count, uint32_t index_count) {
+    (void)vertex_count;
+    (void)index_count;
+    FATAL_ERROR("platform_register_mesh_info is not supported on native builds");
+}
+
+void platform_get_input_state(GMInputSnapshot *snapshot) {
+    (void)snapshot;
+    FATAL_ERROR("platform_get_input_state is not supported on native builds");
+}

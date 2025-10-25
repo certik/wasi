@@ -45,30 +45,6 @@ int find_start_position(int *map, int width, int height,
 // Note: The returned pointer and all internal arrays point to WASM memory
 MeshData* generate_mesh(int *map, int width, int height);
 
-// Returns the preferred WebGPU canvas texture format for the current platform.
-uint32_t gm_get_preferred_canvas_format(void);
-
-// WebGPU integration helpers
-void gm_register_webgpu_handles(uint32_t device_handle, uint32_t queue_handle);
-int gm_create_gpu_buffers(void);
-uint32_t gm_get_gpu_buffer_table(void);
-uint32_t gm_get_gpu_buffer_count(void);
-uint32_t gm_get_uniform_float_count(void);
-uint32_t gm_get_uniform_buffer_size(void);
-int gm_create_shader_modules(void);
-uint32_t gm_get_shader_module_table(void);
-uint32_t gm_get_shader_module_count(void);
-void gm_register_texture_views(uint32_t wall_view_handle, uint32_t floor_view_handle,
-        uint32_t ceiling_view_handle);
-int gm_create_bind_group_layouts(void);
-int gm_create_pipeline_layouts(void);
-int gm_create_render_pipelines(uint32_t color_format);
-int gm_create_bind_groups(void);
-uint32_t gm_get_bind_group_table(void);
-uint32_t gm_get_bind_group_count(void);
-uint32_t gm_get_render_pipeline_table(void);
-uint32_t gm_get_render_pipeline_count(void);
-
 // Game state and logic
 typedef struct {
     // Camera state
@@ -147,61 +123,5 @@ const float* gm_get_overlay_uniform_data(const GameState *state, float canvas_wi
 void gm_update_perf_metrics(GameState *state, float frame_time, float js_time,
                            float gpu_copy_time, float gpu_render_time);
 
-// Main render loop function - call this every frame
-void gm_render_frame(GameState *state);
-
-// Set the active game state (must be called before gm_on_animation_frame)
-void gm_set_active_game_state(GameState *state);
-
-// Animation frame callback - called by platform on each frame
-void gm_on_animation_frame(void);
-
-// Main entry point - call this to start the game
-void gm_main(void);
-
-// WebGPU Enum String Conversion Functions
-// Texture formats
-uint32_t gm_texture_format_from_string(const char* name);
-const char* gm_texture_format_to_string(uint32_t value);
-
-// Vertex formats
-const char* gm_vertex_format_to_string(uint32_t value);
-
-// Primitive topology
-const char* gm_primitive_topology_to_string(uint32_t value);
-
-// Cull mode
-const char* gm_cull_mode_to_string(uint32_t value);
-
-// Front face
-const char* gm_front_face_to_string(uint32_t value);
-
-// Compare function
-const char* gm_compare_function_to_string(uint32_t value);
-
-// Filter modes
-const char* gm_filter_mode_to_string(uint32_t value);
-
-// Address modes
-const char* gm_address_mode_to_string(uint32_t value);
-
-// Blend factors
-const char* gm_blend_factor_to_string(uint32_t value);
-
-// Blend operations
-const char* gm_blend_operation_to_string(uint32_t value);
-
-// Buffer binding types
-const char* gm_buffer_binding_type_to_string(uint32_t value);
-
-// Sampler types
-const char* gm_sampler_type_to_string(uint32_t value);
-
-// Texture sample types
-const char* gm_texture_sample_type_to_string(uint32_t value);
-
-// Texture view dimensions
-const char* gm_texture_view_dimension_to_string(uint32_t value);
-
-// Vertex step modes
-const char* gm_vertex_step_mode_to_string(uint32_t value);
+// Main engine entry point invoked by the host each frame.
+void gm_frame(void);

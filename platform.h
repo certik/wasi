@@ -15,6 +15,9 @@
 #define PLATFORM_IMPORT(name)
 #endif
 
+typedef struct GMHostConfig GMHostConfig;
+typedef struct GMInputSnapshot GMInputSnapshot;
+
 // ============================================================================
 // Window / Canvas Management
 // ============================================================================
@@ -60,3 +63,38 @@ double platform_render_frame(uint32_t uniformDataPtr, uint32_t overlayUniformDat
                               uint32_t overlayTextDataPtr, uint32_t overlayTextLength,
                               double *js_time_out, double *gpu_copy_time_out,
                               double *gpu_render_time_out);
+
+// ============================================================================
+// Engine Callbacks (Host <-> Game Module)
+// ============================================================================
+
+// Fetch shared WebGPU handles, texture views, and preferred formats from host.
+// Returns 1 when the host configuration has been populated, 0 if not ready yet.
+PLATFORM_IMPORT("get_host_config")
+int platform_get_host_config(GMHostConfig *config);
+
+// Inform the host about uniform buffer sizes, overlay capacities, etc.
+PLATFORM_IMPORT("register_uniform_info")
+void platform_register_uniform_info(uint32_t uniform_float_count,
+    uint32_t overlay_uniform_float_count, uint32_t overlay_text_capacity,
+    uint32_t map_cell_count);
+
+// Share GPU buffer handles with the host for later rendering operations.
+PLATFORM_IMPORT("register_gpu_buffers")
+void platform_register_gpu_buffers(uint32_t handles_ptr, uint32_t count);
+
+// Share bind group handles with the host.
+PLATFORM_IMPORT("register_bind_groups")
+void platform_register_bind_groups(uint32_t handles_ptr, uint32_t count);
+
+// Share render pipeline handles with the host.
+PLATFORM_IMPORT("register_render_pipelines")
+void platform_register_render_pipelines(uint32_t handles_ptr, uint32_t count);
+
+// Provide mesh statistics (vertex/index counts) to the host for draw calls.
+PLATFORM_IMPORT("register_mesh_info")
+void platform_register_mesh_info(uint32_t vertex_count, uint32_t index_count);
+
+// Retrieve the current input snapshot (keyboard + mouse) from the host.
+PLATFORM_IMPORT("get_input_state")
+void platform_get_input_state(GMInputSnapshot *snapshot);
