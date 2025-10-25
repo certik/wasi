@@ -1991,6 +1991,8 @@ static void gm_apply_input(GameState *state, const GMInputSnapshot *snapshot) {
     state->mouse_delta_y = snapshot->mouse_delta_y;
 }
 
+void gm_request_textures(const char* wall_url, const char* floor_url, const char* ceiling_url);
+
 static int gm_initialize_engine(void) {
     PRINT_LOG("gm_initialize_engine()");
     GMHostConfig config = {0};
@@ -2071,6 +2073,11 @@ static int gm_initialize_engine(void) {
         start_z,
         start_yaw);
 
+    PRINT_LOG("request textures");
+    gm_request_textures(
+        "https://threejs.org/examples/textures/brick_diffuse.jpg",
+        "https://threejs.org/examples/textures/hardwood2_diffuse.jpg",
+        "https://threejs.org/examples/textures/lava/cloud.png");
 
     PRINT_LOG("Initialization complete");
     g_engine_initialized = 1;
