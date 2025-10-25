@@ -1953,6 +1953,7 @@ static int* gm_get_flattened_default_map(void) {
 
 static GameState g_game_state_instance;
 static int g_engine_initialized = 0;
+static bool g_textures_loaded = false;
 
 static void gm_upload_overlay_map_buffer(const int *map_data) {
     if (g_wgpu_queue == NULL || g_gpu_buffers[GM_BUFFER_OVERLAY_MAP] == NULL) {
@@ -2181,21 +2182,34 @@ void gm_frame(void) {
         }
     }
 
-    // Poll pending texture loading
-    gm_poll_texture_session();
+    if (!g_textures_loaded) {
+        PRINT_LOG("Polling textures");
+        // Poll pending texture loading
+        gm_poll_texture_session();
 
-    if (g_texture_session.state == TEX_LOAD_STATE_READY) {
-        // Apply new textures
-        g_wall_texture_view = (WGPUTextureView)(uintptr_t)g_texture_session.wall.texture_view_handle;
-        g_floor_texture_view = (WGPUTextureView)(uintptr_t)g_texture_session.floor.texture_view_handle;
-        g_ceiling_texture_view = (WGPUTextureView)(uintptr_t)g_texture_session.ceiling.texture_view_handle;
+        if (g_texture_session.state == TEX_LOAD_STATE_READY) {
+            PRINT_LOG("Textures ready");
+            // Apply new textures
+            g_wall_texture_view = (WGPUTextureView)(uintptr_t)g_texture_session.wall.texture_view_handle;
+            g_floor_texture_view = (WGPUTextureView)(uintptr_t)g_texture_session.floor.texture_view_handle;
+            g_ceiling_texture_view = (WGPUTextureView)(uintptr_t)g_texture_session.ceiling.texture_view_handle;
 
-        // Rebuild bind groups with new textures
-        gm_destroy_bind_groups();
-        if (gm_create_bind_groups() == 0) {
-            g_texture_session.state = TEX_LOAD_STATE_IDLE;
+            // Rebuild bind groups with new textures
+            gm_destroy_bind_groups();
+            if (gm_create_bind_groups() == 0) {
+                g_texture_session.state = TEX_LOAD_STATE_IDLE;
+            } else {
+                g_texture_session.state = TEX_LOAD_STATE_ERROR;
+            }
+            g_textures_loaded = true;
         } else {
-            g_texture_session.state = TEX_LOAD_STATE_ERROR;
+            PRINT_LOG("Textures not ready");
+        }
+
+        if (g_textures_loaded) {
+            PRINT_LOG("Textures loaded");
+        } else {
+            return;
         }
     }
 
