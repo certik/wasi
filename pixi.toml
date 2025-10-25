@@ -348,6 +348,7 @@ test_gm_macos = { cmd="./gm_macos", depends-on=["build_gm_macos"] }
 [feature.macos.dependencies]
 # Use the system Clang on macOS
 #clang = ">=20.1.4,<21"
+sdl3 = ">=3.2.24,<4"
 
 [feature.windows.tasks]
 build_windows = """
