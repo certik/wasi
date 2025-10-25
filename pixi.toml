@@ -157,6 +157,22 @@ clang \
     -Wl,--export=gm_set_active_game_state \
     -Wl,--export=gm_on_animation_frame \
     -Wl,--export=gm_main \
+    -Wl,--export=gm_get_default_map \
+    -Wl,--export=gm_get_map_width \
+    -Wl,--export=gm_get_map_height \
+    -Wl,--export=gm_get_temp_buffer \
+    -Wl,--export=gm_get_game_state_ptr \
+    -Wl,--export=gm_toggle_map_visible \
+    -Wl,--export=gm_toggle_map_relative_mode \
+    -Wl,--export=gm_toggle_hud_visible \
+    -Wl,--export=gm_toggle_textures_enabled \
+    -Wl,--export=gm_toggle_triangle_mode \
+    -Wl,--export=gm_toggle_debug_mode \
+    -Wl,--export=gm_toggle_horizontal_movement \
+    -Wl,--export=gm_handle_key_press \
+    -Wl,--export=gm_get_wall_texture_url \
+    -Wl,--export=gm_get_floor_texture_url \
+    -Wl,--export=gm_get_ceiling_texture_url \
     -Wl,--export=__heap_base \
     -Wl,--initial-memory=1048576 \
     -o gm.wasm \

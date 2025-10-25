@@ -986,11 +986,32 @@
 
             console.log('Shaders compiled successfully');
 
+            // Helper function to read a null-terminated C string from WASM memory
+            function readCString(ptr) {
+                const view = new Uint8Array(memory.buffer);
+                let end = ptr;
+                while (view[end] !== 0) end++;
+                return new TextDecoder('utf-8').decode(view.subarray(ptr, end));
+            }
+
+            // Get texture URLs from WASM
+            const gm_get_wall_texture_url = wasmInstance.exports.gm_get_wall_texture_url;
+            const gm_get_floor_texture_url = wasmInstance.exports.gm_get_floor_texture_url;
+            const gm_get_ceiling_texture_url = wasmInstance.exports.gm_get_ceiling_texture_url;
+            
+            const wallTextureUrl = readCString(gm_get_wall_texture_url());
+            const floorTextureUrl = readCString(gm_get_floor_texture_url());
+            const ceilingTextureUrl = readCString(gm_get_ceiling_texture_url());
+            
             console.log('[Texture] Starting to load all textures...');
+            console.log('[Texture] Wall URL:', wallTextureUrl);
+            console.log('[Texture] Floor URL:', floorTextureUrl);
+            console.log('[Texture] Ceiling URL:', ceilingTextureUrl);
+            
             const [wallTextureView, floorTextureView, ceilingTextureView] = await Promise.all([
-                createTextureFromUrl(device, 'https://threejs.org/examples/textures/brick_diffuse.jpg', 'wall-texture'),
-                createTextureFromUrl(device, 'https://threejs.org/examples/textures/hardwood2_diffuse.jpg', 'floor-texture'),
-                createTextureFromUrl(device, 'https://threejs.org/examples/textures/lava/cloud.png', 'ceiling-texture')
+                createTextureFromUrl(device, wallTextureUrl, 'wall-texture'),
+                createTextureFromUrl(device, floorTextureUrl, 'floor-texture'),
+                createTextureFromUrl(device, ceilingTextureUrl, 'ceiling-texture')
             ]);
             console.log('[Texture] All textures loaded successfully');
             console.log('[Texture] Wall texture view:', wallTextureView);
@@ -1064,28 +1085,8 @@
             const debugView = new Float32Array(memory.buffer, gameStatePtr, 12);
             console.log(`[Debug] Initial camera: (${debugView[0]}, ${debugView[1]}, ${debugView[2]}), yaw=${debugView[3]}, pitch=${debugView[4]}`);
 
-            // Helper to get GameState field offsets (calculated from struct definition)
-            // float camera_x,y,z (0,4,8), yaw,pitch (12,16), target_yaw,pitch (20,24)
-            // float person_height...collision_radius (28-52) = 7 floats
-            // Then int flags starting at offset 56
-            const GameStateOffsets = {
-                map_visible: 56,           // offset to map_visible field
-                map_relative_mode: 60,     // offset to map_relative_mode field
-                hud_visible: 64,           // offset to hud_visible field
-                textures_enabled: 68,      // offset to textures_enabled field
-                triangle_mode: 72,         // offset to triangle_mode field
-                debug_mode: 76,            // offset to debug_mode field
-                horizontal_movement: 80,   // offset to horizontal_movement field
-            };
-
-            let lastLoggedTextureState = false;
-
-            // Helper to toggle game state flags
-            function toggleGameStateFlag(offset) {
-                const view = new Int32Array(memory.buffer, gameStatePtr + offset, 1);
-                view[0] = view[0] ? 0 : 1;
-                return view[0];
-            }
+            // Get the key press handler function
+            const gm_handle_key_press = wasmInstance.exports.gm_handle_key_press;
 
             // Map arrow keys to special characters for C code
             const keyMap = {
@@ -1098,29 +1099,10 @@
             document.addEventListener('keydown', (e) => {
                 const key = e.key.toLowerCase();
                 if (!e.repeat) {
-                    if (key === 'm') {
-                        const val = toggleGameStateFlag(GameStateOffsets.map_visible);
-                        console.log('[Map] Map visible:', val ? 'ON' : 'OFF');
-                    } else if (key === 'r') {
-                        const val = toggleGameStateFlag(GameStateOffsets.map_relative_mode);
-                        console.log('[Map] Relative mode:', val ? 'ON' : 'OFF');
-                    } else if (key === 't') {
-                        const val = toggleGameStateFlag(GameStateOffsets.textures_enabled);
-                        console.log('[Texture] Textures toggled:', val ? 'ENABLED' : 'DISABLED');
-                    } else if (key === 'v') {
-                        const val = toggleGameStateFlag(GameStateOffsets.triangle_mode);
-                        console.log('[Visualization] Triangle mode:', val ? 'ENABLED' : 'DISABLED');
-                    } else if (key === 'b') {
-                        const val = toggleGameStateFlag(GameStateOffsets.debug_mode);
-                        console.log('[Debug] Debug mode:', val ? 'ENABLED' : 'DISABLED');
-                    } else if (key === 'h') {
-                        toggleGameStateFlag(GameStateOffsets.hud_visible);
-                    } else if (key === 'f') {
-                        const val = toggleGameStateFlag(GameStateOffsets.horizontal_movement);
-                        console.log('[Movement] Mode:', val ? 'Person' : 'Flying');
-                    }
+                    // Handle toggle keys via C function
+                    gm_handle_key_press(gameStatePtr, key.charCodeAt(0));
                 }
-                // Send key code to WASM
+                // Send movement key codes to WASM
                 const keyCode = keyMap[key] || key.charCodeAt(0);
                 if (key === 'w' || key === 'a' || key === 's' || key === 'd') {
                     console.log(`[Input] Key ${key} pressed, code=${keyCode}`);

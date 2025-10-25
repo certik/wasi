@@ -1462,6 +1462,91 @@ void gm_add_mouse_delta(GameState *state, float dx, float dy) {
     state->mouse_delta_y = dy;
 }
 
+// Toggle functions for GameState flags
+#ifdef __wasm__
+__attribute__((export_name("gm_toggle_map_visible")))
+#endif
+void gm_toggle_map_visible(GameState *state) {
+    state->map_visible = !state->map_visible;
+}
+
+#ifdef __wasm__
+__attribute__((export_name("gm_toggle_map_relative_mode")))
+#endif
+void gm_toggle_map_relative_mode(GameState *state) {
+    state->map_relative_mode = !state->map_relative_mode;
+}
+
+#ifdef __wasm__
+__attribute__((export_name("gm_toggle_hud_visible")))
+#endif
+void gm_toggle_hud_visible(GameState *state) {
+    state->hud_visible = !state->hud_visible;
+}
+
+#ifdef __wasm__
+__attribute__((export_name("gm_toggle_textures_enabled")))
+#endif
+void gm_toggle_textures_enabled(GameState *state) {
+    state->textures_enabled = !state->textures_enabled;
+}
+
+#ifdef __wasm__
+__attribute__((export_name("gm_toggle_triangle_mode")))
+#endif
+void gm_toggle_triangle_mode(GameState *state) {
+    state->triangle_mode = !state->triangle_mode;
+}
+
+#ifdef __wasm__
+__attribute__((export_name("gm_toggle_debug_mode")))
+#endif
+void gm_toggle_debug_mode(GameState *state) {
+    state->debug_mode = !state->debug_mode;
+}
+
+#ifdef __wasm__
+__attribute__((export_name("gm_toggle_horizontal_movement")))
+#endif
+void gm_toggle_horizontal_movement(GameState *state) {
+    state->horizontal_movement = !state->horizontal_movement;
+}
+
+// Handle key press for toggle keys
+#ifdef __wasm__
+__attribute__((export_name("gm_handle_key_press")))
+#endif
+void gm_handle_key_press(GameState *state, uint8_t key_code) {
+    // Handle toggle keys
+    switch (key_code) {
+        case 'm':  // Toggle map visibility
+            gm_toggle_map_visible(state);
+            break;
+        case 'r':  // Toggle map relative mode
+            gm_toggle_map_relative_mode(state);
+            break;
+        case 'h':  // Toggle HUD visibility
+            gm_toggle_hud_visible(state);
+            break;
+        case 't':  // Toggle textures
+            gm_toggle_textures_enabled(state);
+            break;
+        case 'i':  // Toggle triangle mode
+            gm_toggle_triangle_mode(state);
+            break;
+        case 'b':  // Toggle debug mode
+            gm_toggle_debug_mode(state);
+            break;
+        case 'f':  // Toggle horizontal movement (flying/person mode)
+            gm_toggle_horizontal_movement(state);
+            break;
+        default:
+            // For movement keys (w, a, s, d, arrow keys), do nothing here
+            // Those are handled via gm_set_key_state
+            break;
+    }
+}
+
 // Update camera based on input
 static void update_camera(GameState *state) {
     // Apply mouse smoothing
@@ -1891,6 +1976,32 @@ __attribute__((export_name("gm_get_map_height")))
 #endif
 int gm_get_map_height(void) {
     return MAP_HEIGHT;
+}
+
+// Texture URL configuration - these are the default textures
+static const char* g_wall_texture_url = "https://threejs.org/examples/textures/brick_diffuse.jpg";
+static const char* g_floor_texture_url = "https://threejs.org/examples/textures/hardwood2_diffuse.jpg";
+static const char* g_ceiling_texture_url = "https://threejs.org/examples/textures/lava/cloud.png";
+
+#ifdef __wasm__
+__attribute__((export_name("gm_get_wall_texture_url")))
+#endif
+const char* gm_get_wall_texture_url(void) {
+    return g_wall_texture_url;
+}
+
+#ifdef __wasm__
+__attribute__((export_name("gm_get_floor_texture_url")))
+#endif
+const char* gm_get_floor_texture_url(void) {
+    return g_floor_texture_url;
+}
+
+#ifdef __wasm__
+__attribute__((export_name("gm_get_ceiling_texture_url")))
+#endif
+const char* gm_get_ceiling_texture_url(void) {
+    return g_ceiling_texture_url;
 }
 
 // Main entry point - called from JavaScript after WASM is loaded
