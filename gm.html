@@ -800,6 +800,8 @@
 
             let memory = null;
 
+            let frameCounter = 0;
+
             const platformAPI = {
                 get_canvas_size: (widthPtr, heightPtr) => {
                     const view = new Int32Array(memory.buffer);
@@ -812,7 +814,16 @@
                 },
                 render_frame: (uniformDataPtr, overlayUniformDataPtr, overlayTextDataPtr, overlayTextLength,
                                jsTimeOutPtr, gpuCopyTimeOutPtr, gpuRenderTimeOutPtr) => {
+                    frameCounter++;
                     if (!pipeline || !bindGroup || !uniformBuffer) {
+                        if (frameCounter <= 10 || frameCounter % 60 === 0) {
+                            console.warn('[GM] render_frame missing resources', {
+                                pipelineReady: !!pipeline,
+                                bindGroupReady: !!bindGroup,
+                                uniformReady: !!uniformBuffer,
+                                frameCounter,
+                            });
+                        }
                         return 0;
                     }
 
@@ -893,32 +904,40 @@
                     return 1;
                 },
                 register_uniform_info: (uniformFloatCount, overlayUniformFloatCount, overlayTextCapacity, mapCellCount) => {
+                    console.log('[GM] register_uniform_info', { uniformFloatCount, overlayUniformFloatCount, overlayTextCapacity, mapCellCount });
                     engineState.uniformFloatCount = uniformFloatCount;
                     engineState.overlayUniformFloatCount = overlayUniformFloatCount;
                     engineState.overlayTextCapacity = overlayTextCapacity;
                     engineState.mapCellCount = mapCellCount;
                 },
                 register_gpu_buffers: (handlesPtr, count) => {
-                    const handles = new Uint32Array(memory.buffer, handlesPtr, count);
+                    const handlesView = new Uint32Array(memory.buffer, handlesPtr, count);
+                    const handles = Array.from(handlesView);
                     engineState.buffers = handles.map((handle) => webgpuHost.getBuffer(handle));
+                    console.log('[GM] register_gpu_buffers', { count, handles });
                     uniformBuffer = engineState.buffers[GMBufferSlot.UNIFORM];
                     overlayUniformBuffer = engineState.buffers[GMBufferSlot.OVERLAY_UNIFORM];
                     overlayTextBuffer = engineState.buffers[GMBufferSlot.OVERLAY_TEXT];
                     overlayVertexBuffer = engineState.buffers[GMBufferSlot.OVERLAY_VERTEX];
                 },
                 register_bind_groups: (handlesPtr, count) => {
-                    const handles = new Uint32Array(memory.buffer, handlesPtr, count);
+                    const handlesView = new Uint32Array(memory.buffer, handlesPtr, count);
+                    const handles = Array.from(handlesView);
                     engineState.bindGroups = handles.map((handle) => webgpuHost.getBindGroup(handle));
+                    console.log('[GM] register_bind_groups', { count, handles });
                     bindGroup = engineState.bindGroups[0];
                     overlayBindGroup = engineState.bindGroups[1];
                 },
                 register_render_pipelines: (handlesPtr, count) => {
-                    const handles = new Uint32Array(memory.buffer, handlesPtr, count);
+                    const handlesView = new Uint32Array(memory.buffer, handlesPtr, count);
+                    const handles = Array.from(handlesView);
                     engineState.pipelines = handles.map((handle) => webgpuHost.getRenderPipeline(handle));
+                    console.log('[GM] register_render_pipelines', { count, handles });
                     pipeline = engineState.pipelines[0];
                     overlayPipeline = engineState.pipelines[1];
                 },
                 register_mesh_info: (vertexCount, indexCount) => {
+                    console.log('[GM] register_mesh_info', { vertexCount, indexCount });
                     engineState.vertexCount = vertexCount;
                     engineState.indexCount = indexCount;
                 },
