@@ -12,10 +12,13 @@
     <canvas id="canvas"></canvas>
     <script type="module">
 
-        function createWasmWebGPUHost(adapter, device) {
+        function createWasmWebGPUHost(adapter, device, canvas) {
             let memory = null;
             let nextHandle = 1;
             const decoder = new TextDecoder('utf-8');
+
+            const context = canvas.getContext('webgpu');
+            let depthTexture = null;
 
             const buffers = new Map();
             const shaderModules = new Map();
@@ -758,6 +761,23 @@
                     textureViews.set(handle, view);
                     return handle;
                 },
+                configureContext(format) {
+                    context.configure({
+                        device,
+                        format,
+                        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST,
+                    });
+                },
+                createDepthTexture(width, height) {
+                    if (depthTexture) {
+                        depthTexture.destroy();
+                    }
+                    depthTexture = device.createTexture({
+                        size: [width, height, 1],
+                        format: 'depth24plus',
+                        usage: GPUTextureUsage.RENDER_ATTACHMENT,
+                    });
+                },
             };
         }
 
@@ -778,8 +798,6 @@
             device.addEventListener('uncapturederror', (event) => {
                 console.error('[WebGPU] Uncaptured error:', event.error);
             });
-
-            const context = canvas.getContext('webgpu');
 
             function createSolidTexture(device, rgba, label) {
                 const texture = device.createTexture({
@@ -828,7 +846,7 @@
             // Load WASM module (with cache busting)
             const wasmResponse = await fetch('gm.wasm?v=' + Date.now());
             const wasmBytes = await wasmResponse.arrayBuffer();
-            const webgpuHost = createWasmWebGPUHost(adapter, device);
+            const webgpuHost = createWasmWebGPUHost(adapter, device, canvas);
 
             const textureFormatEnum = {
                 'rgba8unorm': 0x00000016,
@@ -840,21 +858,8 @@
             const canvasFormat = navigator.gpu.getPreferredCanvasFormat();
             const preferredFormatEnum = textureFormatEnum[canvasFormat] ?? textureFormatEnum['bgra8unorm'];
 
-            context.configure({
-                device,
-                format: canvasFormat,
-                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST,
-            });
-
-            function createDepthTexture() {
-                return device.createTexture({
-                    size: [canvas.width, canvas.height, 1],
-                    format: 'depth24plus',
-                    usage: GPUTextureUsage.RENDER_ATTACHMENT,
-                });
-            }
-
-            let depthTexture = createDepthTexture();
+            webgpuHost.configureContext(canvasFormat);
+            webgpuHost.createDepthTexture(canvas.width, canvas.height);
 
             const defaultTextures = {
                 wall: 'https://threejs.org/examples/textures/brick_diffuse.jpg',
@@ -1010,13 +1015,8 @@
             window.addEventListener('resize', () => {
                 canvas.width = window.innerWidth;
                 canvas.height = window.innerHeight;
-                context.configure({
-                    device,
-                    format: canvasFormat,
-                    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST,
-                });
-                depthTexture.destroy();
-                depthTexture = createDepthTexture();
+                webgpuHost.configureContext(canvasFormat);
+                webgpuHost.createDepthTexture(canvas.width, canvas.height);
             });
         }
 
