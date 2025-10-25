@@ -37,6 +37,13 @@ typedef enum {
     GM_BUFFER_COUNT
 } GMBufferSlot;
 
+typedef enum {
+    GM_RESOURCE_BUFFER = 0,
+    GM_RESOURCE_SAMPLER = 1,
+    GM_RESOURCE_TEXTURE_VIEW = 2,
+    GM_RESOURCE_STORAGE_TEXTURE = 3,
+} GMResourceType;
+
 static WGPUDevice g_wgpu_device = NULL;
 static WGPUQueue g_wgpu_queue = NULL;
 static WGPUBuffer g_gpu_buffers[GM_BUFFER_COUNT];
@@ -2311,6 +2318,87 @@ const char* gm_vertex_step_mode_to_string(uint32_t value) {
     }
     return "vertex";
 }
+
+// ============================================================================
+// Enum Value Exports for JavaScript
+// ============================================================================
+
+// GMBufferSlot enum values
+#ifdef __wasm__
+__attribute__((export_name("gm_enum_buffer_positions")))
+#endif
+uint32_t gm_enum_buffer_positions(void) { return GM_BUFFER_POSITIONS; }
+
+#ifdef __wasm__
+__attribute__((export_name("gm_enum_buffer_uvs")))
+#endif
+uint32_t gm_enum_buffer_uvs(void) { return GM_BUFFER_UVS; }
+
+#ifdef __wasm__
+__attribute__((export_name("gm_enum_buffer_surface_types")))
+#endif
+uint32_t gm_enum_buffer_surface_types(void) { return GM_BUFFER_SURFACE_TYPES; }
+
+#ifdef __wasm__
+__attribute__((export_name("gm_enum_buffer_triangle_ids")))
+#endif
+uint32_t gm_enum_buffer_triangle_ids(void) { return GM_BUFFER_TRIANGLE_IDS; }
+
+#ifdef __wasm__
+__attribute__((export_name("gm_enum_buffer_normals")))
+#endif
+uint32_t gm_enum_buffer_normals(void) { return GM_BUFFER_NORMALS; }
+
+#ifdef __wasm__
+__attribute__((export_name("gm_enum_buffer_indices")))
+#endif
+uint32_t gm_enum_buffer_indices(void) { return GM_BUFFER_INDICES; }
+
+#ifdef __wasm__
+__attribute__((export_name("gm_enum_buffer_uniform")))
+#endif
+uint32_t gm_enum_buffer_uniform(void) { return GM_BUFFER_UNIFORM; }
+
+#ifdef __wasm__
+__attribute__((export_name("gm_enum_buffer_overlay_uniform")))
+#endif
+uint32_t gm_enum_buffer_overlay_uniform(void) { return GM_BUFFER_OVERLAY_UNIFORM; }
+
+#ifdef __wasm__
+__attribute__((export_name("gm_enum_buffer_overlay_text")))
+#endif
+uint32_t gm_enum_buffer_overlay_text(void) { return GM_BUFFER_OVERLAY_TEXT; }
+
+#ifdef __wasm__
+__attribute__((export_name("gm_enum_buffer_overlay_map")))
+#endif
+uint32_t gm_enum_buffer_overlay_map(void) { return GM_BUFFER_OVERLAY_MAP; }
+
+#ifdef __wasm__
+__attribute__((export_name("gm_enum_buffer_overlay_vertex")))
+#endif
+uint32_t gm_enum_buffer_overlay_vertex(void) { return GM_BUFFER_OVERLAY_VERTEX; }
+
+// GMResourceType enum values
+#ifdef __wasm__
+__attribute__((export_name("gm_enum_resource_buffer")))
+#endif
+uint32_t gm_enum_resource_buffer(void) { return GM_RESOURCE_BUFFER; }
+
+#ifdef __wasm__
+__attribute__((export_name("gm_enum_resource_sampler")))
+#endif
+uint32_t gm_enum_resource_sampler(void) { return GM_RESOURCE_SAMPLER; }
+
+#ifdef __wasm__
+__attribute__((export_name("gm_enum_resource_texture_view")))
+#endif
+uint32_t gm_enum_resource_texture_view(void) { return GM_RESOURCE_TEXTURE_VIEW; }
+
+#ifdef __wasm__
+__attribute__((export_name("gm_enum_resource_storage_texture")))
+#endif
+uint32_t gm_enum_resource_storage_texture(void) { return GM_RESOURCE_STORAGE_TEXTURE; }
 
 // Main entry point - called from JavaScript after WASM is loaded
 void gm_main(void) {
