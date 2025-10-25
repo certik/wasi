@@ -345,6 +345,21 @@ clang \
 
 test_gm_macos = { cmd="./gm_macos", depends-on=["build_gm_macos"] }
 
+build_gm_sdl_macos = """
+clang \
+    -o gm \
+    gm_sdl.c \
+    -I$CONDA_PREFIX/include \
+    -L$CONDA_PREFIX/lib \
+    -Wl,-rpath,$CONDA_PREFIX/lib \
+    -lSDL3 \
+    -framework Cocoa \
+    -framework IOKit \
+    -framework CoreVideo
+"""
+
+test_gm_sdl_macos = { cmd="./gm", depends-on=["build_gm_sdl_macos"] }
+
 [feature.macos.dependencies]
 # Use the system Clang on macOS
 #clang = ">=20.1.4,<21"
