@@ -153,9 +153,6 @@ int find_start_position(int *map, int width, int height,
 typedef struct GMHostConfig {
     uint32_t device_handle;
     uint32_t queue_handle;
-    uint32_t wall_texture_view;
-    uint32_t floor_texture_view;
-    uint32_t ceiling_texture_view;
     uint32_t preferred_color_format;
 } GMHostConfig;
 

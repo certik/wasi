@@ -932,10 +932,10 @@
                     if (!hostConfigReady) {
                         return 0;
                     }
-                    const view = new DataView(memory.buffer, configPtr, 24);
+                    const view = new DataView(memory.buffer, configPtr, 12);
                     view.setUint32(0, hostConfigHandles.device, true);
                     view.setUint32(4, hostConfigHandles.queue, true);
-                    view.setUint32(20, hostConfigHandles.preferredFormat, true);
+                    view.setUint32(8, hostConfigHandles.preferredFormat, true);
                     return 1;
                 },
                 get_input_state: (snapshotPtr) => {
