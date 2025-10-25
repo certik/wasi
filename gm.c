@@ -4,8 +4,6 @@
 #include <base/scratch.h>
 #include <base/format.h>
 #include <base/base_string.h>
-#include <base/base_io.h>
-#include <base/base_math.h>
 
 // Math functions for WASM (imported from JavaScript)
 #ifdef __wasm__
@@ -1842,13 +1840,6 @@ GameState* gm_get_game_state_ptr(void) {
 
 // Main render frame function - called every frame
 void gm_render_frame(GameState *state) {
-    // Debug: log first frame
-    static int first_frame = 1;
-    if (first_frame) {
-        writeln(WASI_STDERR_FD, "[C] gm_render_frame called");
-        first_frame = 0;
-    }
-
     double frame_start_time = platform_get_time();
 
     // Calculate FPS every 500ms
@@ -1890,14 +1881,6 @@ void gm_render_frame(GameState *state) {
     // Update performance metrics
     gm_update_perf_metrics(state, (float)total_frame_time, (float)js_time,
                           (float)gpu_copy_time, (float)gpu_render_time);
-
-    // Debug: log every 60 frames
-    static int frame_debug_counter = 0;
-    frame_debug_counter++;
-    if (frame_debug_counter == 60) {
-        writeln(WASI_STDERR_FD, "[C] 60 frames rendered");
-        frame_debug_counter = 0;
-    }
 
     // Request next frame
     platform_request_animation_frame();
@@ -2006,8 +1989,7 @@ const char* gm_get_ceiling_texture_url(void) {
 
 // Main entry point - called from JavaScript after WASM is loaded
 void gm_main(void) {
-    // Initialize the default map
-    gm_get_default_map();  // Ensure it's flattened
-    // The rest of initialization happens in JavaScript via exported functions
-    // since it needs to interact with WebGPU
+    // Currently no initialization needed here
+    // All initialization happens through specific exported functions
+    // called from JavaScript as needed
 }
