@@ -21,6 +21,19 @@ WGPUTextureView wgpu_get_depth_texture_view(uint32_t width, uint32_t height);
 
 #include "gm_shaders.inc"
 
+// Key codes (standard DOM keyCodes)
+#define KEY_ARROW_LEFT  37
+#define KEY_ARROW_UP    38
+#define KEY_ARROW_RIGHT 39
+#define KEY_ARROW_DOWN  40
+#define KEY_W 'w'
+#define KEY_A 'a'
+#define KEY_S 's'
+#define KEY_D 'd'
+#define KEY_M 'm'
+#define KEY_P 'p'
+#define KEY_T 't'
+
 #define GM_UNIFORM_FLOAT_COUNT 12
 #define GM_OVERLAY_UNIFORM_FLOAT_COUNT 24
 #define GM_OVERLAY_TEXT_CAPACITY 256
@@ -1480,11 +1493,11 @@ static void update_camera(GameState *state) {
     // Arrow key rotation
     int arrow_used = 0;
     float yaw_delta_arrows = 0.0f;
-    if (state->keys['<']) {  // ArrowLeft is mapped to '<' by JS
+    if (state->keys[KEY_ARROW_LEFT]) {
         yaw_delta_arrows -= state->turn_speed;
         arrow_used = 1;
     }
-    if (state->keys['>']) {  // ArrowRight is mapped to '>' by JS
+    if (state->keys[KEY_ARROW_RIGHT]) {
         yaw_delta_arrows += state->turn_speed;
         arrow_used = 1;
     }
@@ -1495,11 +1508,11 @@ static void update_camera(GameState *state) {
 
     // Arrow forward/backward movement
     float arrow_forward = 0.0f;
-    if (state->keys['^']) {  // ArrowUp is mapped to '^' by JS
+    if (state->keys[KEY_ARROW_UP]) {
         arrow_forward += state->move_speed;
         arrow_used = 1;
     }
-    if (state->keys['v']) {  // ArrowDown is mapped to 'v' by JS (lowercase)
+    if (state->keys[KEY_ARROW_DOWN]) {
         arrow_forward -= state->move_speed;
         arrow_used = 1;
     }
@@ -1535,21 +1548,21 @@ static void update_camera(GameState *state) {
     }
 
     // WASD movement
-    if (state->keys['w']) {
+    if (state->keys[KEY_W]) {
         dx += forward_x * state->move_speed;
         dy += forward_y * state->move_speed;
         dz += forward_z * state->move_speed;
     }
-    if (state->keys['s']) {
+    if (state->keys[KEY_S]) {
         dx -= forward_x * state->move_speed;
         dy -= forward_y * state->move_speed;
         dz -= forward_z * state->move_speed;
     }
-    if (state->keys['a']) {
+    if (state->keys[KEY_A]) {
         dx += sin_yaw * state->move_speed;
         dz -= cos_yaw * state->move_speed;
     }
-    if (state->keys['d']) {
+    if (state->keys[KEY_D]) {
         dx -= sin_yaw * state->move_speed;
         dz += cos_yaw * state->move_speed;
     }
@@ -1925,7 +1938,7 @@ static void gm_upload_overlay_map_buffer(const int *map_data) {
 }
 
 static void gm_apply_input(GameState *state, const GMInputSnapshot *snapshot) {
-    static const uint8_t toggle_keys[] = {'m', 'r', 'h', 't', 'i', 'b', 'f'};
+    static const uint8_t toggle_keys[] = {KEY_M, 'r', 'h', KEY_T, 'i', 'b', 'f'};
 
     for (size_t i = 0; i < sizeof(toggle_keys); i++) {
         uint8_t code = toggle_keys[i];

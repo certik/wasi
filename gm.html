@@ -888,35 +888,25 @@
             let mouseDeltaX = 0;
             let mouseDeltaY = 0;
 
-            const arrowKeyMap = {
-                'arrowleft': '<'.charCodeAt(0),
-                'arrowright': '>'.charCodeAt(0),
-                'arrowup': '^'.charCodeAt(0),
-                'arrowdown': 'v'.charCodeAt(0),
-            };
-
-            function resolveKeyCode(event) {
-                const key = event.key.toLowerCase();
-                if (arrowKeyMap[key] !== undefined) {
-                    return arrowKeyMap[key];
-                }
-                if (key.length === 1) {
-                    return key.charCodeAt(0);
-                }
-                return null;
-            }
-
             document.addEventListener('keydown', (event) => {
-                const code = resolveKeyCode(event);
-                if (code !== null) {
+                let code = event.keyCode;
+                // Convert uppercase letters (A-Z: 65-90) to lowercase (a-z: 97-122)
+                if (code >= 65 && code <= 90) {
+                    code = code + 32;
+                }
+                if (code >= 0 && code < 256) {
                     keyStates[code] = 1;
                     event.preventDefault();
                 }
             });
 
             document.addEventListener('keyup', (event) => {
-                const code = resolveKeyCode(event);
-                if (code !== null) {
+                let code = event.keyCode;
+                // Convert uppercase letters (A-Z: 65-90) to lowercase (a-z: 97-122)
+                if (code >= 65 && code <= 90) {
+                    code = code + 32;
+                }
+                if (code >= 0 && code < 256) {
                     keyStates[code] = 0;
                     event.preventDefault();
                 }
