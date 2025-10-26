@@ -133,18 +133,19 @@ int main2(void) {
     WGPUAdapter adapter = NULL;
     WGPURequestAdapterCallbackInfo adapter_callback_info = {
         .nextInChain = NULL,
-        .mode = WGPUCallbackMode_WaitAnyOnly,
+        .mode = WGPUCallbackMode_AllowProcessEvents,
         .callback = request_adapter_callback,
         .userdata1 = &adapter,
         .userdata2 = NULL
     };
-    WGPUFuture adapter_future = wgpuInstanceRequestAdapter(instance, &adapter_options, adapter_callback_info);
+    wgpuInstanceRequestAdapter(instance, &adapter_options, adapter_callback_info);
 
-    // Wait for adapter request to complete
-    WGPUFutureWaitInfo wait_info = {
-        .future = adapter_future
-    };
-    wgpuInstanceWaitAny(instance, 1, &wait_info, UINT64_MAX);
+    // Poll for adapter request to complete
+    println(str_lit("Waiting for WebGPU adapter..."));
+    while (!adapter) {
+        wgpuInstanceProcessEvents(instance);
+    }
+    println(str_lit("Adapter acquired"));
 
     if (!adapter) {
         println(str_lit("Failed to get WebGPU adapter"));
@@ -189,18 +190,19 @@ int main2(void) {
     WGPUDevice device = NULL;
     WGPURequestDeviceCallbackInfo device_callback_info = {
         .nextInChain = NULL,
-        .mode = WGPUCallbackMode_WaitAnyOnly,
+        .mode = WGPUCallbackMode_AllowProcessEvents,
         .callback = request_device_callback,
         .userdata1 = &device,
         .userdata2 = NULL
     };
-    WGPUFuture device_future = wgpuAdapterRequestDevice(adapter, &device_desc, device_callback_info);
+    wgpuAdapterRequestDevice(adapter, &device_desc, device_callback_info);
 
-    // Wait for device request to complete
-    WGPUFutureWaitInfo device_wait_info = {
-        .future = device_future
-    };
-    wgpuInstanceWaitAny(instance, 1, &device_wait_info, UINT64_MAX);
+    // Poll for device request to complete
+    println(str_lit("Waiting for WebGPU device..."));
+    while (!device) {
+        wgpuInstanceProcessEvents(instance);
+    }
+    println(str_lit("Device acquired"));
 
     if (!device) {
         println(str_lit("Failed to get WebGPU device"));
