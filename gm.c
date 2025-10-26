@@ -830,127 +830,87 @@ static int gm_create_bind_group_layouts(void) {
         return -1;
     }
 
-    WGPUBindGroupLayoutEntry main_entries[5] = {
-        {
-            .nextInChain = NULL,
-            .binding = 0,
-            .visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment,
-            .buffer = (WGPUBufferBindingLayout){
-                .type = WGPUBufferBindingType_Uniform,
-                .hasDynamicOffset = WGPU_FALSE,
-                .minBindingSize = (uint64_t)GM_UNIFORM_FLOAT_COUNT * sizeof(float),
-            },
-        },
-        {
-            .nextInChain = NULL,
-            .binding = 1,
-            .visibility = WGPUShaderStage_Fragment,
-            .sampler = (WGPUSamplerBindingLayout){
-                .type = WGPUSamplerBindingType_Filtering,
-            },
-        },
-        {
-            .nextInChain = NULL,
-            .binding = 2,
-            .visibility = WGPUShaderStage_Fragment,
-            .texture = (WGPUTextureBindingLayout){
-                .sampleType = WGPUTextureSampleType_Float,
-                .viewDimension = WGPUTextureViewDimension_2D,
-                .multisampled = WGPU_FALSE,
-            },
-        },
-        {
-            .nextInChain = NULL,
-            .binding = 3,
-            .visibility = WGPUShaderStage_Fragment,
-            .texture = (WGPUTextureBindingLayout){
-                .sampleType = WGPUTextureSampleType_Float,
-                .viewDimension = WGPUTextureViewDimension_2D,
-                .multisampled = WGPU_FALSE,
-            },
-        },
-        {
-            .nextInChain = NULL,
-            .binding = 4,
-            .visibility = WGPUShaderStage_Fragment,
-            .texture = (WGPUTextureBindingLayout){
-                .sampleType = WGPUTextureSampleType_Float,
-                .viewDimension = WGPUTextureViewDimension_2D,
-                .multisampled = WGPU_FALSE,
-            },
-        },
-    };
-
-    WGPUBindGroupLayoutDescriptor main_desc = {
-        .nextInChain = NULL,
-        .entryCount = 5,
-        .entries = main_entries,
-    };
-
-    // Debug: print out bind group layout entry values
-    for (uint32_t i = 0; i < 5; i++) {
-        println(str_lit("Entry {}: binding={}, visibility={}, buffer.type={}, sampler.type={}, texture.sampleType={}, storageTexture.access={}"),
-            i,
-            main_entries[i].binding,
-            main_entries[i].visibility,
-            main_entries[i].buffer.type,
-            main_entries[i].sampler.type,
-            main_entries[i].texture.sampleType,
-            main_entries[i].storageTexture.access);
-    }
-    println(str_lit("About to call wgpuDeviceCreateBindGroupLayout with entryCount={}"), (uint32_t)main_desc.entryCount);
-
     g_bind_group_layouts[GM_BIND_GROUP_LAYOUT_MAIN] = wgpuDeviceCreateBindGroupLayout(
-            g_wgpu_device, &main_desc);
+            g_wgpu_device,
+            &(const WGPUBindGroupLayoutDescriptor){
+                .entryCount = 5,
+                .entries = (const WGPUBindGroupLayoutEntry[]){
+                    (const WGPUBindGroupLayoutEntry){
+                        .binding = 0,
+                        .visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment,
+                        .buffer = (const WGPUBufferBindingLayout){
+                            .type = WGPUBufferBindingType_Uniform,
+                            .minBindingSize = (uint64_t)GM_UNIFORM_FLOAT_COUNT * sizeof(float),
+                        },
+                    },
+                    (const WGPUBindGroupLayoutEntry){
+                        .binding = 1,
+                        .visibility = WGPUShaderStage_Fragment,
+                        .sampler = (const WGPUSamplerBindingLayout){
+                            .type = WGPUSamplerBindingType_Filtering,
+                        },
+                    },
+                    (const WGPUBindGroupLayoutEntry){
+                        .binding = 2,
+                        .visibility = WGPUShaderStage_Fragment,
+                        .texture = (const WGPUTextureBindingLayout){
+                            .sampleType = WGPUTextureSampleType_Float,
+                            .viewDimension = WGPUTextureViewDimension_2D,
+                        },
+                    },
+                    (const WGPUBindGroupLayoutEntry){
+                        .binding = 3,
+                        .visibility = WGPUShaderStage_Fragment,
+                        .texture = (const WGPUTextureBindingLayout){
+                            .sampleType = WGPUTextureSampleType_Float,
+                            .viewDimension = WGPUTextureViewDimension_2D,
+                        },
+                    },
+                    (const WGPUBindGroupLayoutEntry){
+                        .binding = 4,
+                        .visibility = WGPUShaderStage_Fragment,
+                        .texture = (const WGPUTextureBindingLayout){
+                            .sampleType = WGPUTextureSampleType_Float,
+                            .viewDimension = WGPUTextureViewDimension_2D,
+                        },
+                    },
+                },
+            });
     if (g_bind_group_layouts[GM_BIND_GROUP_LAYOUT_MAIN] == NULL) {
         return -2;
     }
 
-    const uint64_t overlay_uniform_size = (uint64_t)GM_OVERLAY_UNIFORM_FLOAT_COUNT * sizeof(float);
-    const uint64_t overlay_text_size = (uint64_t)GM_OVERLAY_TEXT_CAPACITY * sizeof(uint32_t);
-    const uint64_t overlay_map_size = (uint64_t)GM_MAP_CELL_COUNT * sizeof(uint32_t);
-
-    const WGPUBindGroupLayoutEntry overlay_entries[3] = {
-        {
-            .nextInChain = NULL,
-            .binding = 0,
-            .visibility = WGPUShaderStage_Fragment,
-            .buffer = (WGPUBufferBindingLayout){
-                .type = WGPUBufferBindingType_Uniform,
-                .hasDynamicOffset = WGPU_FALSE,
-                .minBindingSize = overlay_uniform_size,
-            },
-        },
-        {
-            .nextInChain = NULL,
-            .binding = 1,
-            .visibility = WGPUShaderStage_Fragment,
-            .buffer = (WGPUBufferBindingLayout){
-                .type = WGPUBufferBindingType_ReadOnlyStorage,
-                .hasDynamicOffset = WGPU_FALSE,
-                .minBindingSize = overlay_text_size,
-            },
-        },
-        {
-            .nextInChain = NULL,
-            .binding = 2,
-            .visibility = WGPUShaderStage_Fragment,
-            .buffer = (WGPUBufferBindingLayout){
-                .type = WGPUBufferBindingType_ReadOnlyStorage,
-                .hasDynamicOffset = WGPU_FALSE,
-                .minBindingSize = overlay_map_size,
-            },
-        },
-    };
-
-    WGPUBindGroupLayoutDescriptor overlay_desc = {
-        .nextInChain = NULL,
-        .entryCount = 3,
-        .entries = overlay_entries,
-    };
-
     g_bind_group_layouts[GM_BIND_GROUP_LAYOUT_OVERLAY] = wgpuDeviceCreateBindGroupLayout(
-            g_wgpu_device, &overlay_desc);
+            g_wgpu_device,
+            &(const WGPUBindGroupLayoutDescriptor){
+                .entryCount = 3,
+                .entries = (const WGPUBindGroupLayoutEntry[]){
+                    (const WGPUBindGroupLayoutEntry){
+                        .binding = 0,
+                        .visibility = WGPUShaderStage_Fragment,
+                        .buffer = (const WGPUBufferBindingLayout){
+                            .type = WGPUBufferBindingType_Uniform,
+                            .minBindingSize = (uint64_t)GM_OVERLAY_UNIFORM_FLOAT_COUNT * sizeof(float),
+                        },
+                    },
+                    (const WGPUBindGroupLayoutEntry){
+                        .binding = 1,
+                        .visibility = WGPUShaderStage_Fragment,
+                        .buffer = (const WGPUBufferBindingLayout){
+                            .type = WGPUBufferBindingType_ReadOnlyStorage,
+                            .minBindingSize = (uint64_t)GM_OVERLAY_TEXT_CAPACITY * sizeof(uint32_t),
+                        },
+                    },
+                    (const WGPUBindGroupLayoutEntry){
+                        .binding = 2,
+                        .visibility = WGPUShaderStage_Fragment,
+                        .buffer = (const WGPUBufferBindingLayout){
+                            .type = WGPUBufferBindingType_ReadOnlyStorage,
+                            .minBindingSize = (uint64_t)GM_MAP_CELL_COUNT * sizeof(uint32_t),
+                        },
+                    },
+                },
+            });
     if (g_bind_group_layouts[GM_BIND_GROUP_LAYOUT_OVERLAY] == NULL) {
         return -3;
     }
@@ -967,26 +927,22 @@ static int gm_create_pipeline_layouts(void) {
         return -2;
     }
 
-    WGPUPipelineLayoutDescriptor main_desc = {
-        .nextInChain = NULL,
-        .bindGroupLayoutCount = 1,
-        .bindGroupLayouts = &g_bind_group_layouts[GM_BIND_GROUP_LAYOUT_MAIN],
-    };
-
     g_pipeline_layouts[GM_PIPELINE_LAYOUT_MAIN] = wgpuDeviceCreatePipelineLayout(
-            g_wgpu_device, &main_desc);
+            g_wgpu_device,
+            &(const WGPUPipelineLayoutDescriptor){
+                .bindGroupLayoutCount = 1,
+                .bindGroupLayouts = (const WGPUBindGroupLayout[]){g_bind_group_layouts[GM_BIND_GROUP_LAYOUT_MAIN]},
+            });
     if (g_pipeline_layouts[GM_PIPELINE_LAYOUT_MAIN] == NULL) {
         return -3;
     }
 
-    WGPUPipelineLayoutDescriptor overlay_desc = {
-        .nextInChain = NULL,
-        .bindGroupLayoutCount = 1,
-        .bindGroupLayouts = &g_bind_group_layouts[GM_BIND_GROUP_LAYOUT_OVERLAY],
-    };
-
     g_pipeline_layouts[GM_PIPELINE_LAYOUT_OVERLAY] = wgpuDeviceCreatePipelineLayout(
-            g_wgpu_device, &overlay_desc);
+            g_wgpu_device,
+            &(const WGPUPipelineLayoutDescriptor){
+                .bindGroupLayoutCount = 1,
+                .bindGroupLayouts = (const WGPUBindGroupLayout[]){g_bind_group_layouts[GM_BIND_GROUP_LAYOUT_OVERLAY]},
+            });
     if (g_pipeline_layouts[GM_PIPELINE_LAYOUT_OVERLAY] == NULL) {
         return -4;
     }

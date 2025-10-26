@@ -3675,35 +3675,11 @@ typedef struct WGPUBindGroupDescriptor {
  */
 typedef struct WGPUBindGroupLayoutEntry {
     WGPUChainedStruct * nextInChain;
-    /**
-     * The `INIT` macro sets this to `0`.
-     */
     uint32_t binding;
-    /**
-     * The `INIT` macro sets this to @ref WGPUShaderStage_None.
-     */
     WGPUShaderStage visibility;
-    /**
-     * If non-zero, this entry defines a binding array with this size.
-     *
-     * The `INIT` macro sets this to `0`.
-     */
-    uint32_t bindingArraySize;
-    /**
-     * The `INIT` macro sets this to zero (which sets the entry to `BindingNotUsed`).
-     */
     WGPUBufferBindingLayout buffer;
-    /**
-     * The `INIT` macro sets this to zero (which sets the entry to `BindingNotUsed`).
-     */
     WGPUSamplerBindingLayout sampler;
-    /**
-     * The `INIT` macro sets this to zero (which sets the entry to `BindingNotUsed`).
-     */
     WGPUTextureBindingLayout texture;
-    /**
-     * The `INIT` macro sets this to zero (which sets the entry to `BindingNotUsed`).
-     */
     WGPUStorageTextureBindingLayout storageTexture;
 } WGPUBindGroupLayoutEntry WGPU_STRUCTURE_ATTRIBUTE;
 
@@ -3714,7 +3690,6 @@ typedef struct WGPUBindGroupLayoutEntry {
     /*.nextInChain=*/NULL _wgpu_COMMA \
     /*.binding=*/0 _wgpu_COMMA \
     /*.visibility=*/WGPUShaderStage_None _wgpu_COMMA \
-    /*.bindingArraySize=*/0 _wgpu_COMMA \
     /*.buffer=*/_wgpu_STRUCT_ZERO_INIT _wgpu_COMMA \
     /*.sampler=*/_wgpu_STRUCT_ZERO_INIT _wgpu_COMMA \
     /*.texture=*/_wgpu_STRUCT_ZERO_INIT _wgpu_COMMA \
