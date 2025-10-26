@@ -347,23 +347,49 @@ test_gm_macos = { cmd="./gm_macos", depends-on=["build_gm_macos"] }
 
 build_gm_sdl_macos = """
 clang \
-    -o gm \
-    gm_sdl.c \
+    -g \
+    -I base \
+    -I stdlib \
+    -I native \
+    -I . \
     -I$CONDA_PREFIX/include \
     -L$CONDA_PREFIX/lib \
     -Wl,-rpath,$CONDA_PREFIX/lib \
+    -o gm_sdl \
+    gm_sdl.c \
+    gm.c \
+    platform_sdl3.c \
+    webgpu/webgpu_sdl3.c \
+    base/buddy.c \
+    base/arena.c \
+    base/scratch.c \
+    base/format.c \
+    base/base_string.c \
+    base/numconv.c \
+    base/mem.c \
+    base/io.c \
+    base/base_io.c \
+    base/assert.c \
+    base/exit.c \
+    native/wasi_macos.c \
     -lSDL3 \
+    -lwgpu_native \
+    -lSystem \
     -framework Cocoa \
     -framework IOKit \
-    -framework CoreVideo
+    -framework CoreVideo \
+    -framework QuartzCore \
+    -framework Metal
 """
 
-test_gm_sdl_macos = { cmd="./gm", depends-on=["build_gm_sdl_macos"] }
+test_gm_sdl_macos = { cmd="./gm_sdl", depends-on=["build_gm_sdl_macos"] }
 
 [feature.macos.dependencies]
 # Use the system Clang on macOS
 #clang = ">=20.1.4,<21"
 sdl3 = ">=3.2.24,<4"
+# Note: wgpu-native may need to be installed separately or built from source
+# if not available in conda-forge. Alternative: use dawn-native or system WebGPU
 
 [feature.windows.tasks]
 build_windows = """
