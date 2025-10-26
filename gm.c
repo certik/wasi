@@ -15,6 +15,8 @@ __attribute__((import_module("env"), import_name("cosf")))
 extern float cosf(float x);
 __attribute__((import_module("env"), import_name("sinf")))
 extern float sinf(float x);
+#else
+#include <math.h>
 #endif
 
 // Platform-specific WebGPU context functions
@@ -662,12 +664,16 @@ static WGPUShaderModule gm_create_shader_module_from_source(const char *source, 
     if (source == NULL || length == 0 || g_wgpu_device == NULL) {
         return NULL;
     }
-    WGPUShaderSourceWGSL wgsl = WGPU_SHADER_SOURCE_WGSL_INIT;
-    wgsl.code.data = source;
-    wgsl.code.length = length;
+    WGPUShaderSourceWGSL wgsl = {
+        .chain = {
+            .sType = WGPUSType_ShaderSourceWGSL,
+        },
+        .code = {source, length},
+    };
 
-    WGPUShaderModuleDescriptor desc = WGPU_SHADER_MODULE_DESCRIPTOR_INIT;
-    desc.nextInChain = (WGPUChainedStruct*)&wgsl;
+    WGPUShaderModuleDescriptor desc = {
+        .nextInChain = (const WGPUChainedStruct*)&wgsl,
+    };
     return wgpuDeviceCreateShaderModule(g_wgpu_device, &desc);
 }
 
@@ -682,7 +688,7 @@ static WGPUBuffer gm_create_buffer_with_data(const void *data, size_t size,
         .label = WGPU_STRING_VIEW_INIT,
         .usage = usage | WGPUBufferUsage_CopyDst,
         .size = size,
-        .mappedAtCreation = WGPU_FALSE,
+        .mappedAtCreation = false,
     };
 
     WGPUBuffer buffer = wgpuDeviceCreateBuffer(g_wgpu_device, &desc);
@@ -1066,12 +1072,12 @@ static int gm_create_render_pipelines(uint32_t color_format_enum) {
     WGPUMultisampleState multisample_state = {
         .count = 1,
         .mask = 0xFFFFFFFFu,
-        .alphaToCoverageEnabled = WGPU_FALSE,
+        .alphaToCoverageEnabled = false,
     };
 
     WGPUDepthStencilState main_depth_state = {
         .format = WGPUTextureFormat_Depth24Plus,
-        .depthWriteEnabled = WGPU_TRUE,
+        .depthWriteEnabled = true,
         .depthCompare = WGPUCompareFunction_Less,
     };
 
@@ -1154,7 +1160,7 @@ static int gm_create_render_pipelines(uint32_t color_format_enum) {
 
     WGPUDepthStencilState overlay_depth_state = {
         .format = WGPUTextureFormat_Depth24Plus,
-        .depthWriteEnabled = WGPU_FALSE,
+        .depthWriteEnabled = false,
         .depthCompare = WGPUCompareFunction_Always,
     };
 
