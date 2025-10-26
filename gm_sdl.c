@@ -43,10 +43,14 @@ static void request_device_callback(WGPURequestDeviceStatus status,
 // Main Entry Point
 // ============================================================================
 
-int main(void) {
-    // Initialize buddy allocator (required by gm.c)
-    buddy_init();
+void wasi_start(int argc, char** argv);
 
+int main(int argc, char** argv) {
+    wasi_start(argc, argv);
+    return 0;
+}
+
+int main2(void) {
     println(str_lit("Initializing SDL3..."));
 
     // Initialize SDL

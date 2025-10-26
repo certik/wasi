@@ -121,7 +121,7 @@ void* wasi_heap_grow(size_t num_bytes) {
 }
 
 // Forward declaration for main
-int main();
+int main2();
 
 // macOS open() flags
 #define O_RDONLY   0x0000
@@ -248,11 +248,11 @@ int wasi_args_get(char** argv, char* argv_buf) {
 
 // Entry point for macOS.
 // macOS passes argc and argv to the entry point (unlike raw Linux)
-void _start(int argc, char** argv) {
+void wasi_start(int argc, char** argv) {
     stored_argc = argc;
     stored_argv = argv;
     ensure_heap_initialized();
     buddy_init();
-    int status = main();
+    int status = main2();
     wasi_proc_exit(status);
 }
