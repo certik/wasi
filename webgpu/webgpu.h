@@ -3607,18 +3607,8 @@ typedef struct WGPUTextureViewDescriptor {
  * Default values can be set using @ref WGPU_VERTEX_ATTRIBUTE_INIT as initializer.
  */
 typedef struct WGPUVertexAttribute {
-    WGPUChainedStruct * nextInChain;
-    /**
-     * The `INIT` macro sets this to (@ref WGPUVertexFormat)0.
-     */
     WGPUVertexFormat format;
-    /**
-     * The `INIT` macro sets this to `0`.
-     */
     uint64_t offset;
-    /**
-     * The `INIT` macro sets this to `0`.
-     */
     uint32_t shaderLocation;
 } WGPUVertexAttribute WGPU_STRUCTURE_ATTRIBUTE;
 
@@ -3626,7 +3616,6 @@ typedef struct WGPUVertexAttribute {
  * Initializer for @ref WGPUVertexAttribute.
  */
 #define WGPU_VERTEX_ATTRIBUTE_INIT _wgpu_MAKE_INIT_STRUCT(WGPUVertexAttribute, { \
-    /*.nextInChain=*/NULL _wgpu_COMMA \
     /*.format=*/_wgpu_ENUM_ZERO_INIT(WGPUVertexFormat) _wgpu_COMMA \
     /*.offset=*/0 _wgpu_COMMA \
     /*.shaderLocation=*/0 _wgpu_COMMA \
@@ -4278,22 +4267,9 @@ typedef struct WGPUTextureDescriptor {
  * Default values can be set using @ref WGPU_VERTEX_BUFFER_LAYOUT_INIT as initializer.
  */
 typedef struct WGPUVertexBufferLayout {
-    WGPUChainedStruct * nextInChain;
-    /**
-     * The `INIT` macro sets this to @ref WGPUVertexStepMode_Undefined.
-     */
     WGPUVertexStepMode stepMode;
-    /**
-     * The `INIT` macro sets this to `0`.
-     */
     uint64_t arrayStride;
-    /**
-     * Array count for `attributes`. The `INIT` macro sets this to 0.
-     */
     size_t attributeCount;
-    /**
-     * The `INIT` macro sets this to `NULL`.
-     */
     WGPUVertexAttribute const * attributes;
 } WGPUVertexBufferLayout WGPU_STRUCTURE_ATTRIBUTE;
 
@@ -4301,7 +4277,6 @@ typedef struct WGPUVertexBufferLayout {
  * Initializer for @ref WGPUVertexBufferLayout.
  */
 #define WGPU_VERTEX_BUFFER_LAYOUT_INIT _wgpu_MAKE_INIT_STRUCT(WGPUVertexBufferLayout, { \
-    /*.nextInChain=*/NULL _wgpu_COMMA \
     /*.stepMode=*/WGPUVertexStepMode_Undefined _wgpu_COMMA \
     /*.arrayStride=*/0 _wgpu_COMMA \
     /*.attributeCount=*/0 _wgpu_COMMA \
