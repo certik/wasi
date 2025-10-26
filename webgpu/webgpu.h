@@ -1166,12 +1166,10 @@ typedef enum WGPUVertexFormat {
 } WGPUVertexFormat WGPU_ENUM_ATTRIBUTE;
 
 typedef enum WGPUVertexStepMode {
-    /**
-     * `0`. Indicates no value is passed for this argument. See @ref SentinelValues.
-     */
-    WGPUVertexStepMode_Undefined = 0x00000000,
-    WGPUVertexStepMode_Vertex = 0x00000001,
-    WGPUVertexStepMode_Instance = 0x00000002,
+    WGPUVertexStepMode_VertexBufferNotUsed = 0x00000000,
+    WGPUVertexStepMode_Undefined = 0x00000001,
+    WGPUVertexStepMode_Vertex = 0x00000002,
+    WGPUVertexStepMode_Instance = 0x00000003,
     WGPUVertexStepMode_Force32 = 0x7FFFFFFF
 } WGPUVertexStepMode WGPU_ENUM_ATTRIBUTE;
 
