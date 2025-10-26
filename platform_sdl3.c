@@ -1,4 +1,5 @@
 #include "platform.h"
+#include "gm.h"
 #include <base/base_types.h>
 #include <SDL3/SDL.h>
 

@@ -2,6 +2,26 @@
 
 #include <base/base_types.h>
 
+// ============================================================================
+// Platform Interface Structures
+// ============================================================================
+
+typedef struct GMHostConfig {
+    uint32_t device_handle;
+    uint32_t queue_handle;
+    uint32_t preferred_color_format;
+} GMHostConfig;
+
+typedef struct GMInputSnapshot {
+    uint8_t key_states[256];
+    float mouse_delta_x;
+    float mouse_delta_y;
+} GMInputSnapshot;
+
+// ============================================================================
+// Map Configuration
+// ============================================================================
+
 // Map dimensions
 #define MAP_WIDTH 10
 #define MAP_HEIGHT 10

@@ -9,8 +9,8 @@
 // Set the WebGPU device (must be called before rendering)
 void webgpu_sdl3_set_device(WGPUDevice device);
 
-// Set the WebGPU swap chain (must be called before rendering)
-void webgpu_sdl3_set_swap_chain(WGPUSwapChain swap_chain);
+// Set the WebGPU surface (must be called before rendering)
+void webgpu_sdl3_set_surface(WGPUSurface surface);
 
 // Cleanup WebGPU resources
 void webgpu_sdl3_cleanup(void);

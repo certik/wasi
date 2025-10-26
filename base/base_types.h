@@ -1,5 +1,11 @@
 #pragma once
 
+// When building with standard library (e.g., SDL3 build), use system headers
+#if defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 1 && !defined(USE_CUSTOM_TYPES)
+    #include <stdint.h>
+    #include <stddef.h>
+    #include <stdbool.h>
+#else
 // Basic integer types
 typedef unsigned char uint8_t;
 typedef unsigned short uint16_t;
@@ -56,3 +62,4 @@ typedef signed long long int64_t;
 #define UINT32_MAX ((uint32_t)0xFFFFFFFFu)
 #define INT64_MAX ((int64_t)0x7FFFFFFFFFFFFFFFll)
 #define UINT64_MAX ((uint64_t)0xFFFFFFFFFFFFFFFFull)
+#endif  // Custom types vs system headers

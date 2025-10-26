@@ -348,11 +348,9 @@ test_gm_macos = { cmd="./gm_macos", depends-on=["build_gm_macos"] }
 build_gm_sdl_macos = """
 clang \
     -g \
-    -I base \
-    -I stdlib \
-    -I native \
-    -I . \
     -I$CONDA_PREFIX/include \
+    -I . \
+    -I base \
     -L$CONDA_PREFIX/lib \
     -Wl,-rpath,$CONDA_PREFIX/lib \
     -o gm_sdl \
@@ -366,7 +364,6 @@ clang \
     base/format.c \
     base/base_string.c \
     base/numconv.c \
-    base/mem.c \
     base/io.c \
     base/base_io.c \
     base/assert.c \
@@ -374,7 +371,7 @@ clang \
     native/wasi_macos.c \
     -lSDL3 \
     -lwgpu_native \
-    -lSystem \
+    -lm \
     -framework Cocoa \
     -framework IOKit \
     -framework CoreVideo \

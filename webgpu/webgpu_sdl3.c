@@ -7,7 +7,7 @@
 
 typedef struct {
     WGPUDevice device;
-    WGPUSwapChain swap_chain;
+    WGPUSurface surface;
 
     // Depth texture cache
     WGPUTexture depth_texture;
@@ -26,8 +26,8 @@ void webgpu_sdl3_set_device(WGPUDevice device) {
     g_wgpu_context.device = device;
 }
 
-void webgpu_sdl3_set_swap_chain(WGPUSwapChain swap_chain) {
-    g_wgpu_context.swap_chain = swap_chain;
+void webgpu_sdl3_set_surface(WGPUSurface surface) {
+    g_wgpu_context.surface = surface;
 }
 
 void webgpu_sdl3_cleanup(void) {
@@ -49,11 +49,32 @@ void webgpu_sdl3_cleanup(void) {
 // ============================================================================
 
 WGPUTextureView wgpu_context_get_current_texture_view(void) {
-    if (g_wgpu_context.swap_chain == NULL) {
+    if (g_wgpu_context.surface == NULL) {
         return NULL;
     }
 
-    return wgpuSwapChainGetCurrentTextureView(g_wgpu_context.swap_chain);
+    // Get current surface texture
+    WGPUSurfaceTexture surface_texture;
+    wgpuSurfaceGetCurrentTexture(g_wgpu_context.surface, &surface_texture);
+
+    if (surface_texture.status != WGPUSurfaceGetCurrentTextureStatus_Success) {
+        return NULL;
+    }
+
+    // Create a texture view from the surface texture
+    WGPUTextureViewDescriptor view_desc = {
+        .nextInChain = NULL,
+        .label = {.data = "Surface Texture View", .length = WGPU_STRLEN},
+        .format = WGPUTextureFormat_Undefined,  // Use texture's format
+        .dimension = WGPUTextureViewDimension_2D,
+        .baseMipLevel = 0,
+        .mipLevelCount = 1,
+        .baseArrayLayer = 0,
+        .arrayLayerCount = 1,
+        .aspect = WGPUTextureAspect_All
+    };
+
+    return wgpuTextureCreateView(surface_texture.texture, &view_desc);
 }
 
 WGPUTextureView wgpu_get_depth_texture_view(uint32_t width, uint32_t height) {
@@ -73,7 +94,7 @@ WGPUTextureView wgpu_get_depth_texture_view(uint32_t width, uint32_t height) {
     if (g_wgpu_context.depth_texture == NULL) {
         WGPUTextureDescriptor depth_texture_desc = {
             .nextInChain = NULL,
-            .label = WGPU_STRING_VIEW("Depth Texture"),
+            .label = {.data = "Depth Texture", .length = WGPU_STRLEN},
             .usage = WGPUTextureUsage_RenderAttachment,
             .dimension = WGPUTextureDimension_2D,
             .size = {
@@ -100,7 +121,7 @@ WGPUTextureView wgpu_get_depth_texture_view(uint32_t width, uint32_t height) {
         // Create texture view
         WGPUTextureViewDescriptor view_desc = {
             .nextInChain = NULL,
-            .label = WGPU_STRING_VIEW("Depth Texture View"),
+            .label = {.data = "Depth Texture View", .length = WGPU_STRLEN},
             .format = WGPUTextureFormat_Depth24Plus,
             .dimension = WGPUTextureViewDimension_2D,
             .baseMipLevel = 0,

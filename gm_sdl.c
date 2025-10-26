@@ -177,14 +177,11 @@ int main(void) {
     };
     wgpuSurfaceConfigure(surface, &surface_config);
 
-    // Create swap chain (using surface as swap chain in wgpu-native)
-    WGPUSwapChain swap_chain = (WGPUSwapChain)surface;
-
     println(str_lit("WebGPU initialized successfully"));
 
     // Set up WebGPU context
     webgpu_sdl3_set_device(device);
-    webgpu_sdl3_set_swap_chain(swap_chain);
+    webgpu_sdl3_set_surface(surface);
 
     // Set up platform host config
     platform_sdl3_set_host_config(

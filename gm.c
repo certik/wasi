@@ -150,18 +150,6 @@ int find_start_position(int *map, int width, int height,
     return 0;
 }
 
-typedef struct GMHostConfig {
-    uint32_t device_handle;
-    uint32_t queue_handle;
-    uint32_t preferred_color_format;
-} GMHostConfig;
-
-typedef struct GMInputSnapshot {
-    uint8_t key_states[256];
-    float mouse_delta_x;
-    float mouse_delta_y;
-} GMInputSnapshot;
-
 typedef enum {
     TEX_LOAD_STATE_IDLE = 0,       // No loading in progress
     TEX_LOAD_STATE_REQUESTING,     // Submitting requests
