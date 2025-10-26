@@ -835,8 +835,7 @@ static int gm_create_bind_group_layouts(void) {
             .nextInChain = NULL,
             .binding = 0,
             .visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment,
-            .buffer = {
-                .nextInChain = NULL,
+            .buffer = (WGPUBufferBindingLayout){
                 .type = WGPUBufferBindingType_Uniform,
                 .hasDynamicOffset = WGPU_FALSE,
                 .minBindingSize = (uint64_t)GM_UNIFORM_FLOAT_COUNT * sizeof(float),
@@ -846,8 +845,7 @@ static int gm_create_bind_group_layouts(void) {
             .nextInChain = NULL,
             .binding = 1,
             .visibility = WGPUShaderStage_Fragment,
-            .sampler = {
-                .nextInChain = NULL,
+            .sampler = (WGPUSamplerBindingLayout){
                 .type = WGPUSamplerBindingType_Filtering,
             },
         },
@@ -855,8 +853,7 @@ static int gm_create_bind_group_layouts(void) {
             .nextInChain = NULL,
             .binding = 2,
             .visibility = WGPUShaderStage_Fragment,
-            .texture = {
-                .nextInChain = NULL,
+            .texture = (WGPUTextureBindingLayout){
                 .sampleType = WGPUTextureSampleType_Float,
                 .viewDimension = WGPUTextureViewDimension_2D,
                 .multisampled = WGPU_FALSE,
@@ -866,8 +863,7 @@ static int gm_create_bind_group_layouts(void) {
             .nextInChain = NULL,
             .binding = 3,
             .visibility = WGPUShaderStage_Fragment,
-            .texture = {
-                .nextInChain = NULL,
+            .texture = (WGPUTextureBindingLayout){
                 .sampleType = WGPUTextureSampleType_Float,
                 .viewDimension = WGPUTextureViewDimension_2D,
                 .multisampled = WGPU_FALSE,
@@ -877,8 +873,7 @@ static int gm_create_bind_group_layouts(void) {
             .nextInChain = NULL,
             .binding = 4,
             .visibility = WGPUShaderStage_Fragment,
-            .texture = {
-                .nextInChain = NULL,
+            .texture = (WGPUTextureBindingLayout){
                 .sampleType = WGPUTextureSampleType_Float,
                 .viewDimension = WGPUTextureViewDimension_2D,
                 .multisampled = WGPU_FALSE,
@@ -894,14 +889,16 @@ static int gm_create_bind_group_layouts(void) {
 
     // Debug: print out bind group layout entry values
     for (uint32_t i = 0; i < 5; i++) {
-        println(str_lit("Entry {}: binding={}, visibility={}, buffer.type={}, sampler.type={}, texture.sampleType={}"),
+        println(str_lit("Entry {}: binding={}, visibility={}, buffer.type={}, sampler.type={}, texture.sampleType={}, storageTexture.access={}"),
             i,
             main_entries[i].binding,
             main_entries[i].visibility,
             main_entries[i].buffer.type,
             main_entries[i].sampler.type,
-            main_entries[i].texture.sampleType);
+            main_entries[i].texture.sampleType,
+            main_entries[i].storageTexture.access);
     }
+    println(str_lit("About to call wgpuDeviceCreateBindGroupLayout with entryCount={}"), (uint32_t)main_desc.entryCount);
 
     g_bind_group_layouts[GM_BIND_GROUP_LAYOUT_MAIN] = wgpuDeviceCreateBindGroupLayout(
             g_wgpu_device, &main_desc);
@@ -913,13 +910,12 @@ static int gm_create_bind_group_layouts(void) {
     const uint64_t overlay_text_size = (uint64_t)GM_OVERLAY_TEXT_CAPACITY * sizeof(uint32_t);
     const uint64_t overlay_map_size = (uint64_t)GM_MAP_CELL_COUNT * sizeof(uint32_t);
 
-    WGPUBindGroupLayoutEntry overlay_entries[3] = {
+    const WGPUBindGroupLayoutEntry overlay_entries[3] = {
         {
             .nextInChain = NULL,
             .binding = 0,
             .visibility = WGPUShaderStage_Fragment,
-            .buffer = {
-                .nextInChain = NULL,
+            .buffer = (WGPUBufferBindingLayout){
                 .type = WGPUBufferBindingType_Uniform,
                 .hasDynamicOffset = WGPU_FALSE,
                 .minBindingSize = overlay_uniform_size,
@@ -929,8 +925,7 @@ static int gm_create_bind_group_layouts(void) {
             .nextInChain = NULL,
             .binding = 1,
             .visibility = WGPUShaderStage_Fragment,
-            .buffer = {
-                .nextInChain = NULL,
+            .buffer = (WGPUBufferBindingLayout){
                 .type = WGPUBufferBindingType_ReadOnlyStorage,
                 .hasDynamicOffset = WGPU_FALSE,
                 .minBindingSize = overlay_text_size,
@@ -940,8 +935,7 @@ static int gm_create_bind_group_layouts(void) {
             .nextInChain = NULL,
             .binding = 2,
             .visibility = WGPUShaderStage_Fragment,
-            .buffer = {
-                .nextInChain = NULL,
+            .buffer = (WGPUBufferBindingLayout){
                 .type = WGPUBufferBindingType_ReadOnlyStorage,
                 .hasDynamicOffset = WGPU_FALSE,
                 .minBindingSize = overlay_map_size,
