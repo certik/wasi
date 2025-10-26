@@ -349,11 +349,14 @@ build_gm_sdl_macos = """
 clang \
     -g \
     -I$CONDA_PREFIX/include \
+    -I/Users/ondrej/repos/SDL_image/include \
     -I . \
     -I base \
     -L$CONDA_PREFIX/lib \
+    -L/Users/ondrej/repos/SDL_image/build \
     -L. \
     -Wl,-rpath,$CONDA_PREFIX/lib \
+    -Wl,-rpath,/Users/ondrej/repos/SDL_image/build \
     -Wl,-rpath,. \
     -o gm_sdl \
     gm_sdl.c \
@@ -373,6 +376,7 @@ clang \
     base/exit.c \
     native/wasi_macos.c \
     -lSDL3 \
+    -lSDL3_image \
     -lwgpu_native \
     -lm \
     -framework Cocoa \
