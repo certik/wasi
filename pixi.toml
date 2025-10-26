@@ -352,12 +352,15 @@ clang \
     -I . \
     -I base \
     -L$CONDA_PREFIX/lib \
+    -L. \
     -Wl,-rpath,$CONDA_PREFIX/lib \
+    -Wl,-rpath,. \
     -o gm_sdl \
     gm_sdl.c \
     gm.c \
     platform_sdl3.c \
     webgpu/webgpu_sdl3.c \
+    webgpu/webgpu_metal_surface.m \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
@@ -385,8 +388,25 @@ test_gm_sdl_macos = { cmd="./gm_sdl", depends-on=["build_gm_sdl_macos"] }
 # Use the system Clang on macOS
 #clang = ">=20.1.4,<21"
 sdl3 = ">=3.2.24,<4"
-# Note: wgpu-native may need to be installed separately or built from source
-# if not available in conda-forge. Alternative: use dawn-native or system WebGPU
+
+# NOTE: wgpu-native (WebGPU implementation) is required but not available via conda-forge
+#
+# To build gm_sdl, you need to install wgpu-native separately:
+#
+# Option 1: Build from source
+#   git clone https://github.com/gfx-rs/wgpu-native
+#   cd wgpu-native
+#   make package
+#   # Then copy libwgpu_native.dylib to /usr/local/lib or add to DYLD_LIBRARY_PATH
+#   # And copy webgpu.h to /usr/local/include/webgpu/
+#
+# Option 2: Use homebrew (if available)
+#   brew install wgpu-native (if formula exists)
+#
+# Option 3: Download pre-built binaries from GitHub releases
+#   https://github.com/gfx-rs/wgpu-native/releases
+#
+# Then uncomment the -lwgpu_native line in build_gm_sdl_macos above
 
 [feature.windows.tasks]
 build_windows = """

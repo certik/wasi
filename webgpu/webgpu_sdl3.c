@@ -57,7 +57,8 @@ WGPUTextureView wgpu_context_get_current_texture_view(void) {
     WGPUSurfaceTexture surface_texture;
     wgpuSurfaceGetCurrentTexture(g_wgpu_context.surface, &surface_texture);
 
-    if (surface_texture.status != WGPUSurfaceGetCurrentTextureStatus_Success) {
+    if (surface_texture.status != WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal &&
+        surface_texture.status != WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal) {
         return NULL;
     }
 

@@ -5,6 +5,7 @@
     #include <stdint.h>
     #include <stddef.h>
     #include <stdbool.h>
+    #include <sys/types.h>  // For ssize_t
 #else
 // Basic integer types
 typedef unsigned char uint8_t;

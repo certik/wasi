@@ -71,9 +71,8 @@ void platform_sdl3_on_window_restored(void) {
 }
 
 void platform_sdl3_set_key_state(uint8_t key_code, int pressed) {
-    if (key_code < 256) {
-        g_platform_state.key_states[key_code] = pressed ? 1 : 0;
-    }
+    // key_code is uint8_t, so always < 256
+    g_platform_state.key_states[key_code] = pressed ? 1 : 0;
 }
 
 void platform_sdl3_add_mouse_delta(float dx, float dy) {

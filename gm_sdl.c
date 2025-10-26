@@ -16,9 +16,11 @@
 static void request_adapter_callback(WGPURequestAdapterStatus status,
                                      WGPUAdapter adapter,
                                      WGPUStringView message,
-                                     void* userdata) {
+                                     void* userdata1,
+                                     void* userdata2) {
+    (void)userdata2;
     if (status == WGPURequestAdapterStatus_Success) {
-        *(WGPUAdapter*)userdata = adapter;
+        *(WGPUAdapter*)userdata1 = adapter;
     } else {
         println(str_lit("Failed to request adapter: {}"), str_from_cstr_view((char*)message.data));
     }
@@ -27,9 +29,11 @@ static void request_adapter_callback(WGPURequestAdapterStatus status,
 static void request_device_callback(WGPURequestDeviceStatus status,
                                     WGPUDevice device,
                                     WGPUStringView message,
-                                    void* userdata) {
+                                    void* userdata1,
+                                    void* userdata2) {
+    (void)userdata2;
     if (status == WGPURequestDeviceStatus_Success) {
-        *(WGPUDevice*)userdata = device;
+        *(WGPUDevice*)userdata1 = device;
     } else {
         println(str_lit("Failed to request device: {}"), str_from_cstr_view((char*)message.data));
     }
@@ -84,10 +88,29 @@ int main(void) {
         return 1;
     }
 
-    // Get surface from SDL window
-    WGPUSurface surface = SDL_GetWGPUSurface(instance, window);
+    // Create WebGPU surface from SDL window
+    // For macOS, we need to get the native window handle and create a Metal surface
+    // SDL3 provides properties to get the native window
+    #ifdef __APPLE__
+        // Get the NSWindow from SDL
+        void *nswindow = SDL_GetPointerProperty(SDL_GetWindowProperties(window), SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, NULL);
+        if (!nswindow) {
+            println(str_lit("Failed to get NSWindow from SDL"));
+            wgpuInstanceRelease(instance);
+            SDL_DestroyWindow(window);
+            SDL_Quit();
+            return 1;
+        }
+
+        // Create Metal layer and surface
+        extern void* wgpu_create_metal_surface(void* instance, void* ns_window);
+        WGPUSurface surface = (WGPUSurface)wgpu_create_metal_surface((void*)instance, nswindow);
+    #else
+        #error "Only macOS is currently supported"
+    #endif
+
     if (!surface) {
-        println(str_lit("Failed to get WebGPU surface: {}"), str_from_cstr_view((char*)SDL_GetError()));
+        println(str_lit("Failed to create WebGPU surface"));
         wgpuInstanceRelease(instance);
         SDL_DestroyWindow(window);
         SDL_Quit();
@@ -104,7 +127,20 @@ int main(void) {
     };
 
     WGPUAdapter adapter = NULL;
-    wgpuInstanceRequestAdapter(instance, &adapter_options, request_adapter_callback, &adapter);
+    WGPURequestAdapterCallbackInfo adapter_callback_info = {
+        .nextInChain = NULL,
+        .mode = WGPUCallbackMode_WaitAnyOnly,
+        .callback = request_adapter_callback,
+        .userdata1 = &adapter,
+        .userdata2 = NULL
+    };
+    WGPUFuture adapter_future = wgpuInstanceRequestAdapter(instance, &adapter_options, adapter_callback_info);
+
+    // Wait for adapter request to complete
+    WGPUFutureWaitInfo wait_info = {
+        .future = adapter_future
+    };
+    wgpuInstanceWaitAny(instance, 1, &wait_info, UINT64_MAX);
 
     if (!adapter) {
         println(str_lit("Failed to get WebGPU adapter"));
@@ -134,21 +170,33 @@ int main(void) {
     // Request device
     WGPUDeviceDescriptor device_desc = {
         .nextInChain = NULL,
-        .label = WGPU_STRING_VIEW("Main Device"),
+        .label = {.data = "Main Device", .length = WGPU_STRLEN},
         .requiredFeatureCount = 0,
         .requiredFeatures = NULL,
         .requiredLimits = NULL,
         .defaultQueue = {
             .nextInChain = NULL,
-            .label = WGPU_STRING_VIEW("Main Queue")
+            .label = {.data = "Main Queue", .length = WGPU_STRLEN}
         },
-        .deviceLostCallback = NULL,
-        .deviceLostUserdata = NULL,
+        .deviceLostCallbackInfo = {0},
         .uncapturedErrorCallbackInfo = {0}
     };
 
     WGPUDevice device = NULL;
-    wgpuAdapterRequestDevice(adapter, &device_desc, request_device_callback, &device);
+    WGPURequestDeviceCallbackInfo device_callback_info = {
+        .nextInChain = NULL,
+        .mode = WGPUCallbackMode_WaitAnyOnly,
+        .callback = request_device_callback,
+        .userdata1 = &device,
+        .userdata2 = NULL
+    };
+    WGPUFuture device_future = wgpuAdapterRequestDevice(adapter, &device_desc, device_callback_info);
+
+    // Wait for device request to complete
+    WGPUFutureWaitInfo device_wait_info = {
+        .future = device_future
+    };
+    wgpuInstanceWaitAny(instance, 1, &device_wait_info, UINT64_MAX);
 
     if (!device) {
         println(str_lit("Failed to get WebGPU device"));
