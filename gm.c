@@ -1254,6 +1254,8 @@ static int gm_create_bind_groups(void) {
     };
 
     WGPUBindGroupDescriptor main_desc = {
+        .nextInChain = NULL,  // <- Critical: Prevents garbage pointer dereference
+        .label = NULL,        // Optional: Debug label (omit if not needed)
         .layout = g_bind_group_layouts[GM_BIND_GROUP_LAYOUT_MAIN],
         .entryCount = 5,
         .entries = main_entries,
