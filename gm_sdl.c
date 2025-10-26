@@ -239,8 +239,8 @@ int main2(void) {
 
     // Set up platform host config
     platform_sdl3_set_host_config(
-        (uint32_t)(uintptr_t)device,
-        (uint32_t)(uintptr_t)queue,
+        (uintptr_t)device,
+        (uintptr_t)queue,
         (uint32_t)surface_format
     );
 

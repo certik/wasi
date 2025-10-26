@@ -16,8 +16,8 @@ typedef struct {
     double start_time_ms;
 
     // WebGPU handles
-    uint32_t device_handle;
-    uint32_t queue_handle;
+    uintptr_t device_handle;
+    uintptr_t queue_handle;
     uint32_t preferred_color_format;
     int host_config_ready;
 
@@ -49,7 +49,7 @@ void platform_sdl3_init(SDL_Window *window) {
     g_platform_state.mouse_delta_y = 0.0f;
 }
 
-void platform_sdl3_set_host_config(uint32_t device, uint32_t queue, uint32_t color_format) {
+void platform_sdl3_set_host_config(uintptr_t device, uintptr_t queue, uint32_t color_format) {
     g_platform_state.device_handle = device;
     g_platform_state.queue_handle = queue;
     g_platform_state.preferred_color_format = color_format;

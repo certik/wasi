@@ -7,8 +7,8 @@
 // ============================================================================
 
 typedef struct GMHostConfig {
-    uint32_t device_handle;
-    uint32_t queue_handle;
+    uintptr_t device_handle;
+    uintptr_t queue_handle;
     uint32_t preferred_color_format;
 } GMHostConfig;
 

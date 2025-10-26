@@ -11,7 +11,7 @@
 void platform_sdl3_init(SDL_Window *window);
 
 // Set WebGPU host configuration
-void platform_sdl3_set_host_config(uint32_t device, uint32_t queue, uint32_t color_format);
+void platform_sdl3_set_host_config(uintptr_t device, uintptr_t queue, uint32_t color_format);
 
 // Window event handlers
 void platform_sdl3_on_window_resized(int width, int height);
