@@ -1208,9 +1208,15 @@ static int gm_create_bind_groups(void) {
 
     if (g_main_sampler == NULL) {
         WGPUSamplerDescriptor sampler_desc = {
+            .nextInChain = NULL,  // Explicitly set if needed (defaults to null)
+            .label = NULL,        // Optional: Add a debug label, e.g., "main_sampler"
             .magFilter = WGPUFilterMode_Linear,
             .minFilter = WGPUFilterMode_Linear,
             .mipmapFilter = WGPUMipmapFilterMode_Linear,
+            .lodMinClamp = 0.0f,  // Optional: Explicitly set defaults for safety
+            .lodMaxClamp = 32.0f, // Optional: Max LOD bias (platform-dependent)
+            .compare = WGPUCompareFunction_Undefined, // Optional: For shadow samplers
+            .maxAnisotropy = 1,   // <- ADD THIS: Fixes the validation error
             .addressModeU = WGPUAddressMode_Repeat,
             .addressModeV = WGPUAddressMode_Repeat,
             .addressModeW = WGPUAddressMode_Repeat,
@@ -2195,6 +2201,3 @@ void gm_frame(void) {
     gm_apply_input(&g_game_state_instance, &snapshot);
     gm_render_frame(&g_game_state_instance);
 }
-
-
-
