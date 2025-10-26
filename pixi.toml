@@ -601,6 +601,7 @@ build_all_with_windows = { depends-on=["build_wasm", "build_linux", "build_windo
 build_all_platforms = { depends-on=["build_wasm", "build_linux", "build_macos", "build_windows"] }
 
 [dependencies]
+sdl_image = ">=1.2.12,<2"
 # on macOS we want system Clang
 #clang = ">=20.1.4,<21"
 
