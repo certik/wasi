@@ -149,6 +149,39 @@ clang \
 
 test_gm_wasm = { cmd="echo 'WASM build successful: gm.wasm'", depends-on=["build_gm_wasm"] }
 
+build_hotel2gltf_wasm = """
+clang \
+    --target=wasm32-wasi \
+    -Os \
+    -nostdlib \
+    -nostdinc \
+    -fno-builtin \
+    -I base \
+    -I stdlib \
+    -I native \
+    -I . \
+    -Wl,--no-entry \
+    -Wl,--export=__heap_base \
+    -Wl,--export=_start \
+    -Wl,--initial-memory=1048576 \
+    -o hotel2gltf.wasm \
+    hotel2gltf.c \
+    base/base_io.c \
+    base/buddy.c \
+    base/arena.c \
+    base/scratch.c \
+    base/format.c \
+    base/io.c \
+    base/base_string.c \
+    base/mem.c \
+    base/numconv.c \
+    base/assert.c \
+    base/exit.c \
+    native/wasi_wasm.c
+"""
+
+test_hotel2gltf_wasm = { cmd="wasmtime --dir . hotel2gltf.wasm", depends-on=["build_hotel2gltf_wasm"] }
+
 [feature.wasm.dependencies]
 clang = ">=20.1.4,<21"
 lld = ">=20.1.4,<21"
@@ -242,6 +275,33 @@ clang \
 """
 
 test_gm_linux = { cmd="./gm_linux", depends-on=["build_gm_linux"] }
+
+build_hotel2gltf_linux = """
+clang \
+    -nostdlib \
+    -nostdinc \
+    -fno-builtin \
+    -I base \
+    -I stdlib \
+    -I native \
+    -I . \
+    -o hotel2gltf_linux \
+    hotel2gltf.c \
+    base/base_io.c \
+    base/buddy.c \
+    base/arena.c \
+    base/scratch.c \
+    base/format.c \
+    base/io.c \
+    base/base_string.c \
+    base/mem.c \
+    base/numconv.c \
+    base/assert.c \
+    base/exit.c \
+    native/wasi_linux.c
+"""
+
+test_hotel2gltf_linux = { cmd="./hotel2gltf_linux", depends-on=["build_hotel2gltf_linux"] }
 
 [feature.linux.dependencies]
 clang = ">=20.1.4,<21"
@@ -344,6 +404,36 @@ clang \
 """
 
 test_gm_macos = { cmd="./gm_macos", depends-on=["build_gm_macos"] }
+
+build_hotel2gltf_macos = """
+clang \
+    -g \
+    -nostdlib \
+    -nostdinc \
+    -fno-builtin \
+    -I base \
+    -I stdlib \
+    -I native \
+    -I . \
+    -o hotel2gltf_macos \
+    hotel2gltf.c \
+    base/base_io.c \
+    base/buddy.c \
+    base/arena.c \
+    base/scratch.c \
+    base/format.c \
+    base/io.c \
+    base/base_string.c \
+    base/mem.c \
+    base/numconv.c \
+    base/assert.c \
+    base/exit.c \
+    native/wasi_macos.c \
+    -lSystem \
+    -Wl,-e,__start
+"""
+
+test_hotel2gltf_macos = { cmd="./hotel2gltf_macos", depends-on=["build_hotel2gltf_macos"] }
 
 [feature.macos.dependencies]
 # Use the system Clang on macOS
@@ -525,6 +615,59 @@ link \
 """
 
 test_gm_windows = { cmd="gm_windows.exe", depends-on=["build_gm_windows"] }
+
+build_hotel2gltf_windows = """
+cl \
+    /nologo \
+    /X \
+    /std:c11 \
+    /Zc:preprocessor \
+    /I"base" \
+    /I"stdlib" \
+    /I"native" \
+    /I"." \
+    /GS- \
+    /Gs0 \
+    /kernel \
+    /c \
+    hotel2gltf.c \
+    base/base_io.c \
+    base/buddy.c \
+    base/arena.c \
+    base/scratch.c \
+    base/format.c \
+    base/io.c \
+    base/base_string.c \
+    base/mem.c \
+    base/numconv.c \
+    base/assert.c \
+    base/exit.c \
+    native/wasi_windows.c \
+    && \
+link \
+    /nologo \
+    /subsystem:console \
+    /nodefaultlib \
+    /entry:_start \
+    kernel32.lib \
+    shell32.lib \
+    hotel2gltf.obj \
+    base_io.obj \
+    buddy.obj \
+    arena.obj \
+    scratch.obj \
+    format.obj \
+    io.obj \
+    base_string.obj \
+    mem.obj \
+    numconv.obj \
+    exit.obj \
+    assert.obj \
+    wasi_windows.obj \
+    /out:hotel2gltf_windows.exe
+"""
+
+test_hotel2gltf_windows = { cmd="hotel2gltf_windows.exe", depends-on=["build_hotel2gltf_windows"] }
 
 [feature.windows.dependencies]
 # Note: MSVC is not available through conda-forge, so we rely on system installation
