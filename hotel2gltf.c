@@ -123,7 +123,7 @@ static float get_height(char c) {
 
 // Get base height for a character type
 static float get_base_height(char c) {
-    if (c == 'W') return 3.0f;  // windows start at 3 feet
+    if (c == 'W') return 4.5f;  // windows start at 4.5 feet
     return 0.0f;
 }
 
@@ -289,12 +289,26 @@ int main(void) {
     string hotel_text = read_file_ok(arena, str_lit("hotel.txt"));
     // println(str_lit("Read hotel.txt: {} bytes"), (int64_t)hotel_text.size);
 
-    // Parse grid dimensions
+    // Skip the legend (first 17 lines) - start parsing from line 18
+    const uint32_t skip_lines = 17;
+    uint64_t start_idx = 0;
+    uint32_t lines_seen = 0;
+
+    for (uint64_t i = 0; i < hotel_text.size && lines_seen < skip_lines; i++) {
+        if (hotel_text.str[i] == '\n') {
+            lines_seen++;
+            if (lines_seen == skip_lines) {
+                start_idx = i + 1;
+            }
+        }
+    }
+
+    // Parse grid dimensions from actual floor plan
     uint32_t rows = 0;
     uint32_t cols = 0;
     uint32_t current_col = 0;
 
-    for (uint64_t i = 0; i < hotel_text.size; i++) {
+    for (uint64_t i = start_idx; i < hotel_text.size; i++) {
         char c = hotel_text.str[i];
         if (c == '\n') {
             rows++;
@@ -309,14 +323,12 @@ int main(void) {
         if (current_col > cols) cols = current_col;
     }
 
-    // println(str_lit("Grid size: {} rows x {} cols"), (int64_t)rows, (int64_t)cols);
-
     // Create grid array
     char *grid = arena_alloc_array(arena, char, rows * cols);
     memset(grid, ' ', rows * cols);
 
     uint32_t row = 0, col = 0;
-    for (uint64_t i = 0; i < hotel_text.size; i++) {
+    for (uint64_t i = start_idx; i < hotel_text.size; i++) {
         char c = hotel_text.str[i];
         if (c == '\n') {
             row++;
