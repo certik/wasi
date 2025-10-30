@@ -154,6 +154,7 @@ static int Init(void)
         SDL_Log("Failed to create vertex shader: %s", SDL_GetError());
         return -1;
     }
+    println(str_lit("Vertex shader created. Handle: {}"), (uint64_t)vertexShader);
 
     // Create fragment shader
     SDL_GPUShaderCreateInfo fragmentShaderInfo = {

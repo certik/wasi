@@ -243,12 +243,15 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
                     const dv = new DataView(memory.buffer);
 
                     // Read pipeline create info
-                    const targetInfoPtr = dv.getUint32(info_ptr, true);
-                    const primitiveType = dv.getUint32(info_ptr + 4, true);
-                    const vertexShaderHandle = dv.getUint32(info_ptr + 8, true);
-                    const fragmentShaderHandle = dv.getUint32(info_ptr + 12, true);
+                    const vertexShaderHandle = dv.getUint32(info_ptr + 0, true);
+                    const fragmentShaderHandle = dv.getUint32(info_ptr + 4, true);
+                    const targetInfoPtr = dv.getUint32(info_ptr + 8, true);
+                    const primitiveType = dv.getUint32(info_ptr + 12, true);
 
                     console.log('[SDL] CreateGPUGraphicsPipeline');
+                    console.log('[SDL]   vertexShaderHandle = ', vertexShaderHandle);
+                    console.log('[SDL]   fragmentShaderHandle = ', fragmentShaderHandle);
+                    throw new Error('XX');
 
                     const vertexShader = shaders.get(vertexShaderHandle);
                     const fragmentShader = shaders.get(fragmentShaderHandle);
