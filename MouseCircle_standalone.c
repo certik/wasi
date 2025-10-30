@@ -17,6 +17,7 @@
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
+#include <base/io.h>
 #include <stdbool.h>
 
 // Embedded Metal Shaders (compiled MSL)
@@ -172,6 +173,7 @@ static int Init(void)
         SDL_Log("Failed to create fragment shader: %s", SDL_GetError());
         return -1;
     }
+    println(str_lit("Fragment shader created. Handle: {}"), (uint64_t)fragmentShader);
 
     // Create graphics pipeline
     SDL_GPUGraphicsPipelineCreateInfo pipelineCreateInfo = {

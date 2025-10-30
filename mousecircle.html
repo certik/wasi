@@ -211,6 +211,7 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
                         const shaderModule = device.createShaderModule({ code: shaderCode });
                         const handle = nextHandle++;
                         shaders.set(handle, shaderModule);
+                        console.log('[SDL] CreateGPUShader, handle:', handle);
                         return handle;
                     } catch (e) {
                         setError('Failed to create shader: ' + e.message);
@@ -517,7 +518,20 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
             const wasmModule = await WebAssembly.instantiate(wasmBytes, {
                 sdl: sdlHost.imports,
                 wasi_snapshot_preview1: {
-                    fd_write: () => 0,
+                    fd_write: (fd, iovs, iovs_len, nwritten) => {
+                        let written = 0;
+                        const view = new DataView(memory.buffer);
+                        const decoder = new TextDecoder();
+                        for (let i = 0; i < iovs_len; i++) {
+                            const ptr = view.getUint32(iovs + i * 8, true);
+                            const len = view.getUint32(iovs + i * 8 + 4, true);
+                            const bytes = new Uint8Array(memory.buffer, ptr, len);
+                            console.log(decoder.decode(bytes));
+                            written += len;
+                        }
+                        view.setUint32(nwritten, written, true);
+                        return 0;
+                    },
                     proc_exit: (code) => {
                         console.log('WASM exited with code:', code);
                     },
