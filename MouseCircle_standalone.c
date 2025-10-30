@@ -296,11 +296,8 @@ static void Quit(void)
 }
 
 // Main function
-int main(int argc, char** argv)
+int main()
 {
-    (void)argc;
-    (void)argv;
-
     // Initialize
     if (Init() < 0)
     {

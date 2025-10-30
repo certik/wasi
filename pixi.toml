@@ -197,7 +197,6 @@ clang \
     -Wl,--export=_start \
     -Wl,--export=__heap_base \
     -Wl,--initial-memory=1048576 \
-    -Wl,--allow-undefined \
     -o mousecircle.wasm \
     MouseCircle_standalone.c \
     sdl_wasm.c \
