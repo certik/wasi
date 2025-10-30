@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MouseCircle - SDL3 GPU via WebGPU</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <script type="module">
+        // WGSL Shaders (converted from MSL in MouseCircle_standalone.c)
+        const vertexShaderWGSL = `
+struct VertexOutput {
+    @builtin(position) position: vec4f,
+    @location(0) uv: vec2f,
+};
+
+@vertex
+fn main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
+    var output: VertexOutput;
+
+    // Full-screen triangle
+    let x = f32(i32(vertex_index) - 1);
+    let y = f32(i32(vertex_index & 1u) * 2 - 1);
+    output.position = vec4f(x, y, 0.0, 1.0);
+
+    // Convert to UV coordinates (0,0 to 1,1)
+    output.uv = vec2f((x + 1.0) * 0.5, (1.0 - y) * 0.5);
+
+    return output;
+}
+`;
+
+        const fragmentShaderWGSL = `
+struct Uniforms {
+    mouse_pos: vec2f,
+    resolution: vec2f,
+};
+
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+
+@fragment
+fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
+    // Convert UV to screen coordinates
+    let screen_pos = uv * uniforms.resolution;
+
+    // Calculate distance from mouse position
+    let dist = length(screen_pos - uniforms.mouse_pos);
+
+    // Draw a circle with radius 50 pixels
+    let circle_radius = 50.0;
+    let circle_color = vec4f(1.0, 0.0, 0.0, 1.0); // Red
+    let bg_color = vec4f(0.0, 1.0, 0.0, 1.0); // Green
+
+    // Smooth circle edge
+    let edge_smoothness = 2.0;
+    let t = smoothstep(circle_radius + edge_smoothness, circle_radius - edge_smoothness, dist);
+
+    return mix(bg_color, circle_color, t);
+}
+`;
+
+        function createWasmSDLHost(adapter, device, canvas) {
+            let memory = null;
+            let nextHandle = 1;
+            const decoder = new TextDecoder('utf-8');
+            const encoder = new TextEncoder();
+
+            const context = canvas.getContext('webgpu');
+
+            // SDL object storage
+            const devices = new Map();
+            const windows = new Map();
+            const shaders = new Map();
+            const pipelines = new Map();
+            const commandBuffers = new Map();
+            const renderPasses = new Map();
+            const textures = new Map();
+
+            // Mouse state
+            let mouseX = 0;
+            let mouseY = 0;
+
+            // Event queue
+            const eventQueue = [];
+
+            // Error handling
+            let lastError = "";
+
+            function setError(msg) {
+                lastError = msg;
+                console.error('[SDL Error]', msg);
+            }
+
+            function readString(ptr, length) {
+                if (!ptr || length === 0) return '';
+                const bytes = new Uint8Array(memory.buffer, ptr, length);
+                return decoder.decode(bytes);
+            }
+
+            function writeString(ptr, maxLen, str) {
+                const bytes = encoder.encode(str);
+                const len = Math.min(bytes.length, maxLen - 1);
+                const dst = new Uint8Array(memory.buffer, ptr, maxLen);
+                dst.set(bytes.subarray(0, len));
+                dst[len] = 0; // null terminator
+            }
+
+            // Set up event listeners
+            canvas.addEventListener('mousemove', (e) => {
+                const rect = canvas.getBoundingClientRect();
+                mouseX = e.clientX - rect.left;
+                mouseY = e.clientY - rect.top;
+            });
+
+            canvas.addEventListener('keydown', (e) => {
+                eventQueue.push({
+                    type: 'keydown',
+                    key: e.keyCode
+                });
+            });
+
+            window.addEventListener('beforeunload', () => {
+                eventQueue.push({ type: 'quit' });
+            });
+
+            const imports = {
+                init(flags) {
+                    console.log('[SDL] Init with flags:', flags);
+                    return 1; // success
+                },
+
+                quit() {
+                    console.log('[SDL] Quit');
+                },
+
+                create_gpu_device(shader_format, debug) {
+                    console.log('[SDL] CreateGPUDevice, format:', shader_format, 'debug:', debug);
+                    const handle = nextHandle++;
+                    devices.set(handle, device);
+                    return handle;
+                },
+
+                destroy_gpu_device(deviceHandle) {
+                    console.log('[SDL] DestroyGPUDevice:', deviceHandle);
+                    devices.delete(deviceHandle);
+                },
+
+                create_window(title_ptr, title_len, w, h, flags) {
+                    const title = readString(title_ptr, title_len);
+                    console.log('[SDL] CreateWindow:', title, w, 'x', h, 'flags:', flags);
+
+                    canvas.width = w;
+                    canvas.height = h;
+
+                    const handle = nextHandle++;
+                    windows.set(handle, { canvas, width: w, height: h });
+                    return handle;
+                },
+
+                destroy_window(windowHandle) {
+                    console.log('[SDL] DestroyWindow:', windowHandle);
+                    windows.delete(windowHandle);
+                },
+
+                claim_window_for_gpu_device(deviceHandle, windowHandle) {
+                    console.log('[SDL] ClaimWindowForGPUDevice:', deviceHandle, windowHandle);
+
+                    const format = navigator.gpu.getPreferredCanvasFormat();
+                    context.configure({
+                        device,
+                        format,
+                        usage: GPUTextureUsage.RENDER_ATTACHMENT,
+                    });
+
+                    return 1; // success
+                },
+
+                release_window_from_gpu_device(deviceHandle, windowHandle) {
+                    console.log('[SDL] ReleaseWindowFromGPUDevice:', deviceHandle, windowHandle);
+                },
+
+                get_window_size_in_pixels(windowHandle, w_ptr, h_ptr) {
+                    const win = windows.get(windowHandle);
+                    if (win && memory) {
+                        const view = new DataView(memory.buffer);
+                        if (w_ptr) view.setInt32(w_ptr, win.width, true);
+                        if (h_ptr) view.setInt32(h_ptr, win.height, true);
+                    }
+                },
+
+                create_gpu_shader(deviceHandle, info_ptr) {
+                    if (!memory) return 0;
+
+                    const dv = new DataView(memory.buffer);
+                    const code_ptr = dv.getUint32(info_ptr, true);
+                    const code_size = dv.getUint32(info_ptr + 4, true);
+                    const entrypoint_ptr = dv.getUint32(info_ptr + 8, true);
+                    const format = dv.getUint32(info_ptr + 12, true);
+                    const stage = dv.getUint32(info_ptr + 16, true);
+
+                    // For our simple case, we use hardcoded WGSL shaders
+                    const shaderCode = (stage === 1) ? vertexShaderWGSL : fragmentShaderWGSL; // 1 = vertex, 2 = fragment
+
+                    console.log('[SDL] CreateGPUShader, stage:', stage);
+
+                    try {
+                        const shaderModule = device.createShaderModule({ code: shaderCode });
+                        const handle = nextHandle++;
+                        shaders.set(handle, shaderModule);
+                        return handle;
+                    } catch (e) {
+                        setError('Failed to create shader: ' + e.message);
+                        return 0;
+                    }
+                },
+
+                release_gpu_shader(deviceHandle, shaderHandle) {
+                    console.log('[SDL] ReleaseGPUShader:', shaderHandle);
+                    shaders.delete(shaderHandle);
+                },
+
+                get_gpu_swapchain_texture_format(deviceHandle, windowHandle) {
+                    const format = navigator.gpu.getPreferredCanvasFormat();
+                    console.log('[SDL] GetGPUSwapchainTextureFormat:', format);
+
+                    // Map WebGPU format to SDL format enum
+                    const formatMap = {
+                        'bgra8unorm': 0x13, // SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM
+                        'rgba8unorm': 0x0F, // SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM
+                    };
+
+                    return formatMap[format] || 0x13;
+                },
+
+                create_gpu_graphics_pipeline(deviceHandle, info_ptr) {
+                    if (!memory) return 0;
+
+                    const dv = new DataView(memory.buffer);
+
+                    // Read pipeline create info
+                    const targetInfoPtr = dv.getUint32(info_ptr, true);
+                    const primitiveType = dv.getUint32(info_ptr + 4, true);
+                    const vertexShaderHandle = dv.getUint32(info_ptr + 8, true);
+                    const fragmentShaderHandle = dv.getUint32(info_ptr + 12, true);
+
+                    console.log('[SDL] CreateGPUGraphicsPipeline');
+
+                    const vertexShader = shaders.get(vertexShaderHandle);
+                    const fragmentShader = shaders.get(fragmentShaderHandle);
+
+                    if (!vertexShader || !fragmentShader) {
+                        setError('Invalid shader handles');
+                        return 0;
+                    }
+
+                    try {
+                        const pipelineLayout = device.createPipelineLayout({
+                            bindGroupLayouts: [
+                                device.createBindGroupLayout({
+                                    entries: [{
+                                        binding: 0,
+                                        visibility: GPUShaderStage.FRAGMENT,
+                                        buffer: { type: 'uniform' }
+                                    }]
+                                })
+                            ]
+                        });
+
+                        const pipeline = device.createRenderPipeline({
+                            layout: pipelineLayout,
+                            vertex: {
+                                module: vertexShader,
+                                entryPoint: 'main',
+                            },
+                            fragment: {
+                                module: fragmentShader,
+                                entryPoint: 'main',
+                                targets: [{
+                                    format: navigator.gpu.getPreferredCanvasFormat(),
+                                }],
+                            },
+                            primitive: {
+                                topology: 'triangle-list',
+                            },
+                        });
+
+                        const handle = nextHandle++;
+                        pipelines.set(handle, { pipeline, layout: pipelineLayout });
+                        return handle;
+                    } catch (e) {
+                        setError('Failed to create pipeline: ' + e.message);
+                        return 0;
+                    }
+                },
+
+                release_gpu_graphics_pipeline(deviceHandle, pipelineHandle) {
+                    console.log('[SDL] ReleaseGPUGraphicsPipeline:', pipelineHandle);
+                    pipelines.delete(pipelineHandle);
+                },
+
+                acquire_gpu_command_buffer(deviceHandle) {
+                    const encoder = device.createCommandEncoder();
+                    const handle = nextHandle++;
+                    commandBuffers.set(handle, { encoder, uniformBuffer: null, bindGroup: null });
+                    return handle;
+                },
+
+                wait_and_acquire_gpu_swapchain_texture(cmdbufHandle, windowHandle, texture_out_ptr, w_ptr, h_ptr) {
+                    const texture = context.getCurrentTexture();
+                    const textureHandle = nextHandle++;
+                    textures.set(textureHandle, texture);
+
+                    if (memory && texture_out_ptr) {
+                        const dv = new DataView(memory.buffer);
+                        dv.setUint32(texture_out_ptr, textureHandle, true);
+                    }
+
+                    const win = windows.get(windowHandle);
+                    if (win && memory) {
+                        const dv = new DataView(memory.buffer);
+                        if (w_ptr) dv.setUint32(w_ptr, win.width, true);
+                        if (h_ptr) dv.setUint32(h_ptr, win.height, true);
+                    }
+
+                    return 1; // success
+                },
+
+                begin_gpu_render_pass(cmdbufHandle, color_targets_ptr, num_color_targets, depth_stencil_ptr) {
+                    if (!memory) return 0;
+
+                    const cmdbuf = commandBuffers.get(cmdbufHandle);
+                    if (!cmdbuf) return 0;
+
+                    const dv = new DataView(memory.buffer);
+
+                    // Read color target info (assuming single target for now)
+                    const textureHandle = dv.getUint32(color_targets_ptr, true);
+                    const clear_r = dv.getFloat32(color_targets_ptr + 4, true);
+                    const clear_g = dv.getFloat32(color_targets_ptr + 8, true);
+                    const clear_b = dv.getFloat32(color_targets_ptr + 12, true);
+                    const clear_a = dv.getFloat32(color_targets_ptr + 16, true);
+                    const load_op = dv.getUint32(color_targets_ptr + 20, true);
+                    const store_op = dv.getUint32(color_targets_ptr + 24, true);
+
+                    const texture = textures.get(textureHandle);
+                    if (!texture) return 0;
+
+                    const renderPass = cmdbuf.encoder.beginRenderPass({
+                        colorAttachments: [{
+                            view: texture.createView(),
+                            loadOp: load_op === 0 ? 'clear' : 'load',
+                            storeOp: store_op === 1 ? 'store' : 'discard',
+                            clearValue: { r: clear_r, g: clear_g, b: clear_b, a: clear_a },
+                        }],
+                    });
+
+                    const handle = nextHandle++;
+                    renderPasses.set(handle, renderPass);
+                    return handle;
+                },
+
+                end_gpu_render_pass(passHandle) {
+                    const pass = renderPasses.get(passHandle);
+                    if (pass) {
+                        pass.end();
+                        renderPasses.delete(passHandle);
+                    }
+                },
+
+                bind_gpu_graphics_pipeline(passHandle, pipelineHandle) {
+                    const pass = renderPasses.get(passHandle);
+                    const pipelineInfo = pipelines.get(pipelineHandle);
+
+                    if (pass && pipelineInfo) {
+                        pass.setPipeline(pipelineInfo.pipeline);
+                    }
+                },
+
+                push_gpu_fragment_uniform_data(cmdbufHandle, slot, data_ptr, length) {
+                    if (!memory) return;
+
+                    const cmdbuf = commandBuffers.get(cmdbufHandle);
+                    if (!cmdbuf) return;
+
+                    // Read uniform data from WASM memory
+                    const uniformData = new Float32Array(memory.buffer, data_ptr, length / 4);
+
+                    // Create or update uniform buffer
+                    if (!cmdbuf.uniformBuffer) {
+                        cmdbuf.uniformBuffer = device.createBuffer({
+                            size: 16, // vec2 + vec2 = 4 floats
+                            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+                        });
+                    }
+
+                    device.queue.writeBuffer(cmdbuf.uniformBuffer, 0, uniformData);
+
+                    // Create bind group if not exists
+                    if (!cmdbuf.bindGroup) {
+                        // Get the first pipeline to get its layout
+                        const firstPipeline = Array.from(pipelines.values())[0];
+                        if (firstPipeline) {
+                            const bindGroupLayout = firstPipeline.pipeline.getBindGroupLayout(0);
+                            cmdbuf.bindGroup = device.createBindGroup({
+                                layout: bindGroupLayout,
+                                entries: [{
+                                    binding: 0,
+                                    resource: { buffer: cmdbuf.uniformBuffer }
+                                }]
+                            });
+                        }
+                    }
+                },
+
+                draw_gpu_primitives(passHandle, vertexCount, instanceCount, firstVertex, firstInstance) {
+                    const pass = renderPasses.get(passHandle);
+                    const cmdbuf = Array.from(commandBuffers.values()).find(cb => renderPasses.has(passHandle));
+
+                    if (pass) {
+                        // Set bind group before drawing
+                        const cmdbufEntry = Array.from(commandBuffers.values()).find(cb => cb.bindGroup);
+                        if (cmdbufEntry && cmdbufEntry.bindGroup) {
+                            pass.setBindGroup(0, cmdbufEntry.bindGroup);
+                        }
+
+                        pass.draw(vertexCount, instanceCount, firstVertex, firstInstance);
+                    }
+                },
+
+                submit_gpu_command_buffer(cmdbufHandle) {
+                    const cmdbuf = commandBuffers.get(cmdbufHandle);
+                    if (cmdbuf) {
+                        const commandBuffer = cmdbuf.encoder.finish();
+                        device.queue.submit([commandBuffer]);
+                        commandBuffers.delete(cmdbufHandle);
+                    }
+                },
+
+                poll_event(event_ptr) {
+                    if (eventQueue.length === 0) return 0;
+
+                    const event = eventQueue.shift();
+
+                    if (memory && event_ptr) {
+                        const dv = new DataView(memory.buffer);
+
+                        if (event.type === 'quit') {
+                            dv.setUint32(event_ptr, 0x100, true); // SDL_EVENT_QUIT
+                        } else if (event.type === 'keydown') {
+                            dv.setUint32(event_ptr, 0x300, true); // SDL_EVENT_KEY_DOWN
+                            dv.setUint32(event_ptr + 16, event.key, true); // keycode
+                        }
+                    }
+
+                    return 1;
+                },
+
+                get_mouse_state(x_ptr, y_ptr) {
+                    if (memory) {
+                        const dv = new DataView(memory.buffer);
+                        if (x_ptr) dv.setFloat32(x_ptr, mouseX, true);
+                        if (y_ptr) dv.setFloat32(y_ptr, mouseY, true);
+                    }
+                    return 0; // button state
+                },
+
+                get_error(buffer_ptr, buffer_size) {
+                    if (memory && buffer_ptr && buffer_size > 0) {
+                        writeString(buffer_ptr, buffer_size, lastError);
+                    }
+                    return buffer_ptr;
+                },
+
+                log(msg_ptr, msg_len) {
+                    if (memory) {
+                        const msg = readString(msg_ptr, msg_len);
+                        console.log('[SDL Log]', msg);
+                    }
+                },
+            };
+
+            return {
+                imports,
+                setMemory(mem) {
+                    memory = mem;
+                },
+            };
+        }
+
+        async function init() {
+            const canvas = document.getElementById('canvas');
+            canvas.width = 640;
+            canvas.height = 480;
+
+            if (!navigator.gpu) {
+                alert('WebGPU not supported.');
+                return;
+            }
+
+            const adapter = await navigator.gpu.requestAdapter();
+            const device = await adapter.requestDevice();
+
+            device.addEventListener('uncapturederror', (event) => {
+                console.error('[WebGPU] Uncaptured error:', event.error);
+            });
+
+            const sdlHost = createWasmSDLHost(adapter, device, canvas);
+
+            // Load WASM module
+            const wasmResponse = await fetch('mousecircle.wasm?v=' + Date.now());
+            const wasmBytes = await wasmResponse.arrayBuffer();
+
+            const wasmModule = await WebAssembly.instantiate(wasmBytes, {
+                sdl: sdlHost.imports,
+                wasi_snapshot_preview1: {
+                    fd_write: () => 0,
+                    proc_exit: (code) => {
+                        console.log('WASM exited with code:', code);
+                    },
+                },
+            });
+
+            const wasmInstance = wasmModule.instance;
+            const memory = wasmInstance.exports.memory;
+            sdlHost.setMemory(memory);
+
+            // Call main
+            const main = wasmInstance.exports.main || wasmInstance.exports._start;
+            if (main) {
+                try {
+                    main();
+                } catch (e) {
+                    console.error('WASM main threw:', e);
+                }
+            } else {
+                console.error('No main or _start export found');
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>

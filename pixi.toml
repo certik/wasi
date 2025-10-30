@@ -182,6 +182,41 @@ clang \
 
 test_hotel2gltf_wasm = { cmd="wasmtime --dir . hotel2gltf.wasm", depends-on=["build_hotel2gltf_wasm"] }
 
+build_mousecircle_wasm = """
+clang \
+    --target=wasm32-wasi \
+    -Os \
+    -nostdlib \
+    -nostdinc \
+    -fno-builtin \
+    -I base \
+    -I stdlib \
+    -I native \
+    -I . \
+    -Wl,--no-entry \
+    -Wl,--export=main \
+    -Wl,--export=__heap_base \
+    -Wl,--initial-memory=1048576 \
+    -Wl,--allow-undefined \
+    -o mousecircle.wasm \
+    MouseCircle_standalone.c \
+    sdl_wasm.c \
+    base/buddy.c \
+    base/arena.c \
+    base/scratch.c \
+    base/format.c \
+    base/base_string.c \
+    base/numconv.c \
+    base/mem.c \
+    base/io.c \
+    base/base_io.c \
+    base/assert.c \
+    base/exit.c \
+    native/wasi_wasm.c
+"""
+
+test_mousecircle_wasm = { cmd="echo 'WASM build successful: mousecircle.wasm'", depends-on=["build_mousecircle_wasm"] }
+
 [feature.wasm.dependencies]
 clang = ">=20.1.4,<21"
 lld = ">=20.1.4,<21"
@@ -676,6 +711,7 @@ test_hotel2gltf_windows = { cmd="hotel2gltf_windows.exe", depends-on=["build_hot
 
 [tasks]
 serve = { cmd="python3 server.py", depends-on=["test_gm_wasm"] }
+serve2 = { cmd="python3 server.py", depends-on=["test_mousecircle_wasm"] }
 all = { depends-on=["test_wasm", "test_linux"] }
 all_with_macos = { depends-on=["test_wasm", "test_linux", "test_macos"] }
 all_with_windows = { depends-on=["test_wasm", "test_linux", "test_windows"] }
