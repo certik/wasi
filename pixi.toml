@@ -194,7 +194,7 @@ clang \
     -I native \
     -I . \
     -Wl,--no-entry \
-    -Wl,--export=main \
+    -Wl,--export=_start \
     -Wl,--export=__heap_base \
     -Wl,--initial-memory=1048576 \
     -Wl,--allow-undefined \
