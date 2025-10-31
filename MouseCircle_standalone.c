@@ -1385,7 +1385,10 @@ static int init_game(GameApp *app) {
         .code = (const Uint8 *)SceneVertexShaderMSL,
         .code_size = (Uint32)(sizeof(SceneVertexShaderMSL) - 1),
         .entrypoint = "main_vertex",
+        .format = SDL_GPU_SHADERFORMAT_MSL,
+        .stage = SDL_GPU_SHADERSTAGE_VERTEX,
         .num_samplers = 0,
+        .num_uniform_buffers = 1,
         .num_storage_buffers = 0,
         .num_storage_textures = 0,
     };
@@ -1399,6 +1402,7 @@ static int init_game(GameApp *app) {
     shader_info.code = (const Uint8 *)SceneFragmentShaderMSL;
     shader_info.code_size = (Uint32)(sizeof(SceneFragmentShaderMSL) - 1);
     shader_info.entrypoint = "main_fragment";
+    shader_info.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
     SDL_GPUShader *scene_fs = SDL_CreateGPUShader(app->device, &shader_info);
     if (!scene_fs) {
         SDL_Log("Failed to create scene fragment shader: %s", SDL_GetError());
@@ -1409,6 +1413,8 @@ static int init_game(GameApp *app) {
     shader_info.code = (const Uint8 *)OverlayVertexShaderMSL;
     shader_info.code_size = (Uint32)(sizeof(OverlayVertexShaderMSL) - 1);
     shader_info.entrypoint = "overlay_vertex";
+    shader_info.stage = SDL_GPU_SHADERSTAGE_VERTEX;
+    shader_info.num_uniform_buffers = 0;
     SDL_GPUShader *overlay_vs = SDL_CreateGPUShader(app->device, &shader_info);
     if (!overlay_vs) {
         SDL_Log("Failed to create overlay vertex shader: %s", SDL_GetError());
@@ -1420,6 +1426,8 @@ static int init_game(GameApp *app) {
     shader_info.code = (const Uint8 *)OverlayFragmentShaderMSL;
     shader_info.code_size = (Uint32)(sizeof(OverlayFragmentShaderMSL) - 1);
     shader_info.entrypoint = "overlay_fragment";
+    shader_info.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
+    shader_info.num_uniform_buffers = 0;
     SDL_GPUShader *overlay_fs = SDL_CreateGPUShader(app->device, &shader_info);
     if (!overlay_fs) {
         SDL_Log("Failed to create overlay fragment shader: %s", SDL_GetError());
