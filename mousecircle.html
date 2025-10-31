@@ -740,7 +740,7 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
                     // Read the data from WASM memory into our transfer buffer
                     if (memory) {
                         const data = new Uint8Array(memory.buffer, transferBuf.mappedPtr, transferBuf.size);
-                        transferBuf.mappedData = data.slice().buffer; // Copy the data
+                        transferBuf.mappedData = data.slice(); // Copy the data
                         console.log('[SDL] UnmapGPUTransferBuffer, size:', transferBuf.size);
                     }
                 },
@@ -780,8 +780,15 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
                     const destBuffer = buffers.get(destBufferHandle);
 
                     if (transferBuf && destBuffer && transferBuf.mappedData) {
+                        const srcArray = transferBuf.mappedData;
+                        if (size >= 24 && sourceOffset % 4 === 0) {
+                            const floatCount = Math.min(12, size / 4);
+                            const previewFloats = new Float32Array(srcArray.buffer, srcArray.byteOffset + sourceOffset, floatCount);
+                            console.log('[SDL] Upload preview floats:', Array.from(previewFloats));
+                        }
+
                         // Write mapped data directly to GPU buffer
-                        device.queue.writeBuffer(destBuffer, destOffset, transferBuf.mappedData, sourceOffset, size);
+                        device.queue.writeBuffer(destBuffer, destOffset, srcArray, sourceOffset, size);
                         console.log('[SDL] UploadToGPUBuffer SUCCESS');
                     } else {
                         console.error('[SDL] UploadToGPUBuffer FAILED:', {
