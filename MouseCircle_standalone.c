@@ -536,8 +536,6 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         return SDL_APP_FAILURE;
     }
 
-    println(str_lit("Main loop"));
-
     if (Update(app) < 0) {
         SDL_Log("Update failed!");
         return SDL_APP_FAILURE;
