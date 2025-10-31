@@ -18,9 +18,7 @@
 #include <base/mem.h>
 #include <base/mat4.h>
 #include <base/base_math.h>
-#include <base/format.h>
 #include <base/base_string.h>
-#include <base/scratch.h>
 #include <base/io.h>
 
 #include "gm_font_data.h"
@@ -1041,50 +1039,39 @@ static void build_overlay(GameApp *app) {
     const float map_floor_color[4] = {0.1f, 0.1f, 0.15f, 0.8f};
     const float map_player_color[4] = {0.2f, 0.9f, 0.3f, 1.0f};
 
-    Scratch scratch = scratch_begin();
-    string lines[5];
-
-    lines[0] = format(scratch.arena, str_lit("FPS { }  FRAME { }MS"),
-                      (int64_t)(state->fps + 0.5f),
-                      (double)state->avg_frame_time);
-    lines[1] = format(scratch.arena, str_lit("POS X {:.2} Y {:.2} Z {:.2}"),
-                      (double)state->camera_x,
-                      (double)state->camera_y,
-                      (double)state->camera_z);
+    char lines[5][96];
+    SDL_snprintf(lines[0], sizeof(lines[0]), "FPS %d  FRAME %.2fMS",
+                 (int)(state->fps + 0.5f), state->avg_frame_time);
+    SDL_snprintf(lines[1], sizeof(lines[1]), "POS X %.2f Y %.2f Z %.2f",
+                 state->camera_x, state->camera_y, state->camera_z);
     float yaw_deg = state->yaw * 180.0f / (float)PI;
     float pitch_deg = state->pitch * 180.0f / (float)PI;
-    lines[2] = format(scratch.arena, str_lit("DIR {} Y {:.1} P {:.1}"),
-                      str_from_cstr_view((char *)direction_from_yaw(state->yaw)),
-                      (double)yaw_deg,
-                      (double)pitch_deg);
-    lines[3] = format(scratch.arena, str_lit("MODE {} MAP {} HUD {}"),
-                      str_from_cstr_view(state->horizontal_movement ? "WALK" : "FLY"),
-                      str_from_cstr_view(state->map_visible ? "ON" : "OFF"),
-                      str_from_cstr_view(state->hud_visible ? "ON" : "OFF"));
-    lines[4] = format(scratch.arena, str_lit("TOGGLE M/R/H/T/I/B/F"));
+    SDL_snprintf(lines[2], sizeof(lines[2]), "DIR %s Y %.1f P %.1f",
+                 direction_from_yaw(state->yaw), yaw_deg, pitch_deg);
+    SDL_snprintf(lines[3], sizeof(lines[3]), "MODE %s MAP %s HUD %s",
+                 state->horizontal_movement ? "WALK" : "FLY",
+                 state->map_visible ? "ON" : "OFF",
+                 state->hud_visible ? "ON" : "OFF");
+    SDL_snprintf(lines[4], sizeof(lines[4]), "TOGGLE M/R/H/T/I/B/F");
 
     uint32_t offset = 0;
     for (int i = 0; i < 5; i++) {
-        string line = lines[i];
-        for (uint32_t j = 0; j < line.size; j++) {
-            if (line.str[j] >= 'a' && line.str[j] <= 'z') {
-                line.str[j] = (char)(line.str[j] - 32);
+        char *line = lines[i];
+        for (char *p = line; *p; ++p) {
+            if (*p >= 'a' && *p <= 'z') {
+                *p = (char)(*p - 32);
             }
         }
 
-        // Append characters one by one
         float cursor_x = origin_x;
-        for (uint32_t j = 0; j < line.size; j++) {
-            char ch = line.str[j];
+        for (const char *p = line; *p; ++p) {
             offset = append_glyph(app->overlay_cpu_vertices, offset, MAX_OVERLAY_VERTICES,
                                   cursor_x, origin_y + i * line_height,
                                   scale, canvas_w, canvas_h,
-                                  (unsigned char)ch, text_color);
+                                  (unsigned char)*p, text_color);
             cursor_x += (GLYPH_WIDTH + GLYPH_SPACING) * scale;
         }
     }
-
-    scratch_end(scratch);
 
     if (state->map_visible) {
         float map_origin_x;
