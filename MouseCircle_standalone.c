@@ -311,12 +311,8 @@ __attribute__((export_name("mc_init")))
 #endif
 int mc_init()
 {
-    static bool buddy_initialized = false;
-    if (!buddy_initialized) {
-        buddy_init();
-        ensure_heap_initialized();
-        buddy_initialized = true;
-    }
+    buddy_init();
+    ensure_heap_initialized();
 
     // Initialize
     if (Init() < 0)
