@@ -500,6 +500,7 @@ clang \
     base/numconv.c \
     base/assert.c \
     base/exit.c \
+    base/mat4.c \
     native/wasi_macos.c
 """
 

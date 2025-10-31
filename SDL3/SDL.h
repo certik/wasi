@@ -18,6 +18,9 @@ typedef struct SDL_GPUShader SDL_GPUShader;
 typedef struct SDL_GPUCommandBuffer SDL_GPUCommandBuffer;
 typedef struct SDL_GPUTexture SDL_GPUTexture;
 typedef struct SDL_GPURenderPass SDL_GPURenderPass;
+typedef struct SDL_GPUCopyPass SDL_GPUCopyPass;
+typedef struct SDL_GPUBuffer SDL_GPUBuffer;
+typedef struct SDL_GPUTransferBuffer SDL_GPUTransferBuffer;
 
 // Color type
 typedef struct SDL_FColor {
@@ -81,6 +84,28 @@ typedef enum {
     SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
 } SDL_GPUTextureFormat;
 
+typedef enum {
+    SDL_GPU_BUFFERUSAGE_VERTEX = 1 << 0,
+    SDL_GPU_BUFFERUSAGE_INDEX = 1 << 1,
+} SDL_GPUBufferUsageFlags;
+
+typedef enum {
+    SDL_GPU_VERTEXELEMENTFORMAT_FLOAT,
+    SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,
+    SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
+    SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
+} SDL_GPUVertexElementFormat;
+
+typedef enum {
+    SDL_GPU_VERTEXINPUTRATE_VERTEX,
+    SDL_GPU_VERTEXINPUTRATE_INSTANCE,
+} SDL_GPUVertexInputRate;
+
+typedef enum {
+    SDL_GPU_INDEXELEMENTSIZE_16BIT,
+    SDL_GPU_INDEXELEMENTSIZE_32BIT,
+} SDL_GPUIndexElementSize;
+
 // GPU structures
 typedef struct SDL_GPUShaderCreateInfo {
     const Uint8* code;
@@ -103,9 +128,30 @@ typedef struct SDL_GPUGraphicsPipelineTargetInfo {
     SDL_GPUColorTargetDescription* color_target_descriptions;
 } SDL_GPUGraphicsPipelineTargetInfo;
 
+typedef struct SDL_GPUVertexAttribute {
+    Uint32 location;
+    Uint32 buffer_slot;
+    SDL_GPUVertexElementFormat format;
+    Uint32 offset;
+} SDL_GPUVertexAttribute;
+
+typedef struct SDL_GPUVertexBufferDescription {
+    Uint32 slot;
+    Uint32 pitch;
+    SDL_GPUVertexInputRate input_rate;
+} SDL_GPUVertexBufferDescription;
+
+typedef struct SDL_GPUVertexInputState {
+    const SDL_GPUVertexBufferDescription* vertex_buffer_descriptions;
+    Uint32 num_vertex_buffers;
+    const SDL_GPUVertexAttribute* vertex_attributes;
+    Uint32 num_vertex_attributes;
+} SDL_GPUVertexInputState;
+
 typedef struct SDL_GPUGraphicsPipelineCreateInfo {
     SDL_GPUShader* vertex_shader;
     SDL_GPUShader* fragment_shader;
+    SDL_GPUVertexInputState vertex_input_state;
     SDL_GPUGraphicsPipelineTargetInfo target_info;
     SDL_GPUPrimitiveType primitive_type;
 } SDL_GPUGraphicsPipelineCreateInfo;
@@ -116,6 +162,32 @@ typedef struct SDL_GPUColorTargetInfo {
     SDL_GPULoadOp load_op;
     SDL_GPUStoreOp store_op;
 } SDL_GPUColorTargetInfo;
+
+typedef struct SDL_GPUBufferCreateInfo {
+    SDL_GPUBufferUsageFlags usage;
+    Uint32 size;
+} SDL_GPUBufferCreateInfo;
+
+typedef struct SDL_GPUTransferBufferCreateInfo {
+    SDL_GPUBufferUsageFlags usage;
+    Uint32 size;
+} SDL_GPUTransferBufferCreateInfo;
+
+typedef struct SDL_GPUBufferBinding {
+    SDL_GPUBuffer* buffer;
+    Uint32 offset;
+} SDL_GPUBufferBinding;
+
+typedef struct SDL_GPUTransferBufferLocation {
+    SDL_GPUTransferBuffer* transfer_buffer;
+    Uint32 offset;
+} SDL_GPUTransferBufferLocation;
+
+typedef struct SDL_GPUBufferRegion {
+    SDL_GPUBuffer* buffer;
+    Uint32 offset;
+    Uint32 size;
+} SDL_GPUBufferRegion;
 
 // App callbacks
 typedef enum SDL_AppResult {
@@ -154,7 +226,23 @@ SDL_GPURenderPass* SDL_BeginGPURenderPass(SDL_GPUCommandBuffer* cmdbuf, const SD
 void SDL_EndGPURenderPass(SDL_GPURenderPass* pass);
 void SDL_BindGPUGraphicsPipeline(SDL_GPURenderPass* pass, SDL_GPUGraphicsPipeline* pipeline);
 void SDL_PushGPUFragmentUniformData(SDL_GPUCommandBuffer* cmdbuf, Uint32 slot, const void* data, Uint32 length);
+void SDL_PushGPUVertexUniformData(SDL_GPUCommandBuffer* cmdbuf, Uint32 slot, const void* data, Uint32 length);
 void SDL_DrawGPUPrimitives(SDL_GPURenderPass* pass, Uint32 vertexCount, Uint32 instanceCount, Uint32 firstVertex, Uint32 firstInstance);
+void SDL_DrawGPUIndexedPrimitives(SDL_GPURenderPass* pass, Uint32 indexCount, Uint32 instanceCount, Uint32 firstIndex, Sint32 vertexOffset, Uint32 firstInstance);
+
+SDL_GPUBuffer* SDL_CreateGPUBuffer(SDL_GPUDevice* device, const SDL_GPUBufferCreateInfo* info);
+void SDL_ReleaseGPUBuffer(SDL_GPUDevice* device, SDL_GPUBuffer* buffer);
+SDL_GPUTransferBuffer* SDL_CreateGPUTransferBuffer(SDL_GPUDevice* device, const SDL_GPUTransferBufferCreateInfo* info);
+void SDL_ReleaseGPUTransferBuffer(SDL_GPUDevice* device, SDL_GPUTransferBuffer* buffer);
+void* SDL_MapGPUTransferBuffer(SDL_GPUDevice* device, SDL_GPUTransferBuffer* buffer, bool cycle);
+void SDL_UnmapGPUTransferBuffer(SDL_GPUDevice* device, SDL_GPUTransferBuffer* buffer);
+
+SDL_GPUCopyPass* SDL_BeginGPUCopyPass(SDL_GPUCommandBuffer* cmdbuf);
+void SDL_UploadToGPUBuffer(SDL_GPUCopyPass* copy_pass, const SDL_GPUTransferBufferLocation* source, const SDL_GPUBufferRegion* destination, bool cycle);
+void SDL_EndGPUCopyPass(SDL_GPUCopyPass* copy_pass);
+
+void SDL_BindGPUVertexBuffers(SDL_GPURenderPass* pass, Uint32 firstSlot, const SDL_GPUBufferBinding* bindings, Uint32 numBindings);
+void SDL_BindGPUIndexBuffer(SDL_GPURenderPass* pass, const SDL_GPUBufferBinding* binding, SDL_GPUIndexElementSize indexElementSize);
 
 bool SDL_PollEvent(SDL_Event* event);
 Uint32 SDL_GetMouseState(float* x, float* y);

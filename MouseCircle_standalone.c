@@ -1,18 +1,13 @@
 /*
- * Standalone MouseCircle Example for SDL3 GPU
+ * Rotating Cube Example for SDL3 GPU with Metal
  *
- * This example draws a red circle that follows the mouse cursor.
+ * This example renders a rotating 3D cube using vertex buffers.
  *
  * Compile with:
- *   clang MouseCircle_standalone.c -o MouseCircle_standalone \
- *     -I$CONDA_PREFIX/include \
- *     -L$CONDA_PREFIX/lib \
- *     -Wl,-rpath,$CONDA_PREFIX/lib \
- *     -lSDL3 \
- *     -framework Metal -framework CoreGraphics -framework AppKit
+ *   pixi r build_mousecircle_sdl
  *
  * Run with:
- *   ./MouseCircle_standalone
+ *   pixi r test_mousecircle_sdl
  */
 
 #define SDL_MAIN_USE_CALLBACKS 1
@@ -23,31 +18,43 @@
 #include <base/io.h>
 #include <base/buddy.h>
 #include <base/mem.h>
+#include <base/mat4.h>
 
-// Embedded Metal Shaders (compiled MSL)
+// Vertex structure matching our vertex buffer layout
+typedef struct {
+    float position[3];  // x, y, z
+    float color[3];     // r, g, b
+} Vertex;
+
+// Embedded Metal Shaders for 3D cube rendering
 static const char* VertexShaderMSL =
 "#include <metal_stdlib>\n"
 "#include <simd/simd.h>\n"
 "\n"
 "using namespace metal;\n"
 "\n"
-"struct VertexOutput {\n"
-"    float4 position [[position]];\n"
-"    float2 uv [[user(locn0)]];\n"
+"struct VertexInput {\n"
+"    float3 position [[attribute(0)]];\n"
+"    float3 color [[attribute(1)]];\n"
 "};\n"
 "\n"
-"vertex VertexOutput main0(uint vertex_index [[vertex_id]]) {\n"
-"    VertexOutput output;\n"
+"struct VertexOutput {\n"
+"    float4 position [[position]];\n"
+"    float3 color;\n"
+"};\n"
 "\n"
-"    // Full-screen triangle\n"
-"    float x = float(int(vertex_index) - 1);\n"
-"    float y = float(int(vertex_index & 1u) * 2 - 1);\n"
-"    output.position = float4(x, y, 0.0, 1.0);\n"
+"struct Uniforms {\n"
+"    float4x4 mvp;\n"
+"};\n"
 "\n"
-"    // Convert to UV coordinates (0,0 to 1,1)\n"
-"    output.uv = float2((x + 1.0) * 0.5, (1.0 - y) * 0.5);\n"
-"\n"
-"    return output;\n"
+"vertex VertexOutput main0(\n"
+"    VertexInput in [[stage_in]],\n"
+"    constant Uniforms& uniforms [[buffer(0)]]\n"
+") {\n"
+"    VertexOutput out;\n"
+"    out.position = uniforms.mvp * float4(in.position, 1.0);\n"
+"    out.color = in.color;\n"
+"    return out;\n"
 "}\n";
 
 static const char* FragmentShaderMSL =
@@ -56,63 +63,74 @@ static const char* FragmentShaderMSL =
 "\n"
 "using namespace metal;\n"
 "\n"
-"struct Uniforms {\n"
-"    float2 mouse_pos;\n"
-"    float2 resolution;\n"
-"};\n"
-"\n"
 "struct VertexOutput {\n"
 "    float4 position [[position]];\n"
-"    float2 uv [[user(locn0)]];\n"
+"    float3 color;\n"
 "};\n"
 "\n"
-"fragment float4 main0(\n"
-"    VertexOutput input [[stage_in]],\n"
-"    constant Uniforms& uniforms [[buffer(0)]]\n"
-") {\n"
-"    // Convert UV to screen coordinates\n"
-"    float2 screen_pos = input.uv * uniforms.resolution;\n"
-"\n"
-"    // Calculate distance from mouse position\n"
-"    float dist = length(screen_pos - uniforms.mouse_pos);\n"
-"\n"
-"    // Draw a circle with radius 50 pixels\n"
-"    float circle_radius = 50.0;\n"
-"    float4 circle_color = float4(1.0, 0.0, 0.0, 1.0); // Red\n"
-"    float4 bg_color = float4(0.0, 1.0, 0.0, 1.0); // Green\n"
-"\n"
-"    // Smooth circle edge\n"
-"    float edge_smoothness = 2.0;\n"
-"    float t = smoothstep(circle_radius + edge_smoothness, circle_radius - edge_smoothness, dist);\n"
-"\n"
-"    return mix(bg_color, circle_color, t);\n"
+"fragment float4 main0(VertexOutput in [[stage_in]]) {\n"
+"    return float4(in.color, 1.0);\n"
 "}\n";
 
-// Uniform data structure
-typedef struct MouseCircleUniforms
-{
-    float mouse_x;
-    float mouse_y;
-    float resolution_x;
-    float resolution_y;
-} MouseCircleUniforms;
+// Uniform data structure (MVP matrix)
+typedef struct {
+    mat4 mvp;
+} CubeUniforms;
 
-typedef struct MouseCircleApp {
+typedef struct {
     SDL_Window* window;
     SDL_GPUDevice* device;
     SDL_GPUGraphicsPipeline* pipeline;
-    MouseCircleUniforms uniforms;
+    SDL_GPUBuffer* vertex_buffer;
+    SDL_GPUBuffer* index_buffer;
+    SDL_GPUTransferBuffer* vertex_transfer_buffer;
+    SDL_GPUTransferBuffer* index_transfer_buffer;
+    CubeUniforms uniforms;
+    float rotation_angle;
     bool quit_requested;
     int frame_count;
-} MouseCircleApp;
+} CubeApp;
 
-static MouseCircleApp g_App;
+static CubeApp g_App;
 static bool g_buddy_initialized = false;
 
 void ensure_heap_initialized(void);
 
+// Cube geometry: 8 vertices, each with position and color
+static const Vertex cube_vertices[] = {
+    // Front face (red)
+    {{-1.0f, -1.0f,  1.0f}, {1.0f, 0.0f, 0.0f}},  // 0
+    {{ 1.0f, -1.0f,  1.0f}, {1.0f, 0.0f, 0.0f}},  // 1
+    {{ 1.0f,  1.0f,  1.0f}, {1.0f, 0.0f, 0.0f}},  // 2
+    {{-1.0f,  1.0f,  1.0f}, {1.0f, 0.0f, 0.0f}},  // 3
+    // Back face (green)
+    {{-1.0f, -1.0f, -1.0f}, {0.0f, 1.0f, 0.0f}},  // 4
+    {{ 1.0f, -1.0f, -1.0f}, {0.0f, 1.0f, 0.0f}},  // 5
+    {{ 1.0f,  1.0f, -1.0f}, {0.0f, 1.0f, 0.0f}},  // 6
+    {{-1.0f,  1.0f, -1.0f}, {0.0f, 1.0f, 0.0f}},  // 7
+};
+
+// Cube indices: 12 triangles (6 faces * 2 triangles per face)
+static const Uint32 cube_indices[] = {
+    // Front face
+    0, 1, 2,  2, 3, 0,
+    // Right face
+    1, 5, 6,  6, 2, 1,
+    // Back face
+    5, 4, 7,  7, 6, 5,
+    // Left face
+    4, 0, 3,  3, 7, 4,
+    // Top face
+    3, 2, 6,  6, 7, 3,
+    // Bottom face
+    4, 5, 1,  1, 0, 4,
+};
+
+static const Uint32 cube_vertex_count = sizeof(cube_vertices) / sizeof(Vertex);
+static const Uint32 cube_index_count = sizeof(cube_indices) / sizeof(Uint32);
+
 // Initialize SDL, GPU device, window and graphics pipeline
-static int Init(MouseCircleApp* app)
+static int Init(CubeApp* app)
 {
     // Initialize SDL
     if (!SDL_Init(SDL_INIT_VIDEO))
@@ -148,7 +166,7 @@ static int Init(MouseCircleApp* app)
         return -1;
     }
 
-    // Create vertex shader
+    // Create vertex shader (uses vertex attributes and uniform buffer for MVP)
     SDL_GPUShaderCreateInfo vertexShaderInfo = {
         .code = (const Uint8*)VertexShaderMSL,
         .code_size = SDL_strlen(VertexShaderMSL),
@@ -156,7 +174,7 @@ static int Init(MouseCircleApp* app)
         .format = SDL_GPU_SHADERFORMAT_MSL,
         .stage = SDL_GPU_SHADERSTAGE_VERTEX,
         .num_samplers = 0,
-        .num_uniform_buffers = 0,
+        .num_uniform_buffers = 1,  // MVP matrix
         .num_storage_buffers = 0,
         .num_storage_textures = 0
     };
@@ -168,7 +186,7 @@ static int Init(MouseCircleApp* app)
     }
     println(str_lit("Vertex shader created. Handle: {}"), (uint64_t)vertexShader);
 
-    // Create fragment shader
+    // Create fragment shader (no uniforms, just interpolated color)
     SDL_GPUShaderCreateInfo fragmentShaderInfo = {
         .code = (const Uint8*)FragmentShaderMSL,
         .code_size = SDL_strlen(FragmentShaderMSL),
@@ -176,7 +194,7 @@ static int Init(MouseCircleApp* app)
         .format = SDL_GPU_SHADERFORMAT_MSL,
         .stage = SDL_GPU_SHADERSTAGE_FRAGMENT,
         .num_samplers = 0,
-        .num_uniform_buffers = 1,
+        .num_uniform_buffers = 0,
         .num_storage_buffers = 0,
         .num_storage_textures = 0
     };
@@ -188,8 +206,40 @@ static int Init(MouseCircleApp* app)
     }
     println(str_lit("Fragment shader created. Handle: {}"), (uint64_t)fragmentShader);
 
+    // Configure vertex input layout
+    SDL_GPUVertexAttribute vertexAttributes[] = {
+        {
+            .location = 0,
+            .buffer_slot = 0,
+            .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,  // position
+            .offset = 0
+        },
+        {
+            .location = 1,
+            .buffer_slot = 0,
+            .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,  // color
+            .offset = sizeof(float) * 3
+        }
+    };
+
+    SDL_GPUVertexBufferDescription vertexBufferDesc = {
+        .slot = 0,
+        .pitch = sizeof(Vertex),
+        .input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX
+    };
+
+    SDL_GPUVertexInputState vertexInputState = {
+        .vertex_buffer_descriptions = &vertexBufferDesc,
+        .num_vertex_buffers = 1,
+        .vertex_attributes = vertexAttributes,
+        .num_vertex_attributes = 2
+    };
+
     // Create graphics pipeline
     SDL_GPUGraphicsPipelineCreateInfo pipelineCreateInfo = {
+        .vertex_shader = vertexShader,
+        .fragment_shader = fragmentShader,
+        .vertex_input_state = vertexInputState,
         .target_info = {
             .num_color_targets = 1,
             .color_target_descriptions = (SDL_GPUColorTargetDescription[]){{
@@ -197,8 +247,6 @@ static int Init(MouseCircleApp* app)
             }},
         },
         .primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
-        .vertex_shader = vertexShader,
-        .fragment_shader = fragmentShader,
     };
 
     app->pipeline = SDL_CreateGPUGraphicsPipeline(app->device, &pipelineCreateInfo);
@@ -212,39 +260,122 @@ static int Init(MouseCircleApp* app)
     SDL_ReleaseGPUShader(app->device, vertexShader);
     SDL_ReleaseGPUShader(app->device, fragmentShader);
 
-    // Initialize uniform values
-    int width, height;
-    SDL_GetWindowSizeInPixels(app->window, &width, &height);
-    app->uniforms.mouse_x = width / 2.0f;
-    app->uniforms.mouse_y = height / 2.0f;
-    app->uniforms.resolution_x = (float)width;
-    app->uniforms.resolution_y = (float)height;
+    // Create vertex buffer
+    SDL_GPUBufferCreateInfo vertexBufferInfo = {
+        .usage = SDL_GPU_BUFFERUSAGE_VERTEX,
+        .size = sizeof(cube_vertices)
+    };
+    app->vertex_buffer = SDL_CreateGPUBuffer(app->device, &vertexBufferInfo);
+    if (app->vertex_buffer == NULL)
+    {
+        SDL_Log("Failed to create vertex buffer: %s", SDL_GetError());
+        return -1;
+    }
 
-    SDL_Log("Move the mouse to see the circle follow!");
+    // Create index buffer
+    SDL_GPUBufferCreateInfo indexBufferInfo = {
+        .usage = SDL_GPU_BUFFERUSAGE_INDEX,
+        .size = sizeof(cube_indices)
+    };
+    app->index_buffer = SDL_CreateGPUBuffer(app->device, &indexBufferInfo);
+    if (app->index_buffer == NULL)
+    {
+        SDL_Log("Failed to create index buffer: %s", SDL_GetError());
+        return -1;
+    }
+
+    // Create transfer buffers for uploading data
+    SDL_GPUTransferBufferCreateInfo vertexTransferInfo = {
+        .usage = SDL_GPU_BUFFERUSAGE_VERTEX,
+        .size = sizeof(cube_vertices)
+    };
+    app->vertex_transfer_buffer = SDL_CreateGPUTransferBuffer(app->device, &vertexTransferInfo);
+
+    SDL_GPUTransferBufferCreateInfo indexTransferInfo = {
+        .usage = SDL_GPU_BUFFERUSAGE_INDEX,
+        .size = sizeof(cube_indices)
+    };
+    app->index_transfer_buffer = SDL_CreateGPUTransferBuffer(app->device, &indexTransferInfo);
+
+    // Upload vertex data
+    void* vertex_data = SDL_MapGPUTransferBuffer(app->device, app->vertex_transfer_buffer, false);
+    base_memcpy(vertex_data, cube_vertices, sizeof(cube_vertices));
+    SDL_UnmapGPUTransferBuffer(app->device, app->vertex_transfer_buffer);
+
+    // Upload index data
+    void* index_data = SDL_MapGPUTransferBuffer(app->device, app->index_transfer_buffer, false);
+    base_memcpy(index_data, cube_indices, sizeof(cube_indices));
+    SDL_UnmapGPUTransferBuffer(app->device, app->index_transfer_buffer);
+
+    // Submit transfer commands
+    SDL_GPUCommandBuffer* uploadCmd = SDL_AcquireGPUCommandBuffer(app->device);
+    SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(uploadCmd);
+
+    SDL_GPUTransferBufferLocation vertexSource = {
+        .transfer_buffer = app->vertex_transfer_buffer,
+        .offset = 0
+    };
+    SDL_GPUBufferRegion vertexDest = {
+        .buffer = app->vertex_buffer,
+        .offset = 0,
+        .size = sizeof(cube_vertices)
+    };
+    SDL_UploadToGPUBuffer(copyPass, &vertexSource, &vertexDest, false);
+
+    SDL_GPUTransferBufferLocation indexSource = {
+        .transfer_buffer = app->index_transfer_buffer,
+        .offset = 0
+    };
+    SDL_GPUBufferRegion indexDest = {
+        .buffer = app->index_buffer,
+        .offset = 0,
+        .size = sizeof(cube_indices)
+    };
+    SDL_UploadToGPUBuffer(copyPass, &indexSource, &indexDest, false);
+
+    SDL_EndGPUCopyPass(copyPass);
+    SDL_SubmitGPUCommandBuffer(uploadCmd);
+
+    // Initialize rotation angle
+    app->rotation_angle = 0.0f;
+
+    SDL_Log("Rotating cube initialized!");
 
     return 0;
 }
 
 // Update function - called each frame
-static int Update(MouseCircleApp* app)
+static int Update(CubeApp* app)
 {
-    // Update mouse position
-    float mouse_x, mouse_y;
-    SDL_GetMouseState(&mouse_x, &mouse_y);
-    app->uniforms.mouse_x = mouse_x;
-    app->uniforms.mouse_y = mouse_y;
+    // Update rotation angle
+    app->rotation_angle += 0.01f;
 
-    // Update resolution in case window was resized
+    // Get window dimensions for aspect ratio
     int width, height;
     SDL_GetWindowSizeInPixels(app->window, &width, &height);
-    app->uniforms.resolution_x = (float)width;
-    app->uniforms.resolution_y = (float)height;
+    float aspect = (float)width / (float)height;
+
+    // Build MVP matrix
+    // Projection: perspective with 60 degree FOV
+    mat4 projection = mat4_perspective(1.047f, aspect, 0.1f, 100.0f);
+
+    // View: translate back along Z axis
+    mat4 view = mat4_translate(0.0f, 0.0f, -5.0f);
+
+    // Model: rotate around Y and X axes
+    mat4 model = mat4_rotate_y(app->rotation_angle);
+    mat4 modelRotX = mat4_rotate_x(app->rotation_angle * 0.5f);
+    model = mat4_multiply(model, modelRotX);
+
+    // Combine: MVP = projection * view * model
+    mat4 vp = mat4_multiply(projection, view);
+    app->uniforms.mvp = mat4_multiply(vp, model);
 
     return 0;
 }
 
 // Draw function - called each frame
-static int Draw(MouseCircleApp* app)
+static int Draw(CubeApp* app)
 {
     SDL_GPUCommandBuffer* cmdbuf = SDL_AcquireGPUCommandBuffer(app->device);
     if (cmdbuf == NULL)
@@ -264,15 +395,36 @@ static int Draw(MouseCircleApp* app)
     {
         SDL_GPUColorTargetInfo colorTargetInfo = {
             .texture = swapchainTexture,
-            .clear_color = (SDL_FColor){ 0.0f, 0.0f, 1.0f, 1.0f },
+            .clear_color = (SDL_FColor){ 0.1f, 0.1f, 0.15f, 1.0f },  // Dark background
             .load_op = SDL_GPU_LOADOP_CLEAR,
             .store_op = SDL_GPU_STOREOP_STORE
         };
 
         SDL_GPURenderPass* renderPass = SDL_BeginGPURenderPass(cmdbuf, &colorTargetInfo, 1, NULL);
+
+        // Bind pipeline
         SDL_BindGPUGraphicsPipeline(renderPass, app->pipeline);
-        SDL_PushGPUFragmentUniformData(cmdbuf, 0, &app->uniforms, sizeof(MouseCircleUniforms));
-        SDL_DrawGPUPrimitives(renderPass, 3, 1, 0, 0);
+
+        // Push MVP matrix as vertex shader uniform
+        SDL_PushGPUVertexUniformData(cmdbuf, 0, &app->uniforms.mvp, sizeof(mat4));
+
+        // Bind vertex buffer
+        SDL_GPUBufferBinding vertexBinding = {
+            .buffer = app->vertex_buffer,
+            .offset = 0
+        };
+        SDL_BindGPUVertexBuffers(renderPass, 0, &vertexBinding, 1);
+
+        // Bind index buffer
+        SDL_GPUBufferBinding indexBinding = {
+            .buffer = app->index_buffer,
+            .offset = 0
+        };
+        SDL_BindGPUIndexBuffer(renderPass, &indexBinding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
+
+        // Draw the cube
+        SDL_DrawGPUIndexedPrimitives(renderPass, cube_index_count, 1, 0, 0, 0);
+
         SDL_EndGPURenderPass(renderPass);
     }
 
@@ -282,8 +434,33 @@ static int Draw(MouseCircleApp* app)
 }
 
 // Cleanup function
-static void Quit(MouseCircleApp* app)
+static void Quit(CubeApp* app)
 {
+    // Release buffers
+    if (app->vertex_buffer != NULL)
+    {
+        SDL_ReleaseGPUBuffer(app->device, app->vertex_buffer);
+        app->vertex_buffer = NULL;
+    }
+
+    if (app->index_buffer != NULL)
+    {
+        SDL_ReleaseGPUBuffer(app->device, app->index_buffer);
+        app->index_buffer = NULL;
+    }
+
+    if (app->vertex_transfer_buffer != NULL)
+    {
+        SDL_ReleaseGPUTransferBuffer(app->device, app->vertex_transfer_buffer);
+        app->vertex_transfer_buffer = NULL;
+    }
+
+    if (app->index_transfer_buffer != NULL)
+    {
+        SDL_ReleaseGPUTransferBuffer(app->device, app->index_transfer_buffer);
+        app->index_transfer_buffer = NULL;
+    }
+
     if (app->pipeline != NULL)
     {
         SDL_ReleaseGPUGraphicsPipeline(app->device, app->pipeline);
@@ -340,7 +517,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 {
-    MouseCircleApp *app = (MouseCircleApp *)appstate;
+    CubeApp *app = (CubeApp *)appstate;
     if (!app || !event) {
         return SDL_APP_FAILURE;
     }
@@ -358,7 +535,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 
 SDL_AppResult SDL_AppIterate(void *appstate)
 {
-    MouseCircleApp *app = (MouseCircleApp *)appstate;
+    CubeApp *app = (CubeApp *)appstate;
     if (!app) {
         return SDL_APP_FAILURE;
     }
@@ -386,7 +563,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 void SDL_AppQuit(void *appstate, SDL_AppResult result)
 {
     (void)result;
-    MouseCircleApp *app = (MouseCircleApp *)appstate;
+    CubeApp *app = (CubeApp *)appstate;
     if (!app) {
         return;
     }
