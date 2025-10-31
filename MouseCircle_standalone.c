@@ -19,6 +19,7 @@
 #include <base/buddy.h>
 #include <base/mem.h>
 #include <base/mat4.h>
+#include <base/base_math.h>
 
 // Vertex structure matching our vertex buffer layout
 typedef struct {
@@ -454,8 +455,8 @@ static int Update(CubeApp* app)
     app->mouse_delta_y = 0.0f;
 
     // Calculate movement vectors from camera orientation
-    float cos_yaw = __builtin_cosf(app->camera_yaw);
-    float sin_yaw = __builtin_sinf(app->camera_yaw);
+    float cos_yaw = fast_cos(app->camera_yaw);
+    float sin_yaw = fast_sin(app->camera_yaw);
 
     float forward_x = sin_yaw;
     float forward_z = cos_yaw;

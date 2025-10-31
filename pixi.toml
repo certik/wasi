@@ -215,6 +215,8 @@ clang \
     base/base_io.c \
     base/assert.c \
     base/exit.c \
+    base/mat4.c \
+    base/base_math.c \
     native/wasi_wasm.c
 """
 
@@ -501,6 +503,7 @@ clang \
     base/assert.c \
     base/exit.c \
     base/mat4.c \
+    base/base_math.c \
     native/wasi_macos.c
 """
 

@@ -32,7 +32,7 @@ mat4 mat4_perspective(float fov_y, float aspect, float near, float far) {
     mat4 result;
     base_memset(&result, 0, sizeof(mat4));
 
-    float tan_half_fov = 1.0f / __builtin_tanf(fov_y / 2.0f);
+    float tan_half_fov = 1.0f / fast_tan(fov_y / 2.0f);
 
     result.m[0] = tan_half_fov / aspect;
     result.m[5] = tan_half_fov;
@@ -53,8 +53,8 @@ mat4 mat4_translate(float x, float y, float z) {
 
 mat4 mat4_rotate_x(float angle) {
     mat4 result = mat4_identity();
-    float c = __builtin_cosf(angle);
-    float s = __builtin_sinf(angle);
+    float c = fast_cos(angle);
+    float s = fast_sin(angle);
 
     result.m[5] = c;
     result.m[6] = s;
@@ -66,8 +66,8 @@ mat4 mat4_rotate_x(float angle) {
 
 mat4 mat4_rotate_y(float angle) {
     mat4 result = mat4_identity();
-    float c = __builtin_cosf(angle);
-    float s = __builtin_sinf(angle);
+    float c = fast_cos(angle);
+    float s = fast_sin(angle);
 
     result.m[0] = c;
     result.m[2] = -s;
@@ -79,8 +79,8 @@ mat4 mat4_rotate_y(float angle) {
 
 mat4 mat4_rotate_z(float angle) {
     mat4 result = mat4_identity();
-    float c = __builtin_cosf(angle);
-    float s = __builtin_sinf(angle);
+    float c = fast_cos(angle);
+    float s = fast_sin(angle);
 
     result.m[0] = c;
     result.m[1] = s;
@@ -102,10 +102,10 @@ mat4 mat4_look_at_fps(float cam_x, float cam_y, float cam_z, float yaw, float pi
     // Build view matrix for FPS camera
     // View matrix = inverse of camera transform
 
-    float cos_pitch = __builtin_cosf(pitch);
-    float sin_pitch = __builtin_sinf(pitch);
-    float cos_yaw = __builtin_cosf(yaw);
-    float sin_yaw = __builtin_sinf(yaw);
+    float cos_pitch = fast_cos(pitch);
+    float sin_pitch = fast_sin(pitch);
+    float cos_yaw = fast_cos(yaw);
+    float sin_yaw = fast_sin(yaw);
 
     // Forward, right, up vectors from yaw and pitch
     float forward_x = cos_pitch * sin_yaw;

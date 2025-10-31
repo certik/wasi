@@ -86,6 +86,54 @@ uint32_t sdl_host_get_error(uint32_t buffer_ptr, uint32_t buffer_size);
 WASM_IMPORT("sdl", "log")
 void sdl_host_log(uint32_t msg_ptr, uint32_t msg_len);
 
+WASM_IMPORT("sdl", "push_gpu_vertex_uniform_data")
+void sdl_host_push_gpu_vertex_uniform_data(uint32_t cmdbuf, uint32_t slot, uint32_t data_ptr, uint32_t length);
+
+WASM_IMPORT("sdl", "draw_gpu_indexed_primitives")
+void sdl_host_draw_gpu_indexed_primitives(uint32_t pass, uint32_t index_count, uint32_t instance_count, uint32_t first_index, int32_t vertex_offset, uint32_t first_instance);
+
+WASM_IMPORT("sdl", "create_gpu_buffer")
+uint32_t sdl_host_create_gpu_buffer(uint32_t device, uint32_t info_ptr);
+
+WASM_IMPORT("sdl", "release_gpu_buffer")
+void sdl_host_release_gpu_buffer(uint32_t device, uint32_t buffer);
+
+WASM_IMPORT("sdl", "create_gpu_transfer_buffer")
+uint32_t sdl_host_create_gpu_transfer_buffer(uint32_t device, uint32_t info_ptr);
+
+WASM_IMPORT("sdl", "release_gpu_transfer_buffer")
+void sdl_host_release_gpu_transfer_buffer(uint32_t device, uint32_t transfer_buffer);
+
+WASM_IMPORT("sdl", "map_gpu_transfer_buffer")
+uint32_t sdl_host_map_gpu_transfer_buffer(uint32_t device, uint32_t transfer_buffer, uint32_t cycle);
+
+WASM_IMPORT("sdl", "unmap_gpu_transfer_buffer")
+void sdl_host_unmap_gpu_transfer_buffer(uint32_t device, uint32_t transfer_buffer);
+
+WASM_IMPORT("sdl", "begin_gpu_copy_pass")
+uint32_t sdl_host_begin_gpu_copy_pass(uint32_t cmdbuf);
+
+WASM_IMPORT("sdl", "upload_to_gpu_buffer")
+void sdl_host_upload_to_gpu_buffer(uint32_t copy_pass, uint32_t source_ptr, uint32_t destination_ptr, uint32_t cycle);
+
+WASM_IMPORT("sdl", "end_gpu_copy_pass")
+void sdl_host_end_gpu_copy_pass(uint32_t copy_pass);
+
+WASM_IMPORT("sdl", "bind_gpu_vertex_buffers")
+void sdl_host_bind_gpu_vertex_buffers(uint32_t pass, uint32_t first_slot, uint32_t bindings_ptr, uint32_t num_bindings);
+
+WASM_IMPORT("sdl", "bind_gpu_index_buffer")
+void sdl_host_bind_gpu_index_buffer(uint32_t pass, uint32_t binding_ptr, uint32_t index_element_size);
+
+WASM_IMPORT("sdl", "create_gpu_texture")
+uint32_t sdl_host_create_gpu_texture(uint32_t device, uint32_t info_ptr);
+
+WASM_IMPORT("sdl", "release_gpu_texture")
+void sdl_host_release_gpu_texture(uint32_t device, uint32_t texture);
+
+WASM_IMPORT("sdl", "set_window_relative_mouse_mode")
+uint32_t sdl_host_set_window_relative_mouse_mode(uint32_t window, uint32_t enabled);
+
 // String utilities
 static size_t wasm_strlen(const char* str) {
     size_t len = 0;
@@ -201,7 +249,7 @@ bool SDL_WaitAndAcquireGPUSwapchainTexture(SDL_GPUCommandBuffer* cmdbuf, SDL_Win
     ) != 0;
 }
 
-SDL_GPURenderPass* SDL_BeginGPURenderPass(SDL_GPUCommandBuffer* cmdbuf, const SDL_GPUColorTargetInfo* colorTargets, Uint32 numColorTargets, void* depthStencilTarget) {
+SDL_GPURenderPass* SDL_BeginGPURenderPass(SDL_GPUCommandBuffer* cmdbuf, const SDL_GPUColorTargetInfo* colorTargets, Uint32 numColorTargets, const SDL_GPUDepthStencilTargetInfo* depthStencilTarget) {
     uint32_t handle = sdl_host_begin_gpu_render_pass(
         (uint32_t)(uintptr_t)cmdbuf,
         (uint32_t)(uintptr_t)colorTargets,
@@ -341,4 +389,128 @@ int app_quit(void) {
     SDL_AppQuit(wasm_appstate, wasm_last_result);
     wasm_appstate = NULL;
     return (wasm_last_result == SDL_APP_SUCCESS) ? 0 : -1;
+}
+
+// New SDL GPU functions
+void SDL_PushGPUVertexUniformData(SDL_GPUCommandBuffer* cmdbuf, Uint32 slot, const void* data, Uint32 length) {
+    sdl_host_push_gpu_vertex_uniform_data(
+        (uint32_t)(uintptr_t)cmdbuf,
+        slot,
+        (uint32_t)(uintptr_t)data,
+        length
+    );
+}
+
+void SDL_DrawGPUIndexedPrimitives(SDL_GPURenderPass* pass, Uint32 indexCount, Uint32 instanceCount, Uint32 firstIndex, Sint32 vertexOffset, Uint32 firstInstance) {
+    sdl_host_draw_gpu_indexed_primitives(
+        (uint32_t)(uintptr_t)pass,
+        indexCount,
+        instanceCount,
+        firstIndex,
+        vertexOffset,
+        firstInstance
+    );
+}
+
+SDL_GPUBuffer* SDL_CreateGPUBuffer(SDL_GPUDevice* device, const SDL_GPUBufferCreateInfo* info) {
+    uint32_t handle = sdl_host_create_gpu_buffer(
+        (uint32_t)(uintptr_t)device,
+        (uint32_t)(uintptr_t)info
+    );
+    return (SDL_GPUBuffer*)(uintptr_t)handle;
+}
+
+void SDL_ReleaseGPUBuffer(SDL_GPUDevice* device, SDL_GPUBuffer* buffer) {
+    sdl_host_release_gpu_buffer(
+        (uint32_t)(uintptr_t)device,
+        (uint32_t)(uintptr_t)buffer
+    );
+}
+
+SDL_GPUTransferBuffer* SDL_CreateGPUTransferBuffer(SDL_GPUDevice* device, const SDL_GPUTransferBufferCreateInfo* info) {
+    uint32_t handle = sdl_host_create_gpu_transfer_buffer(
+        (uint32_t)(uintptr_t)device,
+        (uint32_t)(uintptr_t)info
+    );
+    return (SDL_GPUTransferBuffer*)(uintptr_t)handle;
+}
+
+void SDL_ReleaseGPUTransferBuffer(SDL_GPUDevice* device, SDL_GPUTransferBuffer* buffer) {
+    sdl_host_release_gpu_transfer_buffer(
+        (uint32_t)(uintptr_t)device,
+        (uint32_t)(uintptr_t)buffer
+    );
+}
+
+void* SDL_MapGPUTransferBuffer(SDL_GPUDevice* device, SDL_GPUTransferBuffer* buffer, bool cycle) {
+    uint32_t ptr = sdl_host_map_gpu_transfer_buffer(
+        (uint32_t)(uintptr_t)device,
+        (uint32_t)(uintptr_t)buffer,
+        cycle ? 1 : 0
+    );
+    return (void*)(uintptr_t)ptr;
+}
+
+void SDL_UnmapGPUTransferBuffer(SDL_GPUDevice* device, SDL_GPUTransferBuffer* buffer) {
+    sdl_host_unmap_gpu_transfer_buffer(
+        (uint32_t)(uintptr_t)device,
+        (uint32_t)(uintptr_t)buffer
+    );
+}
+
+SDL_GPUCopyPass* SDL_BeginGPUCopyPass(SDL_GPUCommandBuffer* cmdbuf) {
+    uint32_t handle = sdl_host_begin_gpu_copy_pass((uint32_t)(uintptr_t)cmdbuf);
+    return (SDL_GPUCopyPass*)(uintptr_t)handle;
+}
+
+void SDL_UploadToGPUBuffer(SDL_GPUCopyPass* copy_pass, const SDL_GPUTransferBufferLocation* source, const SDL_GPUBufferRegion* destination, bool cycle) {
+    sdl_host_upload_to_gpu_buffer(
+        (uint32_t)(uintptr_t)copy_pass,
+        (uint32_t)(uintptr_t)source,
+        (uint32_t)(uintptr_t)destination,
+        cycle ? 1 : 0
+    );
+}
+
+void SDL_EndGPUCopyPass(SDL_GPUCopyPass* copy_pass) {
+    sdl_host_end_gpu_copy_pass((uint32_t)(uintptr_t)copy_pass);
+}
+
+void SDL_BindGPUVertexBuffers(SDL_GPURenderPass* pass, Uint32 firstSlot, const SDL_GPUBufferBinding* bindings, Uint32 numBindings) {
+    sdl_host_bind_gpu_vertex_buffers(
+        (uint32_t)(uintptr_t)pass,
+        firstSlot,
+        (uint32_t)(uintptr_t)bindings,
+        numBindings
+    );
+}
+
+void SDL_BindGPUIndexBuffer(SDL_GPURenderPass* pass, const SDL_GPUBufferBinding* binding, SDL_GPUIndexElementSize indexElementSize) {
+    sdl_host_bind_gpu_index_buffer(
+        (uint32_t)(uintptr_t)pass,
+        (uint32_t)(uintptr_t)binding,
+        (uint32_t)indexElementSize
+    );
+}
+
+SDL_GPUTexture* SDL_CreateGPUTexture(SDL_GPUDevice* device, const SDL_GPUTextureCreateInfo* info) {
+    uint32_t handle = sdl_host_create_gpu_texture(
+        (uint32_t)(uintptr_t)device,
+        (uint32_t)(uintptr_t)info
+    );
+    return (SDL_GPUTexture*)(uintptr_t)handle;
+}
+
+void SDL_ReleaseGPUTexture(SDL_GPUDevice* device, SDL_GPUTexture* texture) {
+    sdl_host_release_gpu_texture(
+        (uint32_t)(uintptr_t)device,
+        (uint32_t)(uintptr_t)texture
+    );
+}
+
+bool SDL_SetWindowRelativeMouseMode(SDL_Window* window, bool enabled) {
+    return sdl_host_set_window_relative_mouse_mode(
+        (uint32_t)(uintptr_t)window,
+        enabled ? 1 : 0
+    ) != 0;
 }

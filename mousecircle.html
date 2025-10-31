@@ -13,53 +13,49 @@
     <script type="module">
         // WGSL Shaders (converted from MSL in MouseCircle_standalone.c)
         const vertexShaderWGSL = `
-struct VertexOutput {
-    @builtin(position) position: vec4f,
-    @location(0) uv: vec2f,
+struct VertexInput {
+    @location(0) position: vec3f,
+    @location(1) color: vec3f,
 };
 
+struct VertexOutput {
+    @builtin(position) position: vec4f,
+    @location(0) color: vec3f,
+    @location(1) world_pos: vec3f,
+};
+
+struct Uniforms {
+    mvp: mat4x4f,
+};
+
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+
 @vertex
-fn main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
+fn main(input: VertexInput) -> VertexOutput {
     var output: VertexOutput;
-
-    // Full-screen triangle
-    let x = f32(i32(vertex_index) - 1);
-    let y = f32(i32(vertex_index & 1u) * 2 - 1);
-    output.position = vec4f(x, y, 0.0, 1.0);
-
-    // Convert to UV coordinates (0,0 to 1,1)
-    output.uv = vec2f((x + 1.0) * 0.5, (1.0 - y) * 0.5);
-
+    output.position = uniforms.mvp * vec4f(input.position, 1.0);
+    output.color = input.color;
+    output.world_pos = input.position;
     return output;
 }
 `;
 
         const fragmentShaderWGSL = `
-struct Uniforms {
-    mouse_pos: vec2f,
-    resolution: vec2f,
+struct VertexOutput {
+    @builtin(position) position: vec4f,
+    @location(0) color: vec3f,
+    @location(1) world_pos: vec3f,
 };
 
-@group(0) @binding(0) var<uniform> uniforms: Uniforms;
-
 @fragment
-fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
-    // Convert UV to screen coordinates
-    let screen_pos = uv * uniforms.resolution;
+fn main(input: VertexOutput) -> @location(0) vec4f {
+    // Small checkerboard pattern based on world position
+    let checker_size = 0.25;
+    let scaled = input.world_pos / checker_size;
+    let check = i32(floor(scaled.x) + floor(scaled.y) + floor(scaled.z));
+    let checker = select(1.0, 0.8, (check & 1) != 0);
 
-    // Calculate distance from mouse position
-    let dist = length(screen_pos - uniforms.mouse_pos);
-
-    // Draw a circle with radius 50 pixels
-    let circle_radius = 50.0;
-    let circle_color = vec4f(1.0, 0.0, 0.0, 1.0); // Red
-    let bg_color = vec4f(0.0, 1.0, 0.0, 1.0); // Green
-
-    // Smooth circle edge
-    let edge_smoothness = 2.0;
-    let t = smoothstep(circle_radius + edge_smoothness, circle_radius - edge_smoothness, dist);
-
-    return mix(bg_color, circle_color, t);
+    return vec4f(input.color * checker, 1.0);
 }
 `;
 
@@ -79,10 +75,13 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
             const commandBuffers = new Map();
             const renderPasses = new Map();
             const textures = new Map();
+            const buffers = new Map();
+            const transferBuffers = new Map();
 
             // Mouse state
             let mouseX = 0;
             let mouseY = 0;
+            let mouseLocked = false;
 
             // Event queue
             const eventQueue = [];
@@ -111,19 +110,62 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
 
             // Set up event listeners
             canvas.addEventListener('mousemove', (e) => {
-                const rect = canvas.getBoundingClientRect();
-                // Scale from CSS pixels to canvas pixels
-                const cssX = e.clientX - rect.left;
-                const cssY = e.clientY - rect.top;
-                mouseX = (cssX / rect.width) * canvas.width;
-                mouseY = (cssY / rect.height) * canvas.height;
+                if (mouseLocked) {
+                    // Relative mouse motion for FPS controls
+                    eventQueue.push({
+                        type: 'mousemotion',
+                        xrel: e.movementX,
+                        yrel: e.movementY
+                    });
+                } else {
+                    // Absolute mouse position
+                    const rect = canvas.getBoundingClientRect();
+                    const cssX = e.clientX - rect.left;
+                    const cssY = e.clientY - rect.top;
+                    mouseX = (cssX / rect.width) * canvas.width;
+                    mouseY = (cssY / rect.height) * canvas.height;
+                }
             });
 
-            canvas.addEventListener('keydown', (e) => {
-                eventQueue.push({
-                    type: 'keydown',
-                    key: e.keyCode
-                });
+            // Map JS key codes to SDL key codes
+            function jsKeyToSDLKey(key) {
+                const keyMap = {
+                    'KeyW': 0x77,       // SDLK_W ('w')
+                    'KeyA': 0x61,       // SDLK_A ('a')
+                    'KeyS': 0x73,       // SDLK_S ('s')
+                    'KeyD': 0x64,       // SDLK_D ('d')
+                    'Space': 0x20,      // SDLK_SPACE
+                    'ShiftLeft': 0xE1,  // SDLK_LSHIFT
+                    'ControlLeft': 0xE0,// SDLK_LCTRL
+                    'Escape': 0x1B,     // SDLK_ESCAPE
+                    'KeyQ': 0x71,       // SDLK_Q ('q')
+                };
+                return keyMap[key] || 0;
+            }
+
+            window.addEventListener('keydown', (e) => {
+                const sdlKey = jsKeyToSDLKey(e.code);
+                if (sdlKey) {
+                    eventQueue.push({
+                        type: 'keydown',
+                        key: sdlKey
+                    });
+                }
+            });
+
+            window.addEventListener('keyup', (e) => {
+                const sdlKey = jsKeyToSDLKey(e.code);
+                if (sdlKey) {
+                    eventQueue.push({
+                        type: 'keyup',
+                        key: sdlKey
+                    });
+                }
+            });
+
+            // Handle pointer lock
+            document.addEventListener('pointerlockchange', () => {
+                mouseLocked = document.pointerLockElement === canvas;
             });
 
             window.addEventListener('beforeunload', () => {
@@ -249,8 +291,10 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
                     // Read pipeline create info
                     const vertexShaderHandle = dv.getUint32(info_ptr + 0, true);
                     const fragmentShaderHandle = dv.getUint32(info_ptr + 4, true);
-                    const targetInfoPtr = dv.getUint32(info_ptr + 8, true);
+                    const vertexInputStatePtr = dv.getUint32(info_ptr + 8, true);
                     const primitiveType = dv.getUint32(info_ptr + 12, true);
+                    const depthStencilStatePtr = dv.getUint32(info_ptr + 20, true);
+                    const targetInfoPtr = dv.getUint32(info_ptr + 32, true);
 
                     console.log('[SDL] CreateGPUGraphicsPipeline');
                     console.log('[SDL]   vertexShaderHandle = ', vertexShaderHandle);
@@ -264,24 +308,91 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
                         return 0;
                     }
 
+                    // Read vertex input state
+                    let vertexBuffers = [];
+                    if (vertexInputStatePtr !== 0) {
+                        const numVertexBuffers = dv.getUint32(vertexInputStatePtr + 4, true);
+                        const numVertexAttributes = dv.getUint32(vertexInputStatePtr + 12, true);
+
+                        if (numVertexBuffers > 0 && numVertexAttributes > 0) {
+                            const vertexBufferDescPtr = dv.getUint32(vertexInputStatePtr + 0, true);
+                            const vertexAttributePtr = dv.getUint32(vertexInputStatePtr + 8, true);
+
+                            // Read first vertex buffer description (simplified for single buffer)
+                            const pitch = dv.getUint32(vertexBufferDescPtr + 4, true);
+
+                            // Read vertex attributes
+                            const attributes = [];
+                            for (let i = 0; i < numVertexAttributes; i++) {
+                                const attrOffset = vertexAttributePtr + i * 16;
+                                const location = dv.getUint32(attrOffset + 0, true);
+                                const format = dv.getUint32(attrOffset + 8, true);
+                                const offset = dv.getUint32(attrOffset + 12, true);
+
+                                // Map SDL format to WebGPU format
+                                const formatMap = {
+                                    5: 'float32x3',  // SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3
+                                };
+
+                                attributes.push({
+                                    shaderLocation: location,
+                                    offset: offset,
+                                    format: formatMap[format] || 'float32x3'
+                                });
+                            }
+
+                            vertexBuffers = [{
+                                arrayStride: pitch,
+                                attributes: attributes
+                            }];
+                        }
+                    }
+
+                    // Read depth stencil state
+                    let depthStencil = undefined;
+                    if (depthStencilStatePtr !== 0) {
+                        const enableDepthTest = dv.getUint8(depthStencilStatePtr + 0);
+                        const enableDepthWrite = dv.getUint8(depthStencilStatePtr + 1);
+                        const compareOp = dv.getUint32(depthStencilStatePtr + 4, true);
+
+                        if (enableDepthTest) {
+                            const compareOpMap = {
+                                2: 'less',  // SDL_GPU_COMPAREOP_LESS
+                            };
+
+                            depthStencil = {
+                                format: 'depth16unorm',
+                                depthWriteEnabled: enableDepthWrite !== 0,
+                                depthCompare: compareOpMap[compareOp] || 'less'
+                            };
+                        }
+                    }
+
+                    // Read target info for depth format
+                    let hasDepthStencil = false;
+                    if (targetInfoPtr !== 0) {
+                        hasDepthStencil = dv.getUint8(targetInfoPtr + 20) !== 0;
+                    }
+
                     try {
                         const pipelineLayout = device.createPipelineLayout({
                             bindGroupLayouts: [
                                 device.createBindGroupLayout({
                                     entries: [{
                                         binding: 0,
-                                        visibility: GPUShaderStage.FRAGMENT,
+                                        visibility: GPUShaderStage.VERTEX,
                                         buffer: { type: 'uniform' }
                                     }]
                                 })
                             ]
                         });
 
-                        const pipeline = device.createRenderPipeline({
+                        const pipelineDesc = {
                             layout: pipelineLayout,
                             vertex: {
                                 module: vertexShader,
                                 entryPoint: 'main',
+                                buffers: vertexBuffers
                             },
                             fragment: {
                                 module: fragmentShader,
@@ -293,13 +404,20 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
                             primitive: {
                                 topology: 'triangle-list',
                             },
-                        });
+                        };
+
+                        if (depthStencil) {
+                            pipelineDesc.depthStencil = depthStencil;
+                        }
+
+                        const pipeline = device.createRenderPipeline(pipelineDesc);
 
                         const handle = nextHandle++;
                         pipelines.set(handle, { pipeline, layout: pipelineLayout });
                         return handle;
                     } catch (e) {
                         setError('Failed to create pipeline: ' + e.message);
+                        console.error(e);
                         return 0;
                     }
                 },
@@ -356,20 +474,38 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
                     const clear_a = dv.getFloat32(color_targets_ptr + 16, true);
                     const load_op = dv.getUint32(color_targets_ptr + 20, true);
                     const store_op = dv.getUint32(color_targets_ptr + 24, true);
-                    console.log('[SDL] BeginGPURenderPass, cmdbuf:', cmdbufHandle, 'texture:', textureHandle,
-                        'clear:', [clear_r, clear_g, clear_b, clear_a], 'load_op:', load_op, 'store_op:', store_op);
 
                     const texture = textures.get(textureHandle);
                     if (!texture) return 0;
 
-                    const renderPass = cmdbuf.encoder.beginRenderPass({
+                    const renderPassDesc = {
                         colorAttachments: [{
                             view: texture.createView(),
                             loadOp: load_op === 0 ? 'clear' : 'load',
-                            storeOp: store_op === 0 ? 'store' : 'discard',  // SDL_GPU_STOREOP_STORE = 0
+                            storeOp: store_op === 0 ? 'store' : 'discard',
                             clearValue: { r: clear_r, g: clear_g, b: clear_b, a: clear_a },
                         }],
-                    });
+                    };
+
+                    // Read depth stencil target if provided
+                    if (depth_stencil_ptr !== 0) {
+                        const depthTextureHandle = dv.getUint32(depth_stencil_ptr, true);
+                        const depth_clear = dv.getFloat32(depth_stencil_ptr + 4, true);
+                        const depth_load_op = dv.getUint32(depth_stencil_ptr + 8, true);
+                        const depth_store_op = dv.getUint32(depth_stencil_ptr + 12, true);
+
+                        const depthTexture = textures.get(depthTextureHandle);
+                        if (depthTexture) {
+                            renderPassDesc.depthStencilAttachment = {
+                                view: depthTexture.createView(),
+                                depthLoadOp: depth_load_op === 0 ? 'clear' : 'load',
+                                depthStoreOp: depth_store_op === 0 ? 'store' : 'discard',
+                                depthClearValue: depth_clear,
+                            };
+                        }
+                    }
+
+                    const renderPass = cmdbuf.encoder.beginRenderPass(renderPassDesc);
 
                     const handle = nextHandle++;
                     renderPasses.set(handle, renderPass);
@@ -401,23 +537,22 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
                     }
                 },
 
-                push_gpu_fragment_uniform_data(cmdbufHandle, slot, data_ptr, length) {
+                push_gpu_vertex_uniform_data(cmdbufHandle, slot, data_ptr, length) {
                     if (!memory) return;
 
                     const cmdbuf = commandBuffers.get(cmdbufHandle);
                     if (!cmdbuf) {
-                        console.error('[SDL] push_gpu_fragment_uniform_data: invalid cmdbuf', cmdbufHandle);
+                        console.error('[SDL] push_gpu_vertex_uniform_data: invalid cmdbuf', cmdbufHandle);
                         return;
                     }
 
-                    // Read uniform data from WASM memory
+                    // Read uniform data from WASM memory (MVP matrix: 16 floats)
                     const uniformData = new Float32Array(memory.buffer, data_ptr, length / 4);
-                    console.log('[SDL] PushGPUFragmentUniformData, slot:', slot, 'data:', Array.from(uniformData));
 
                     // Create or update uniform buffer
                     if (!cmdbuf.uniformBuffer) {
                         cmdbuf.uniformBuffer = device.createBuffer({
-                            size: 16, // vec2 + vec2 = 4 floats
+                            size: 64, // mat4x4 = 16 floats = 64 bytes
                             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
                         });
                     }
@@ -426,7 +561,6 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
 
                     // Create bind group if not exists
                     if (!cmdbuf.bindGroup) {
-                        // Get the first pipeline to get its layout
                         const firstPipeline = Array.from(pipelines.values())[0];
                         if (firstPipeline) {
                             const bindGroupLayout = firstPipeline.pipeline.getBindGroupLayout(0);
@@ -441,26 +575,240 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
                     }
                 },
 
-                draw_gpu_primitives(passHandle, vertexCount, instanceCount, firstVertex, firstInstance) {
-                    console.log('[SDL] DrawGPUPrimitives, pass:', passHandle, 'verts:', vertexCount, 'instances:', instanceCount);
-                    const pass = renderPasses.get(passHandle);
+                create_gpu_buffer(deviceHandle, info_ptr) {
+                    if (!memory) return 0;
+                    const dv = new DataView(memory.buffer);
+                    const usage = dv.getUint32(info_ptr, true);
+                    const size = dv.getUint32(info_ptr + 4, true);
 
-                    if (!pass) {
-                        console.error('[SDL] draw_gpu_primitives: invalid pass handle', passHandle);
-                        return;
+                    const usageMap = {
+                        1: GPUBufferUsage.VERTEX,  // SDL_GPU_BUFFERUSAGE_VERTEX
+                        2: GPUBufferUsage.INDEX,   // SDL_GPU_BUFFERUSAGE_INDEX
+                    };
+
+                    const buffer = device.createBuffer({
+                        size: size,
+                        usage: usageMap[usage] | GPUBufferUsage.COPY_DST
+                    });
+
+                    const handle = nextHandle++;
+                    buffers.set(handle, buffer);
+                    console.log('[SDL] CreateGPUBuffer, handle:', handle, 'size:', size);
+                    return handle;
+                },
+
+                release_gpu_buffer(deviceHandle, bufferHandle) {
+                    console.log('[SDL] ReleaseGPUBuffer:', bufferHandle);
+                    const buffer = buffers.get(bufferHandle);
+                    if (buffer) {
+                        buffer.destroy();
+                        buffers.delete(bufferHandle);
                     }
+                },
+
+                create_gpu_transfer_buffer(deviceHandle, info_ptr) {
+                    if (!memory) return 0;
+                    const dv = new DataView(memory.buffer);
+                    const usage = dv.getUint32(info_ptr, true);
+                    const size = dv.getUint32(info_ptr + 4, true);
+
+                    // Transfer buffers are mapped on CPU
+                    const buffer = device.createBuffer({
+                        size: size,
+                        usage: GPUBufferUsage.MAP_WRITE | GPUBufferUsage.COPY_SRC
+                    });
+
+                    const handle = nextHandle++;
+                    transferBuffers.set(handle, { buffer, mappedData: null, size });
+                    console.log('[SDL] CreateGPUTransferBuffer, handle:', handle, 'size:', size);
+                    return handle;
+                },
+
+                release_gpu_transfer_buffer(deviceHandle, bufferHandle) {
+                    console.log('[SDL] ReleaseGPUTransferBuffer:', bufferHandle);
+                    const transferBuf = transferBuffers.get(bufferHandle);
+                    if (transferBuf) {
+                        transferBuf.buffer.destroy();
+                        transferBuffers.delete(bufferHandle);
+                    }
+                },
+
+                map_gpu_transfer_buffer(deviceHandle, bufferHandle, cycle) {
+                    if (!memory) return 0;
+                    const transferBuf = transferBuffers.get(bufferHandle);
+                    if (!transferBuf) return 0;
+
+                    // Allocate space in WASM memory by growing if needed
+                    // For simplicity, use a fixed region at the end of heap
+                    const heapBase = 65536; // Start after first 64KB
+                    const ptr = heapBase + bufferHandle * 8192; // Give each buffer 8KB offset
+
+                    // Store the pointer so we can read from it later
+                    transferBuf.mappedPtr = ptr;
+
+                    console.log('[SDL] MapGPUTransferBuffer, handle:', bufferHandle, 'ptr:', ptr);
+                    return ptr;
+                },
+
+                unmap_gpu_transfer_buffer(deviceHandle, bufferHandle) {
+                    const transferBuf = transferBuffers.get(bufferHandle);
+                    if (!transferBuf || !transferBuf.mappedPtr) return;
+
+                    // Read the data from WASM memory into our transfer buffer
+                    if (memory) {
+                        const data = new Uint8Array(memory.buffer, transferBuf.mappedPtr, transferBuf.size);
+                        transferBuf.mappedData = data.slice().buffer; // Copy the data
+                        console.log('[SDL] UnmapGPUTransferBuffer, size:', transferBuf.size);
+                    }
+                },
+
+                begin_gpu_copy_pass(cmdbufHandle) {
+                    const cmdbuf = commandBuffers.get(cmdbufHandle);
+                    if (!cmdbuf) return 0;
+
+                    // WebGPU doesn't have explicit copy passes like SDL GPU
+                    // We'll handle copies directly in upload_to_gpu_buffer
+                    const handle = nextHandle++;
+                    cmdbuf.copyPassHandle = handle;
+                    return handle;
+                },
+
+                upload_to_gpu_buffer(copyPassHandle, source_ptr, dest_ptr, cycle) {
+                    if (!memory) return;
+                    const dv = new DataView(memory.buffer);
+
+                    // Read source (transfer buffer location)
+                    const transferBufferHandle = dv.getUint32(source_ptr, true);
+                    const sourceOffset = dv.getUint32(source_ptr + 4, true);
+
+                    // Read destination (buffer region)
+                    const destBufferHandle = dv.getUint32(dest_ptr, true);
+                    const destOffset = dv.getUint32(dest_ptr + 4, true);
+                    const size = dv.getUint32(dest_ptr + 8, true);
+
+                    const transferBuf = transferBuffers.get(transferBufferHandle);
+                    const destBuffer = buffers.get(destBufferHandle);
+
+                    if (transferBuf && destBuffer && transferBuf.mappedData) {
+                        // Write mapped data directly to GPU buffer
+                        device.queue.writeBuffer(destBuffer, destOffset, transferBuf.mappedData, sourceOffset, size);
+                        console.log('[SDL] UploadToGPUBuffer, size:', size);
+                    }
+                },
+
+                end_gpu_copy_pass(copyPassHandle) {
+                    console.log('[SDL] EndGPUCopyPass, handle:', copyPassHandle);
+                    // Nothing to do for WebGPU
+                },
+
+                bind_gpu_vertex_buffers(passHandle, first_slot, bindings_ptr, num_bindings) {
+                    if (!memory) return;
+                    const dv = new DataView(memory.buffer);
+                    const pass = renderPasses.get(passHandle);
+                    if (!pass) return;
+
+                    for (let i = 0; i < num_bindings; i++) {
+                        const bindingOffset = bindings_ptr + i * 8;
+                        const bufferHandle = dv.getUint32(bindingOffset, true);
+                        const offset = dv.getUint32(bindingOffset + 4, true);
+
+                        const buffer = buffers.get(bufferHandle);
+                        if (buffer) {
+                            pass.setVertexBuffer(first_slot + i, buffer, offset);
+                            console.log('[SDL] BindGPUVertexBuffer, slot:', first_slot + i);
+                        }
+                    }
+                },
+
+                bind_gpu_index_buffer(passHandle, binding_ptr, index_element_size) {
+                    if (!memory) return;
+                    const dv = new DataView(memory.buffer);
+                    const pass = renderPasses.get(passHandle);
+                    if (!pass) return;
+
+                    const bufferHandle = dv.getUint32(binding_ptr, true);
+                    const offset = dv.getUint32(binding_ptr + 4, true);
+
+                    const buffer = buffers.get(bufferHandle);
+                    if (buffer) {
+                        const format = index_element_size === 1 ? 'uint32' : 'uint16';
+                        pass.setIndexBuffer(buffer, format, offset);
+                        console.log('[SDL] BindGPUIndexBuffer, format:', format);
+                    }
+                },
+
+                draw_gpu_indexed_primitives(passHandle, indexCount, instanceCount, firstIndex, vertexOffset, firstInstance) {
+                    console.log('[SDL] DrawGPUIndexedPrimitives, indices:', indexCount);
+                    const pass = renderPasses.get(passHandle);
+                    if (!pass) return;
 
                     // Set bind group before drawing
                     const cmdbufEntry = Array.from(commandBuffers.values()).find(cb => cb.bindGroup);
                     if (cmdbufEntry && cmdbufEntry.bindGroup) {
                         pass.setBindGroup(0, cmdbufEntry.bindGroup);
-                        console.log('[SDL] Set bind group');
+                    }
+
+                    pass.drawIndexed(indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
+                },
+
+                create_gpu_texture(deviceHandle, info_ptr) {
+                    if (!memory) return 0;
+                    const dv = new DataView(memory.buffer);
+                    const usage = dv.getUint32(info_ptr, true);
+                    const format = dv.getUint32(info_ptr + 4, true);
+                    const width = dv.getUint32(info_ptr + 8, true);
+                    const height = dv.getUint32(info_ptr + 12, true);
+
+                    const usageMap = {
+                        4: GPUTextureUsage.RENDER_ATTACHMENT,  // SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET
+                    };
+
+                    const formatMap = {
+                        0x51: 'depth16unorm',  // SDL_GPU_TEXTUREFORMAT_D16_UNORM
+                    };
+
+                    const texture = device.createTexture({
+                        size: { width, height },
+                        format: formatMap[format] || 'depth16unorm',
+                        usage: usageMap[usage] || GPUTextureUsage.RENDER_ATTACHMENT
+                    });
+
+                    const handle = nextHandle++;
+                    textures.set(handle, texture);
+                    console.log('[SDL] CreateGPUTexture, handle:', handle, 'size:', width, 'x', height);
+                    return handle;
+                },
+
+                release_gpu_texture(deviceHandle, textureHandle) {
+                    console.log('[SDL] ReleaseGPUTexture:', textureHandle);
+                    const texture = textures.get(textureHandle);
+                    if (texture) {
+                        texture.destroy();
+                        textures.delete(textureHandle);
+                    }
+                },
+
+                set_window_relative_mouse_mode(windowHandle, enabled) {
+                    console.log('[SDL] SetWindowRelativeMouseMode:', enabled);
+                    if (enabled) {
+                        canvas.requestPointerLock();
                     } else {
-                        console.warn('[SDL] No bind group available');
+                        document.exitPointerLock();
+                    }
+                    return 1;
+                },
+
+                draw_gpu_primitives(passHandle, vertexCount, instanceCount, firstVertex, firstInstance) {
+                    console.log('[SDL] DrawGPUPrimitives, pass:', passHandle, 'verts:', vertexCount);
+                    const pass = renderPasses.get(passHandle);
+                    if (!pass) return;
+
+                    const cmdbufEntry = Array.from(commandBuffers.values()).find(cb => cb.bindGroup);
+                    if (cmdbufEntry && cmdbufEntry.bindGroup) {
+                        pass.setBindGroup(0, cmdbufEntry.bindGroup);
                     }
 
                     pass.draw(vertexCount, instanceCount, firstVertex, firstInstance);
-                    console.log('[SDL] Draw call executed');
                 },
 
                 submit_gpu_command_buffer(cmdbufHandle) {
@@ -488,7 +836,14 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
                             dv.setUint32(event_ptr, 0x100, true); // SDL_EVENT_QUIT
                         } else if (event.type === 'keydown') {
                             dv.setUint32(event_ptr, 0x300, true); // SDL_EVENT_KEY_DOWN
-                            dv.setUint32(event_ptr + 16, event.key, true); // keycode
+                            dv.setUint32(event_ptr + 16, event.key, true); // keycode at offset 16
+                        } else if (event.type === 'keyup') {
+                            dv.setUint32(event_ptr, 0x301, true); // SDL_EVENT_KEY_UP
+                            dv.setUint32(event_ptr + 16, event.key, true); // keycode at offset 16
+                        } else if (event.type === 'mousemotion') {
+                            dv.setUint32(event_ptr, 0x400, true); // SDL_EVENT_MOUSE_MOTION
+                            dv.setFloat32(event_ptr + 16, event.xrel, true); // xrel at offset 16
+                            dv.setFloat32(event_ptr + 20, event.yrel, true); // yrel at offset 20
                         }
                     }
 

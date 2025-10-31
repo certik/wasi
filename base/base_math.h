@@ -22,22 +22,11 @@ static inline float fabsf(float x) {
     return x < 0 ? -x : x;
 }
 
-// Trigonometric functions using compiler builtins
-// For WASM, these are provided as imports in gm.c
-#ifndef __wasm__
-static inline float cosf(float x) {
-    return __builtin_cosf(x);
+static inline double round(double x) {
+    return (x >= 0.0) ? (double)(int64_t)(x + 0.5) : (double)(int64_t)(x - 0.5);
 }
 
-static inline float sinf(float x) {
-    return __builtin_sinf(x);
-}
-
-static inline double cos(double x) {
-    return __builtin_cos(x);
-}
-
-static inline double sin(double x) {
-    return __builtin_sin(x);
-}
-#endif
+// Fast single-precision trigonometric functions
+float fast_sin(float x);
+float fast_cos(float x);
+float fast_tan(float x);
