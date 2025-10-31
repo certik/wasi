@@ -303,10 +303,22 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
                     // Read pipeline create info
                     const vertexShaderHandle = dv.getUint32(info_ptr + 0, true);
                     const fragmentShaderHandle = dv.getUint32(info_ptr + 4, true);
-                    const vertexInputStatePtr = dv.getUint32(info_ptr + 8, true);
-                    const primitiveType = dv.getUint32(info_ptr + 12, true);
-                    const depthStencilStatePtr = dv.getUint32(info_ptr + 20, true);
-                    const targetInfoPtr = dv.getUint32(info_ptr + 32, true);
+
+                    const vertexBufferDescPtr = dv.getUint32(info_ptr + 8, true);
+                    const numVertexBuffers = dv.getUint32(info_ptr + 12, true);
+                    const vertexAttributePtr = dv.getUint32(info_ptr + 16, true);
+                    const numVertexAttributes = dv.getUint32(info_ptr + 20, true);
+
+                    const depthTestEnabled = dv.getUint8(info_ptr + 24) !== 0;
+                    const depthWriteEnabled = dv.getUint8(info_ptr + 25) !== 0;
+                    const depthCompareOp = dv.getUint32(info_ptr + 28, true);
+
+                    const numColorTargets = dv.getUint32(info_ptr + 32, true);
+                    const colorTargetDescPtr = dv.getUint32(info_ptr + 36, true);
+                    const depthStencilFormat = dv.getUint32(info_ptr + 40, true);
+                    const hasDepthStencilTarget = dv.getUint8(info_ptr + 44) !== 0;
+
+                    const primitiveType = dv.getUint32(info_ptr + 48, true);
 
                     console.log('[SDL] CreateGPUGraphicsPipeline');
                     console.log('[SDL]   vertexShaderHandle = ', vertexShaderHandle);
@@ -321,69 +333,75 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
                     }
 
                     // Read vertex input state
-                    let vertexBuffers = [];
-                    if (vertexInputStatePtr !== 0) {
-                        const numVertexBuffers = dv.getUint32(vertexInputStatePtr + 4, true);
-                        const numVertexAttributes = dv.getUint32(vertexInputStatePtr + 12, true);
+                    const formatMap = {
+                        0: 'float32',    // SDL_GPU_VERTEXELEMENTFORMAT_FLOAT
+                        1: 'float32x2',  // SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2
+                        2: 'float32x3',  // SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3
+                        3: 'float32x4',  // SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4
+                    };
 
-                        if (numVertexBuffers > 0 && numVertexAttributes > 0) {
-                            const vertexBufferDescPtr = dv.getUint32(vertexInputStatePtr + 0, true);
-                            const vertexAttributePtr = dv.getUint32(vertexInputStatePtr + 8, true);
+                    const vertexBuffers = [];
+                    if (vertexBufferDescPtr !== 0 && vertexAttributePtr !== 0 &&
+                        numVertexBuffers > 0 && numVertexAttributes > 0) {
+                        for (let bufIndex = 0; bufIndex < numVertexBuffers; bufIndex++) {
+                            const descOffset = vertexBufferDescPtr + bufIndex * 12;
+                            const slot = dv.getUint32(descOffset + 0, true);
+                            const pitch = dv.getUint32(descOffset + 4, true);
+                            const inputRate = dv.getUint32(descOffset + 8, true);
 
-                            // Read first vertex buffer description (simplified for single buffer)
-                            const pitch = dv.getUint32(vertexBufferDescPtr + 4, true);
-
-                            // Read vertex attributes
                             const attributes = [];
-                            for (let i = 0; i < numVertexAttributes; i++) {
-                                const attrOffset = vertexAttributePtr + i * 16;
+                            for (let attrIndex = 0; attrIndex < numVertexAttributes; attrIndex++) {
+                                const attrOffset = vertexAttributePtr + attrIndex * 16;
                                 const location = dv.getUint32(attrOffset + 0, true);
+                                const bufferSlot = dv.getUint32(attrOffset + 4, true);
                                 const format = dv.getUint32(attrOffset + 8, true);
                                 const offset = dv.getUint32(attrOffset + 12, true);
 
-                                // Map SDL format to WebGPU format
-                                const formatMap = {
-                                    5: 'float32x3',  // SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3
-                                };
+                                if (bufferSlot !== slot) {
+                                    continue;
+                                }
+
+                                const webgpuFormat = formatMap[format];
+                                if (!webgpuFormat) {
+                                    console.warn('[SDL] Unsupported vertex format', format);
+                                    continue;
+                                }
 
                                 attributes.push({
                                     shaderLocation: location,
-                                    offset: offset,
-                                    format: formatMap[format] || 'float32x3'
+                                    offset,
+                                    format: webgpuFormat
                                 });
                             }
 
-                            vertexBuffers = [{
-                                arrayStride: pitch,
-                                attributes: attributes
-                            }];
+                            if (attributes.length > 0) {
+                                vertexBuffers.push({
+                                    arrayStride: pitch,
+                                    stepMode: inputRate === 1 ? 'instance' : 'vertex',
+                                    attributes
+                                });
+                            }
                         }
                     }
 
                     // Read depth stencil state
                     let depthStencil = undefined;
-                    if (depthStencilStatePtr !== 0) {
-                        const enableDepthTest = dv.getUint8(depthStencilStatePtr + 0);
-                        const enableDepthWrite = dv.getUint8(depthStencilStatePtr + 1);
-                        const compareOp = dv.getUint32(depthStencilStatePtr + 4, true);
+                    if (hasDepthStencilTarget) {
+                        const compareOpMap = {
+                            0: 'less',
+                            1: 'less-equal',
+                        };
 
-                        if (enableDepthTest) {
-                            const compareOpMap = {
-                                2: 'less',  // SDL_GPU_COMPAREOP_LESS
-                            };
+                        const depthFormatMap = {
+                            1: 'depth16unorm',
+                        };
+                        const depthFormat = depthFormatMap[depthStencilFormat] || 'depth16unorm';
 
-                            depthStencil = {
-                                format: 'depth16unorm',
-                                depthWriteEnabled: enableDepthWrite !== 0,
-                                depthCompare: compareOpMap[compareOp] || 'less'
-                            };
-                        }
-                    }
-
-                    // Read target info for depth format
-                    let hasDepthStencil = false;
-                    if (targetInfoPtr !== 0) {
-                        hasDepthStencil = dv.getUint8(targetInfoPtr + 20) !== 0;
+                        depthStencil = {
+                            format: depthFormat,
+                            depthWriteEnabled: depthWriteEnabled && depthTestEnabled,
+                            depthCompare: depthTestEnabled ? (compareOpMap[depthCompareOp] || 'less') : 'always',
+                        };
                     }
 
                     try {
