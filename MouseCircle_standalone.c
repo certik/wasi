@@ -251,6 +251,8 @@ static int Init(MouseCircleApp* app)
         return -1;
     }
 
+    println(str_lit("Init: after SDL_Init"));
+
     // Create GPU device
     app->device = SDL_CreateGPUDevice(
         SDL_GPU_SHADERFORMAT_MSL,
@@ -263,6 +265,8 @@ static int Init(MouseCircleApp* app)
         return -1;
     }
 
+    println(str_lit("Init: after SDL_CreateGPUDevice"));
+
     // Create window
     app->window = SDL_CreateWindow("MouseCircle", 640, 480, SDL_WINDOW_RESIZABLE);
     if (app->window == NULL)
@@ -271,12 +275,16 @@ static int Init(MouseCircleApp* app)
         return -1;
     }
 
+    println(str_lit("Init: after SDL_CreateWindow"));
+
     // Claim window for GPU
     if (!SDL_ClaimWindowForGPUDevice(app->device, app->window))
     {
         SDL_Log("GPUClaimWindow failed: %s", SDL_GetError());
         return -1;
     }
+
+    println(str_lit("Init: after SDL_ClaimWindowForGPUDevice"));
 
     // Create vertex shader
     SDL_GPUShaderCreateInfo vertexShaderInfo = {
@@ -298,6 +306,8 @@ static int Init(MouseCircleApp* app)
     }
     println(str_lit("Vertex shader created. Handle: {}"), (uint64_t)vertexShader);
 
+    println(str_lit("Init: after SDL_CreateGPUShader vertex"));
+
     // Create fragment shader
     SDL_GPUShaderCreateInfo fragmentShaderInfo = {
         .code = (const Uint8*)FragmentShaderMSL,
@@ -317,6 +327,8 @@ static int Init(MouseCircleApp* app)
         return -1;
     }
     println(str_lit("Fragment shader created. Handle: {}"), (uint64_t)fragmentShader);
+
+    println(str_lit("Init: after SDL_CreateGPUShader fragment"));
 
     // Create graphics pipeline
     SDL_GPUGraphicsPipelineCreateInfo pipelineCreateInfo = {
@@ -338,6 +350,8 @@ static int Init(MouseCircleApp* app)
         return -1;
     }
 
+    println(str_lit("Init: after SDL_CreateGPUGraphicsPipeline"));
+
     // Clean up shader resources
     SDL_ReleaseGPUShader(app->device, vertexShader);
     SDL_ReleaseGPUShader(app->device, fragmentShader);
@@ -357,6 +371,8 @@ static int Init(MouseCircleApp* app)
         SDL_Log("Failed to create vertex buffer: %s", SDL_GetError());
         return -1;
     }
+
+    println(str_lit("Init: after SDL_CreateGPUBuffer"));
 
     app->vertex_count = (Uint32)(sizeof(g_CubeVertices) / sizeof(g_CubeVertices[0]));
     app->rotation = 0.0f;
@@ -379,6 +395,8 @@ static int Update(MouseCircleApp* app, float delta_time)
     float aspect = (height != 0) ? ((float)width / (float)height) : 1.0f;
 
     app->rotation += delta_time;
+
+    println(str_lit("Update: delta {} aspect {}"), (double)delta_time, (double)aspect);
 
     float model_y[16];
     float model_x[16];
@@ -412,6 +430,8 @@ static int Update(MouseCircleApp* app, float delta_time)
     app->uniforms.light_dir[2] = light_dir[2];
     app->uniforms.light_dir[3] = 0.0f;
 
+    println(str_lit("Update: computed uniforms"));
+
     return 0;
 }
 
@@ -424,6 +444,8 @@ static int Draw(MouseCircleApp* app)
         SDL_Log("AcquireGPUCommandBuffer failed: %s", SDL_GetError());
         return -1;
     }
+
+    println(str_lit("Draw: acquired command buffer"));
 
     SDL_GPUTexture* swapchainTexture;
     if (!SDL_WaitAndAcquireGPUSwapchainTexture(cmdbuf, app->window, &swapchainTexture, NULL, NULL))
@@ -447,9 +469,12 @@ static int Draw(MouseCircleApp* app)
         SDL_PushGPUFragmentUniformData(cmdbuf, 0, &app->uniforms, sizeof(CubeUniforms));
         SDL_DrawGPUPrimitives(renderPass, app->vertex_count, 1, 0, 0);
         SDL_EndGPURenderPass(renderPass);
+        println(str_lit("Draw: finished render pass"));
     }
 
     SDL_SubmitGPUCommandBuffer(cmdbuf);
+
+    println(str_lit("Draw: submitted command buffer"));
 
     return 0;
 }
@@ -550,6 +575,8 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     }
     app->previous_counter = now;
 
+    println(str_lit("Iterate: delta {}"), (double)delta_time);
+
     SDL_Event evt;
     while (SDL_PollEvent(&evt)) {
         SDL_AppResult event_result = SDL_AppEvent(app, &evt);
@@ -557,6 +584,8 @@ SDL_AppResult SDL_AppIterate(void *appstate)
             return event_result;
         }
     }
+
+    println(str_lit("Iterate: events processed"));
 
     if (Update(app, delta_time) < 0) {
         SDL_Log("Update failed!");
