@@ -107,18 +107,43 @@ static bool g_buddy_initialized = false;
 
 void ensure_heap_initialized(void);
 
-// Cube geometry: 8 vertices, each with position and color
+// Cube geometry: 24 vertices (4 per face), each with position and color
 static const Vertex cube_vertices[] = {
     // Front face (red)
     {{-1.0f, -1.0f,  1.0f}, {1.0f, 0.0f, 0.0f}},  // 0
     {{ 1.0f, -1.0f,  1.0f}, {1.0f, 0.0f, 0.0f}},  // 1
     {{ 1.0f,  1.0f,  1.0f}, {1.0f, 0.0f, 0.0f}},  // 2
     {{-1.0f,  1.0f,  1.0f}, {1.0f, 0.0f, 0.0f}},  // 3
-    // Back face (green)
-    {{-1.0f, -1.0f, -1.0f}, {0.0f, 1.0f, 0.0f}},  // 4
+
+    // Right face (green)
+    {{ 1.0f, -1.0f,  1.0f}, {0.0f, 1.0f, 0.0f}},  // 4
     {{ 1.0f, -1.0f, -1.0f}, {0.0f, 1.0f, 0.0f}},  // 5
     {{ 1.0f,  1.0f, -1.0f}, {0.0f, 1.0f, 0.0f}},  // 6
-    {{-1.0f,  1.0f, -1.0f}, {0.0f, 1.0f, 0.0f}},  // 7
+    {{ 1.0f,  1.0f,  1.0f}, {0.0f, 1.0f, 0.0f}},  // 7
+
+    // Back face (blue)
+    {{ 1.0f, -1.0f, -1.0f}, {0.0f, 0.0f, 1.0f}},  // 8
+    {{-1.0f, -1.0f, -1.0f}, {0.0f, 0.0f, 1.0f}},  // 9
+    {{-1.0f,  1.0f, -1.0f}, {0.0f, 0.0f, 1.0f}},  // 10
+    {{ 1.0f,  1.0f, -1.0f}, {0.0f, 0.0f, 1.0f}},  // 11
+
+    // Left face (yellow)
+    {{-1.0f, -1.0f, -1.0f}, {1.0f, 1.0f, 0.0f}},  // 12
+    {{-1.0f, -1.0f,  1.0f}, {1.0f, 1.0f, 0.0f}},  // 13
+    {{-1.0f,  1.0f,  1.0f}, {1.0f, 1.0f, 0.0f}},  // 14
+    {{-1.0f,  1.0f, -1.0f}, {1.0f, 1.0f, 0.0f}},  // 15
+
+    // Top face (cyan)
+    {{-1.0f,  1.0f,  1.0f}, {0.0f, 1.0f, 1.0f}},  // 16
+    {{ 1.0f,  1.0f,  1.0f}, {0.0f, 1.0f, 1.0f}},  // 17
+    {{ 1.0f,  1.0f, -1.0f}, {0.0f, 1.0f, 1.0f}},  // 18
+    {{-1.0f,  1.0f, -1.0f}, {0.0f, 1.0f, 1.0f}},  // 19
+
+    // Bottom face (magenta)
+    {{-1.0f, -1.0f, -1.0f}, {1.0f, 0.0f, 1.0f}},  // 20
+    {{ 1.0f, -1.0f, -1.0f}, {1.0f, 0.0f, 1.0f}},  // 21
+    {{ 1.0f, -1.0f,  1.0f}, {1.0f, 0.0f, 1.0f}},  // 22
+    {{-1.0f, -1.0f,  1.0f}, {1.0f, 0.0f, 1.0f}},  // 23
 };
 
 // Cube indices: 12 triangles (6 faces * 2 triangles per face)
@@ -126,15 +151,15 @@ static const Uint32 cube_indices[] = {
     // Front face
     0, 1, 2,  2, 3, 0,
     // Right face
-    1, 5, 6,  6, 2, 1,
+    4, 5, 6,  6, 7, 4,
     // Back face
-    5, 4, 7,  7, 6, 5,
+    8, 9, 10,  10, 11, 8,
     // Left face
-    4, 0, 3,  3, 7, 4,
+    12, 13, 14,  14, 15, 12,
     // Top face
-    3, 2, 6,  6, 7, 3,
+    16, 17, 18,  18, 19, 16,
     // Bottom face
-    4, 5, 1,  1, 0, 4,
+    20, 21, 22,  22, 23, 20,
 };
 
 static const Uint32 cube_vertex_count = sizeof(cube_vertices) / sizeof(Vertex);
