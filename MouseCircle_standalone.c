@@ -18,6 +18,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <base/io.h>
+#include <base/buddy.h>
 #include <stdbool.h>
 
 // Embedded Metal Shaders (compiled MSL)
@@ -299,8 +300,10 @@ static void Quit(void)
 }
 
 // Main function
-int main()
+int mc_init()
 {
+    buddy_init();
+
     // Initialize
     if (Init() < 0)
     {
@@ -308,47 +311,56 @@ int main()
         Quit();
         return 1;
     }
+    return 0;
+}
 
+int mc_frame()
+{
     // Main loop
+    println(str_lit("Main loop"));
     bool quit = false;
-    while (!quit)
+    // Handle events
+    SDL_Event evt;
+    while (SDL_PollEvent(&evt))
     {
-        // Handle events
-        SDL_Event evt;
-        while (SDL_PollEvent(&evt))
+        if (evt.type == SDL_EVENT_QUIT)
         {
-            if (evt.type == SDL_EVENT_QUIT)
+            quit = true;
+        }
+        else if (evt.type == SDL_EVENT_KEY_DOWN)
+        {
+            if (evt.key.key == SDLK_ESCAPE)
             {
                 quit = true;
+            } else if (evt.key.key == SDLK_Q) {
+                quit = true;
             }
-            else if (evt.type == SDL_EVENT_KEY_DOWN)
-            {
-                if (evt.key.key == SDLK_ESCAPE)
-                {
-                    quit = true;
-                } else if (evt.key.key == SDLK_Q) {
-                    quit = true;
-                }
-            }
-        }
-
-        // Update
-        if (Update() < 0)
-        {
-            SDL_Log("Update failed!");
-            break;
-        }
-
-        // Draw
-        if (Draw() < 0)
-        {
-            SDL_Log("Draw failed!");
-            break;
         }
     }
 
+    // Update
+    if (Update() < 0)
+    {
+        SDL_Log("Update failed!");
+        return 2;
+    }
+
+    // Draw
+    if (Draw() < 0)
+    {
+        SDL_Log("Draw failed!");
+        return 2;
+    }
+
+    if (quit) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
+void mc_quit()
+{
     // Cleanup
     Quit();
-
-    return 0;
 }

@@ -251,7 +251,6 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
                     console.log('[SDL] CreateGPUGraphicsPipeline');
                     console.log('[SDL]   vertexShaderHandle = ', vertexShaderHandle);
                     console.log('[SDL]   fragmentShaderHandle = ', fragmentShaderHandle);
-                    throw new Error('XX');
 
                     const vertexShader = shaders.get(vertexShaderHandle);
                     const fragmentShader = shaders.get(fragmentShaderHandle);
@@ -546,16 +545,21 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
             sdlHost.setMemory(memory);
 
             // Call main
-            const main = wasmInstance.exports.main || wasmInstance.exports._start;
-            if (main) {
-                try {
-                    main();
-                } catch (e) {
-                    console.error('WASM main threw:', e);
-                }
-            } else {
-                console.error('No main or _start export found');
+            const mc_init = wasmInstance.exports.mc_init;
+            const mc_frame = wasmInstance.exports.mc_frame;
+            const mc_quit = wasmInstance.exports.mc_quit;
+            console.log('mc_init()');
+            if (mc_init() != 0) {
+                console.error('mc_init() failed');
             }
+
+            let animationFrameId = null;
+            function frame() {
+                mc_frame();
+                animationFrameId = requestAnimationFrame(frame);
+            }
+
+            animationFrameId = requestAnimationFrame(frame);
         }
 
         init();
