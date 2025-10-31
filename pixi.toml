@@ -476,10 +476,26 @@ clang \
     -I$CONDA_PREFIX/include \
     -L$CONDA_PREFIX/lib \
     -Wl,-rpath,$CONDA_PREFIX/lib \
+    -I base \
+    -I native \
+    -I . \
     -lSDL3 \
+    -lSystem \
     -framework Metal -framework CoreGraphics -framework AppKit \
+    -Wno-macro-redefined \
     -o mousecircle_sdl \
-    MouseCircle_standalone.c
+    MouseCircle_standalone.c \
+    base/buddy.c \
+    base/arena.c \
+    base/scratch.c \
+    base/format.c \
+    base/base_string.c \
+    base/numconv.c \
+    base/mem.c \
+    base/io.c \
+    base/base_io.c \
+    base/assert.c \
+    native/wasi_macos.c
 """
 
 test_mousecircle_sdl = { cmd="./mousecircle_sdl", depends-on=["build_mousecircle_sdl"] }
