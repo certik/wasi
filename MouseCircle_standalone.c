@@ -328,7 +328,7 @@ int mc_frame()
     println(str_lit("Main loop"));
     frame_count++;
     bool quit = false;
-    if (frame_count == 10) quit = true;
+    if (frame_count == 2000) quit = true;
     // Handle events
     SDL_Event evt;
     while (SDL_PollEvent(&evt))

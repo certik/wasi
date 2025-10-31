@@ -310,6 +310,7 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
                     const encoder = device.createCommandEncoder();
                     const handle = nextHandle++;
                     commandBuffers.set(handle, { encoder, uniformBuffer: null, bindGroup: null });
+                    console.log('[SDL] AcquireGPUCommandBuffer, handle:', handle);
                     return handle;
                 },
 
@@ -337,12 +338,16 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
                     if (!memory) return 0;
 
                     const cmdbuf = commandBuffers.get(cmdbufHandle);
-                    if (!cmdbuf) return 0;
+                    if (!cmdbuf) {
+                        console.error('[SDL] begin_gpu_render_pass: invalid cmdbuf handle', cmdbufHandle);
+                        return 0;
+                    }
 
                     const dv = new DataView(memory.buffer);
 
                     // Read color target info (assuming single target for now)
                     const textureHandle = dv.getUint32(color_targets_ptr, true);
+                    console.log('[SDL] BeginGPURenderPass, cmdbuf:', cmdbufHandle, 'texture:', textureHandle);
                     const clear_r = dv.getFloat32(color_targets_ptr + 4, true);
                     const clear_g = dv.getFloat32(color_targets_ptr + 8, true);
                     const clear_b = dv.getFloat32(color_targets_ptr + 12, true);
@@ -388,10 +393,14 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
                     if (!memory) return;
 
                     const cmdbuf = commandBuffers.get(cmdbufHandle);
-                    if (!cmdbuf) return;
+                    if (!cmdbuf) {
+                        console.error('[SDL] push_gpu_fragment_uniform_data: invalid cmdbuf', cmdbufHandle);
+                        return;
+                    }
 
                     // Read uniform data from WASM memory
                     const uniformData = new Float32Array(memory.buffer, data_ptr, length / 4);
+                    console.log('[SDL] PushGPUFragmentUniformData, slot:', slot, 'data:', Array.from(uniformData));
 
                     // Create or update uniform buffer
                     if (!cmdbuf.uniformBuffer) {
@@ -421,26 +430,37 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
                 },
 
                 draw_gpu_primitives(passHandle, vertexCount, instanceCount, firstVertex, firstInstance) {
+                    console.log('[SDL] DrawGPUPrimitives, pass:', passHandle, 'verts:', vertexCount, 'instances:', instanceCount);
                     const pass = renderPasses.get(passHandle);
-                    const cmdbuf = Array.from(commandBuffers.values()).find(cb => renderPasses.has(passHandle));
 
-                    if (pass) {
-                        // Set bind group before drawing
-                        const cmdbufEntry = Array.from(commandBuffers.values()).find(cb => cb.bindGroup);
-                        if (cmdbufEntry && cmdbufEntry.bindGroup) {
-                            pass.setBindGroup(0, cmdbufEntry.bindGroup);
-                        }
-
-                        pass.draw(vertexCount, instanceCount, firstVertex, firstInstance);
+                    if (!pass) {
+                        console.error('[SDL] draw_gpu_primitives: invalid pass handle', passHandle);
+                        return;
                     }
+
+                    // Set bind group before drawing
+                    const cmdbufEntry = Array.from(commandBuffers.values()).find(cb => cb.bindGroup);
+                    if (cmdbufEntry && cmdbufEntry.bindGroup) {
+                        pass.setBindGroup(0, cmdbufEntry.bindGroup);
+                        console.log('[SDL] Set bind group');
+                    } else {
+                        console.warn('[SDL] No bind group available');
+                    }
+
+                    pass.draw(vertexCount, instanceCount, firstVertex, firstInstance);
+                    console.log('[SDL] Draw call executed');
                 },
 
                 submit_gpu_command_buffer(cmdbufHandle) {
+                    console.log('[SDL] SubmitGPUCommandBuffer, handle:', cmdbufHandle);
                     const cmdbuf = commandBuffers.get(cmdbufHandle);
                     if (cmdbuf) {
                         const commandBuffer = cmdbuf.encoder.finish();
                         device.queue.submit([commandBuffer]);
                         commandBuffers.delete(cmdbufHandle);
+                        console.log('[SDL] Command buffer submitted');
+                    } else {
+                        console.error('[SDL] submit_gpu_command_buffer: invalid handle', cmdbufHandle);
                     }
                 },
 
