@@ -49,7 +49,7 @@ static const size_t RESERVED_SIZE = 1ULL << 32; // 4GB virtual space
 static int stored_argc = 0;
 static char** stored_argv = NULL;
 
-static void ensure_heap_initialized() {
+void ensure_heap_initialized() {
     if (linux_heap_base == NULL) {
         linux_heap_base = (uint8_t*)mmap(
             NULL,
@@ -82,12 +82,10 @@ void wasi_proc_exit(int status) {
 }
 
 void* wasi_heap_base() {
-    ensure_heap_initialized();
     return linux_heap_base;
 }
 
 size_t wasi_heap_size() {
-    ensure_heap_initialized();
     return committed_pages * WASM_PAGE_SIZE;
 }
 
@@ -98,8 +96,6 @@ static inline uintptr_t align(uintptr_t val, uintptr_t alignment) {
 // Implementation of wasi_heap_grow using mprotect to commit pages.
 void* wasi_heap_grow(size_t num_bytes) {
     size_t num_pages = align(num_bytes, WASM_PAGE_SIZE) / WASM_PAGE_SIZE;
-    ensure_heap_initialized();
-
     if (linux_heap_base == NULL) {
         return NULL;
     }

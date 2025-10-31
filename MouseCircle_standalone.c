@@ -303,6 +303,8 @@ static void Quit(void)
 static int frame_count = 0;
 static const int MAX_FRAMES = 300;
 
+void ensure_heap_initialized();
+
 // Main function
 #ifdef __wasm__
 __attribute__((export_name("mc_init")))
@@ -312,6 +314,7 @@ int mc_init()
     static bool buddy_initialized = false;
     if (!buddy_initialized) {
         buddy_init();
+        ensure_heap_initialized();
         buddy_initialized = true;
     }
 
