@@ -816,19 +816,11 @@ static void update_camera(GameState *state) {
 
     float cos_yaw = fast_cos(state->yaw);
     float sin_yaw = fast_sin(state->yaw);
-    float cos_pitch = fast_cos(state->pitch);
-    float sin_pitch = fast_sin(state->pitch);
 
-    float forward_x, forward_y, forward_z;
-    if (state->horizontal_movement) {
-        forward_x = cos_yaw;
-        forward_y = 0.0f;
-        forward_z = sin_yaw;
-    } else {
-        forward_x = cos_pitch * cos_yaw;
-        forward_y = sin_pitch;
-        forward_z = cos_pitch * sin_yaw;
-    }
+    float forward_x = sin_yaw;
+    float forward_z = cos_yaw;
+    float right_x = cos_yaw;
+    float right_z = -sin_yaw;
 
     float speed_multiplier = state->keys[KEY_SHIFT] ? 2.0f : 1.0f;
     float base_speed = state->move_speed * speed_multiplier;
@@ -839,21 +831,19 @@ static void update_camera(GameState *state) {
 
     if (state->keys['w']) {
         dx += forward_x * base_speed;
-        dy += forward_y * base_speed;
         dz += forward_z * base_speed;
     }
     if (state->keys['s']) {
         dx -= forward_x * base_speed;
-        dy -= forward_y * base_speed;
         dz -= forward_z * base_speed;
     }
     if (state->keys['a']) {
-        dx += sin_yaw * base_speed;
-        dz -= cos_yaw * base_speed;
+        dx -= right_x * base_speed;
+        dz -= right_z * base_speed;
     }
     if (state->keys['d']) {
-        dx -= sin_yaw * base_speed;
-        dz += cos_yaw * base_speed;
+        dx += right_x * base_speed;
+        dz += right_z * base_speed;
     }
 
     if (state->keys[' ']) {
@@ -864,8 +854,8 @@ static void update_camera(GameState *state) {
     }
 
     if (arrow_forward != 0.0f) {
-        dx += cos_yaw * arrow_forward;
-        dz += sin_yaw * arrow_forward;
+        dx += forward_x * arrow_forward;
+        dz += forward_z * arrow_forward;
     }
 
     float candidate_x = state->camera_x + dx;
@@ -983,7 +973,7 @@ static uint32_t append_glyph(OverlayVertex *verts, uint32_t offset, uint32_t max
     for (int row = 0; row < GLYPH_HEIGHT; row++) {
         uint32_t row_bits = glyph[row];
         for (int col = 0; col < GLYPH_WIDTH; col++) {
-            uint32_t mask = 1u << (7 - col);
+            uint32_t mask = 1u << col;
             if (row_bits & mask) {
                 float px0 = origin_x + (float)col * scale;
                 float py0 = origin_y + (float)row * scale;
