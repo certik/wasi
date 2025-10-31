@@ -363,7 +363,7 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
                         colorAttachments: [{
                             view: texture.createView(),
                             loadOp: load_op === 0 ? 'clear' : 'load',
-                            storeOp: store_op === 1 ? 'store' : 'discard',
+                            storeOp: store_op === 0 ? 'store' : 'discard',  // SDL_GPU_STOREOP_STORE = 0
                             clearValue: { r: clear_r, g: clear_g, b: clear_b, a: clear_a },
                         }],
                     });
