@@ -274,3 +274,71 @@ void SDL_Log(const char* fmt, ...) {
 size_t SDL_strlen(const char* str) {
     return wasm_strlen(str);
 }
+
+// Managed main bridging for WASM builds
+static void *wasm_appstate = NULL;
+static SDL_AppResult wasm_last_result = SDL_APP_SUCCESS;
+
+__attribute__((export_name("app_init")))
+int app_init(void) {
+    void *state = NULL;
+    SDL_AppResult result = SDL_AppInit(&state, 0, NULL);
+    wasm_last_result = result;
+
+    if (result == SDL_APP_FAILURE) {
+        wasm_appstate = NULL;
+        return -1;
+    }
+
+    if (result == SDL_APP_SUCCESS) {
+        SDL_AppQuit(state, result);
+        wasm_appstate = NULL;
+        return 1;
+    }
+
+    wasm_appstate = state;
+    return 0;
+}
+
+static int process_pending_events(void) {
+    SDL_Event event;
+    while (SDL_PollEvent(&event)) {
+        SDL_AppResult event_result = SDL_AppEvent(wasm_appstate, &event);
+        if (event_result != SDL_APP_CONTINUE) {
+            wasm_last_result = event_result;
+            return (event_result == SDL_APP_SUCCESS) ? 1 : -1;
+        }
+    }
+    return 0;
+}
+
+__attribute__((export_name("app_iterate")))
+int app_iterate(void) {
+    if (!wasm_appstate) {
+        return -1;
+    }
+
+    int event_status = process_pending_events();
+    if (event_status != 0) {
+        return event_status;
+    }
+
+    SDL_AppResult result = SDL_AppIterate(wasm_appstate);
+    if (result == SDL_APP_CONTINUE) {
+        return 0;
+    }
+
+    wasm_last_result = result;
+    return (result == SDL_APP_SUCCESS) ? 1 : -1;
+}
+
+__attribute__((export_name("app_quit")))
+int app_quit(void) {
+    if (!wasm_appstate) {
+        return (wasm_last_result == SDL_APP_SUCCESS) ? 0 : -1;
+    }
+
+    SDL_AppQuit(wasm_appstate, wasm_last_result);
+    wasm_appstate = NULL;
+    return (wasm_last_result == SDL_APP_SUCCESS) ? 0 : -1;
+}

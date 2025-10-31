@@ -365,13 +365,6 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 
     println(str_lit("Main loop"));
 
-#ifdef __wasi__
-    SDL_Event evt;
-    while (SDL_PollEvent(&evt)) {
-        SDL_AppEvent(app, &evt);
-    }
-#endif
-
     if (Update(app) < 0) {
         SDL_Log("Update failed!");
         return SDL_APP_FAILURE;
@@ -400,55 +393,3 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
 
     Quit(app);
 }
-
-#ifdef __wasi__
-static void *g_wasm_appstate = NULL;
-static SDL_AppResult g_wasm_last_result = SDL_APP_SUCCESS;
-
-__attribute__((export_name("app_init")))
-int app_init(void)
-{
-    void *state = NULL;
-    SDL_AppResult result = SDL_AppInit(&state, 0, NULL);
-    if (result == SDL_APP_FAILURE) {
-        return -1;
-    }
-
-    g_wasm_appstate = state;
-    g_wasm_last_result = result;
-
-    if (result == SDL_APP_SUCCESS) {
-        return 1;
-    }
-
-    return 0;
-}
-
-__attribute__((export_name("app_iterate")))
-int app_iterate(void)
-{
-    if (!g_wasm_appstate) {
-        return -1;
-    }
-
-    SDL_AppResult result = SDL_AppIterate(g_wasm_appstate);
-    if (result == SDL_APP_CONTINUE) {
-        return 0;
-    }
-
-    g_wasm_last_result = result;
-    return (result == SDL_APP_SUCCESS) ? 1 : -1;
-}
-
-__attribute__((export_name("app_quit")))
-int app_quit(void)
-{
-    if (!g_wasm_appstate) {
-        return 0;
-    }
-
-    SDL_AppQuit(g_wasm_appstate, g_wasm_last_result);
-    g_wasm_appstate = NULL;
-    return (g_wasm_last_result == SDL_APP_SUCCESS) ? 0 : -1;
-}
-#endif
