@@ -277,25 +277,25 @@ static void push_south_segment_range(MeshGenContext *ctx, float x0, float x1, fl
     float u_span = x1 - x0;
     uint16_t base = ctx->index_offset;
 
-    push_position(ctx, x0, y0, z + 1.0f);
+    push_position(ctx, x0, y0, z);
     push_uv(ctx, base_u, 0.0f);
     push_normal(ctx, 0.0f, 0.0f, 1.0f);
     push_surface_type(ctx, surface_type);
     push_triangle_id(ctx, (float)ctx->triangle_counter);
 
-    push_position(ctx, x0, y1, z + 1.0f);
+    push_position(ctx, x0, y1, z);
     push_uv(ctx, base_u, height * ctx->inv_wall_height);
     push_normal(ctx, 0.0f, 0.0f, 1.0f);
     push_surface_type(ctx, surface_type);
     push_triangle_id(ctx, (float)(ctx->triangle_counter + 1));
 
-    push_position(ctx, x1, y0, z + 1.0f);
+    push_position(ctx, x1, y0, z);
     push_uv(ctx, base_u + u_span, 0.0f);
     push_normal(ctx, 0.0f, 0.0f, 1.0f);
     push_surface_type(ctx, surface_type);
     push_triangle_id(ctx, 0.0f);
 
-    push_position(ctx, x1, y1, z + 1.0f);
+    push_position(ctx, x1, y1, z);
     push_uv(ctx, base_u + u_span, height * ctx->inv_wall_height);
     push_normal(ctx, 0.0f, 0.0f, 1.0f);
     push_surface_type(ctx, surface_type);
@@ -442,7 +442,7 @@ static void push_north_segment(MeshGenContext *ctx, float x, float z, float y0, 
 }
 
 static void push_south_segment(MeshGenContext *ctx, float x, float z, float y0, float y1) {
-    push_south_segment_range(ctx, x, x + 1.0f, z, y0, y1, 0, 1.0f);
+    push_south_segment_range(ctx, x, x + 1.0f, z + 1.0f, y0, y1, 0, 1.0f);
 }
 
 static void push_west_segment(MeshGenContext *ctx, float x, float z, float y0, float y1) {
