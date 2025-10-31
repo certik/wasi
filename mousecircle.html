@@ -112,8 +112,11 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
             // Set up event listeners
             canvas.addEventListener('mousemove', (e) => {
                 const rect = canvas.getBoundingClientRect();
-                mouseX = e.clientX - rect.left;
-                mouseY = e.clientY - rect.top;
+                // Scale from CSS pixels to canvas pixels
+                const cssX = e.clientX - rect.left;
+                const cssY = e.clientY - rect.top;
+                mouseX = (cssX / rect.width) * canvas.width;
+                mouseY = (cssY / rect.height) * canvas.height;
             });
 
             canvas.addEventListener('keydown', (e) => {
