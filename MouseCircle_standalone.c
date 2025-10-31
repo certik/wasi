@@ -574,10 +574,11 @@ static MeshData* generate_mesh(int *map, int width, int height) {
 
             if (z == height - 1 || !is_solid_cell(map[(z + 1) * width + x])) {
                 if (is_window_ns) {
-                    push_south_segment_range(&ctx, (float)x, (float)(x + 1), (float)z, 0.0f, ctx.window_bottom, 0, 1.0f);
-                    push_south_segment_range(&ctx, (float)x, (float)(x + 1), (float)z, ctx.window_top, WALL_HEIGHT, 0, 1.0f);
-                    push_south_segment_range(&ctx, (float)x, x_inner0, (float)z, ctx.window_bottom, ctx.window_top, 0, 3.0f);
-                    push_south_segment_range(&ctx, x_inner1, (float)(x + 1), (float)z, ctx.window_bottom, ctx.window_top, 0, 3.0f);
+                    float south_z = (float)z + 1.0f;
+                    push_south_segment_range(&ctx, (float)x, (float)(x + 1), south_z, 0.0f, ctx.window_bottom, 0, 1.0f);
+                    push_south_segment_range(&ctx, (float)x, (float)(x + 1), south_z, ctx.window_top, WALL_HEIGHT, 0, 1.0f);
+                    push_south_segment_range(&ctx, (float)x, x_inner0, south_z, ctx.window_bottom, ctx.window_top, 0, 3.0f);
+                    push_south_segment_range(&ctx, x_inner1, (float)(x + 1), south_z, ctx.window_bottom, ctx.window_top, 0, 3.0f);
                 } else {
                     push_south_segment(&ctx, (float)x, (float)z, 0.0f, WALL_HEIGHT);
                 }
