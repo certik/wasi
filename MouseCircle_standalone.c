@@ -105,7 +105,7 @@ typedef struct {
 
     // Input state
     bool key_w, key_a, key_s, key_d;
-    bool key_space, key_shift;
+    bool key_space, key_shift, key_ctrl;
     float mouse_delta_x, mouse_delta_y;
 
     bool quit_requested;
@@ -424,6 +424,7 @@ static int Init(CubeApp* app)
     app->key_d = false;
     app->key_space = false;
     app->key_shift = false;
+    app->key_ctrl = false;
     app->mouse_delta_x = 0.0f;
     app->mouse_delta_y = 0.0f;
 
@@ -482,6 +483,9 @@ static int Update(CubeApp* app)
     }
     if (app->key_space) {
         app->camera_y += move_speed;
+    }
+    if (app->key_ctrl) {
+        app->camera_y -= move_speed;
     }
 
     // Get window dimensions for aspect ratio
@@ -682,6 +686,8 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
             app->key_space = true;
         } else if (event->key.key == SDLK_LSHIFT) {
             app->key_shift = true;
+        } else if (event->key.key == SDLK_LCTRL) {
+            app->key_ctrl = true;
         }
     } else if (event->type == SDL_EVENT_KEY_UP) {
         if (event->key.key == SDLK_W) {
@@ -696,6 +702,8 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
             app->key_space = false;
         } else if (event->key.key == SDLK_LSHIFT) {
             app->key_shift = false;
+        } else if (event->key.key == SDLK_LCTRL) {
+            app->key_ctrl = false;
         }
     } else if (event->type == SDL_EVENT_MOUSE_MOTION) {
         app->mouse_delta_x += event->motion.xrel;

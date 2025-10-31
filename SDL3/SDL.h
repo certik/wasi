@@ -65,6 +65,7 @@ typedef enum {
     SDLK_D = 'd',
     SDLK_Q = 'q',
     SDLK_LSHIFT = 1073742049,
+    SDLK_LCTRL = 1073742048,
 } SDL_Keycode;
 
 // Init flags
