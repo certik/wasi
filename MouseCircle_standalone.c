@@ -1017,7 +1017,16 @@ static uint32_t append_text_line(GameApp *app, OverlayVertex *verts, uint32_t of
 
 static const char *direction_from_yaw(float yaw) {
     static const char *names[] = {"E", "SE", "S", "SW", "W", "NW", "N", "NE"};
-    int index = (int)((yaw / PI * 4.0f) + 8.5f) % 8;
+    float angle = (float)(PI / 2.0f - yaw);
+    float two_pi = (float)(2.0f * PI);
+    while (angle < 0.0f) {
+        angle += two_pi;
+    }
+    while (angle >= two_pi) {
+        angle -= two_pi;
+    }
+    float octant = (angle + (float)(PI / 8.0f)) / (float)(PI / 4.0f);
+    int index = ((int)octant) & 7;
     return names[index];
 }
 
@@ -1083,14 +1092,15 @@ static void build_overlay(GameApp *app) {
             map_origin_x = canvas_w - MAP_SCALE * MAP_WIDTH - PANEL_MARGIN;
         }
         float map_origin_y = PANEL_MARGIN + line_height * 6.0f;
-        for (int z = 0; z < state->map_height; z++) {
-            for (int x = 0; x < state->map_width; x++) {
-                int cell = state->map_data[z * state->map_width + x];
-                const float *color = cell ? map_wall_color : map_floor_color;
-                float px0 = map_origin_x + x * MAP_SCALE;
-                float py0 = map_origin_y + z * MAP_SCALE;
-                float px1 = px0 + MAP_SCALE - 1.0f;
-                float py1 = py0 + MAP_SCALE - 1.0f;
+    for (int z = 0; z < state->map_height; z++) {
+        for (int x = 0; x < state->map_width; x++) {
+            int cell = state->map_data[z * state->map_width + x];
+            const float *color = cell ? map_wall_color : map_floor_color;
+            int draw_x = state->map_width - 1 - x;
+            float px0 = map_origin_x + draw_x * MAP_SCALE;
+            float py0 = map_origin_y + z * MAP_SCALE;
+            float px1 = px0 + MAP_SCALE - 1.0f;
+            float py1 = py0 + MAP_SCALE - 1.0f;
                 float x0 = to_clip_x(px0, canvas_w);
                 float y0 = to_clip_y(py0, canvas_h);
                 float x1 = to_clip_x(px1, canvas_w);
@@ -1104,7 +1114,8 @@ static void build_overlay(GameApp *app) {
         int player_z = (int)state->camera_z;
         if (player_x >= 0 && player_x < state->map_width &&
             player_z >= 0 && player_z < state->map_height) {
-            float px0 = map_origin_x + player_x * MAP_SCALE + MAP_SCALE * 0.2f;
+            int draw_x = state->map_width - 1 - player_x;
+            float px0 = map_origin_x + draw_x * MAP_SCALE + MAP_SCALE * 0.2f;
             float py0 = map_origin_y + player_z * MAP_SCALE + MAP_SCALE * 0.2f;
             float px1 = px0 + MAP_SCALE * 0.6f;
             float py1 = py0 + MAP_SCALE * 0.6f;
