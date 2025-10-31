@@ -347,13 +347,14 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
 
                     // Read color target info (assuming single target for now)
                     const textureHandle = dv.getUint32(color_targets_ptr, true);
-                    console.log('[SDL] BeginGPURenderPass, cmdbuf:', cmdbufHandle, 'texture:', textureHandle);
                     const clear_r = dv.getFloat32(color_targets_ptr + 4, true);
                     const clear_g = dv.getFloat32(color_targets_ptr + 8, true);
                     const clear_b = dv.getFloat32(color_targets_ptr + 12, true);
                     const clear_a = dv.getFloat32(color_targets_ptr + 16, true);
                     const load_op = dv.getUint32(color_targets_ptr + 20, true);
                     const store_op = dv.getUint32(color_targets_ptr + 24, true);
+                    console.log('[SDL] BeginGPURenderPass, cmdbuf:', cmdbufHandle, 'texture:', textureHandle,
+                        'clear:', [clear_r, clear_g, clear_b, clear_a], 'load_op:', load_op, 'store_op:', store_op);
 
                     const texture = textures.get(textureHandle);
                     if (!texture) return 0;
@@ -373,19 +374,27 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
                 },
 
                 end_gpu_render_pass(passHandle) {
+                    console.log('[SDL] EndGPURenderPass, handle:', passHandle);
                     const pass = renderPasses.get(passHandle);
                     if (pass) {
                         pass.end();
                         renderPasses.delete(passHandle);
+                        console.log('[SDL] Render pass ended');
+                    } else {
+                        console.error('[SDL] end_gpu_render_pass: invalid handle', passHandle);
                     }
                 },
 
                 bind_gpu_graphics_pipeline(passHandle, pipelineHandle) {
+                    console.log('[SDL] BindGPUGraphicsPipeline, pass:', passHandle, 'pipeline:', pipelineHandle);
                     const pass = renderPasses.get(passHandle);
                     const pipelineInfo = pipelines.get(pipelineHandle);
 
                     if (pass && pipelineInfo) {
                         pass.setPipeline(pipelineInfo.pipeline);
+                        console.log('[SDL] Pipeline set');
+                    } else {
+                        console.error('[SDL] bind_gpu_graphics_pipeline: invalid handles', { pass: !!pass, pipeline: !!pipelineInfo });
                     }
                 },
 
