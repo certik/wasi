@@ -414,7 +414,7 @@ static int Init(CubeApp* app)
     // Initialize camera position (back from the cube)
     app->camera_x = 0.0f;
     app->camera_y = 0.0f;
-    app->camera_z = 5.0f;
+    app->camera_z = -5.0f;
     app->camera_yaw = 0.0f;
     app->camera_pitch = 0.0f;
 
