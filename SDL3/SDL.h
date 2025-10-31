@@ -34,6 +34,8 @@ typedef struct SDL_FColor {
 typedef enum {
     SDL_EVENT_QUIT = 0x100,
     SDL_EVENT_KEY_DOWN = 0x300,
+    SDL_EVENT_KEY_UP = 0x301,
+    SDL_EVENT_MOUSE_MOTION = 0x400,
 } SDL_EventType;
 
 typedef struct SDL_KeyboardEvent {
@@ -41,15 +43,28 @@ typedef struct SDL_KeyboardEvent {
     Uint32 key;
 } SDL_KeyboardEvent;
 
+typedef struct SDL_MouseMotionEvent {
+    Uint32 type;
+    float xrel;
+    float yrel;
+} SDL_MouseMotionEvent;
+
 typedef union SDL_Event {
     Uint32 type;
     SDL_KeyboardEvent key;
+    SDL_MouseMotionEvent motion;
 } SDL_Event;
 
 // Key codes
 typedef enum {
     SDLK_ESCAPE = 27,
+    SDLK_SPACE = ' ',
+    SDLK_W = 'w',
+    SDLK_A = 'a',
+    SDLK_S = 's',
+    SDLK_D = 'd',
     SDLK_Q = 'q',
+    SDLK_LSHIFT = 1073742049,
 } SDL_Keycode;
 
 // Init flags
@@ -286,6 +301,7 @@ void SDL_BindGPUIndexBuffer(SDL_GPURenderPass* pass, const SDL_GPUBufferBinding*
 
 bool SDL_PollEvent(SDL_Event* event);
 Uint32 SDL_GetMouseState(float* x, float* y);
+bool SDL_SetWindowRelativeMouseMode(SDL_Window* window, bool enabled);
 
 size_t SDL_strlen(const char* str);
 

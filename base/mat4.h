@@ -34,3 +34,6 @@ mat4 mat4_rotate_z(float angle);
 
 // Create scale matrix
 mat4 mat4_scale(float x, float y, float z);
+
+// Create view matrix from camera position and orientation (yaw, pitch in radians)
+mat4 mat4_look_at_fps(float cam_x, float cam_y, float cam_z, float yaw, float pitch);

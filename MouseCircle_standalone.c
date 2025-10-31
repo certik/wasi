@@ -98,7 +98,16 @@ typedef struct {
     int window_width;
     int window_height;
     CubeUniforms uniforms;
-    float rotation_angle;
+
+    // Camera state
+    float camera_x, camera_y, camera_z;
+    float camera_yaw, camera_pitch;
+
+    // Input state
+    bool key_w, key_a, key_s, key_d;
+    bool key_space, key_shift;
+    float mouse_delta_x, mouse_delta_y;
+
     bool quit_requested;
 } CubeApp;
 
@@ -401,10 +410,27 @@ static int Init(CubeApp* app)
     SDL_EndGPUCopyPass(copyPass);
     SDL_SubmitGPUCommandBuffer(uploadCmd);
 
-    // Initialize rotation angle
-    app->rotation_angle = 0.0f;
+    // Initialize camera position (back from the cube)
+    app->camera_x = 0.0f;
+    app->camera_y = 0.0f;
+    app->camera_z = 5.0f;
+    app->camera_yaw = 0.0f;
+    app->camera_pitch = 0.0f;
 
-    SDL_Log("Rotating cube initialized!");
+    // Initialize input state
+    app->key_w = false;
+    app->key_a = false;
+    app->key_s = false;
+    app->key_d = false;
+    app->key_space = false;
+    app->key_shift = false;
+    app->mouse_delta_x = 0.0f;
+    app->mouse_delta_y = 0.0f;
+
+    // Enable relative mouse mode for FPS controls
+    SDL_SetWindowRelativeMouseMode(app->window, true);
+
+    SDL_Log("FPS cube demo initialized!");
 
     return 0;
 }
@@ -412,8 +438,51 @@ static int Init(CubeApp* app)
 // Update function - called each frame
 static int Update(CubeApp* app)
 {
-    // Update rotation angle
-    app->rotation_angle += 0.01f;
+    // Camera rotation from mouse input
+    float mouse_sensitivity = 0.002f;
+    app->camera_yaw += app->mouse_delta_x * mouse_sensitivity;
+    app->camera_pitch -= app->mouse_delta_y * mouse_sensitivity;
+
+    // Clamp pitch to avoid gimbal lock
+    float max_pitch = 1.5f;
+    if (app->camera_pitch > max_pitch) app->camera_pitch = max_pitch;
+    if (app->camera_pitch < -max_pitch) app->camera_pitch = -max_pitch;
+
+    // Reset mouse delta (will be updated by events)
+    app->mouse_delta_x = 0.0f;
+    app->mouse_delta_y = 0.0f;
+
+    // Calculate movement vectors from camera orientation
+    float cos_yaw = __builtin_cosf(app->camera_yaw);
+    float sin_yaw = __builtin_sinf(app->camera_yaw);
+
+    float forward_x = sin_yaw;
+    float forward_z = cos_yaw;
+    float right_x = cos_yaw;
+    float right_z = -sin_yaw;
+
+    // Camera movement from WASD input
+    float move_speed = app->key_shift ? 0.2f : 0.1f;
+
+    if (app->key_w) {
+        app->camera_x += forward_x * move_speed;
+        app->camera_z += forward_z * move_speed;
+    }
+    if (app->key_s) {
+        app->camera_x -= forward_x * move_speed;
+        app->camera_z -= forward_z * move_speed;
+    }
+    if (app->key_a) {
+        app->camera_x -= right_x * move_speed;
+        app->camera_z -= right_z * move_speed;
+    }
+    if (app->key_d) {
+        app->camera_x += right_x * move_speed;
+        app->camera_z += right_z * move_speed;
+    }
+    if (app->key_space) {
+        app->camera_y += move_speed;
+    }
 
     // Get window dimensions for aspect ratio
     int width, height;
@@ -424,13 +493,12 @@ static int Update(CubeApp* app)
     // Projection: perspective with 60 degree FOV
     mat4 projection = mat4_perspective(1.047f, aspect, 0.1f, 100.0f);
 
-    // View: translate back along Z axis
-    mat4 view = mat4_translate(0.0f, 0.0f, -5.0f);
+    // View: from camera position and orientation
+    mat4 view = mat4_look_at_fps(app->camera_x, app->camera_y, app->camera_z,
+                                  app->camera_yaw, app->camera_pitch);
 
-    // Model: rotate around Y and X axes
-    mat4 model = mat4_rotate_y(app->rotation_angle);
-    mat4 modelRotX = mat4_rotate_x(app->rotation_angle * 0.5f);
-    model = mat4_multiply(model, modelRotX);
+    // Model: identity (cube stays at origin)
+    mat4 model = mat4_identity();
 
     // Combine: MVP = projection * view * model
     mat4 vp = mat4_multiply(projection, view);
@@ -602,7 +670,36 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
     } else if (event->type == SDL_EVENT_KEY_DOWN) {
         if (event->key.key == SDLK_ESCAPE || event->key.key == SDLK_Q) {
             app->quit_requested = true;
+        } else if (event->key.key == SDLK_W) {
+            app->key_w = true;
+        } else if (event->key.key == SDLK_A) {
+            app->key_a = true;
+        } else if (event->key.key == SDLK_S) {
+            app->key_s = true;
+        } else if (event->key.key == SDLK_D) {
+            app->key_d = true;
+        } else if (event->key.key == SDLK_SPACE) {
+            app->key_space = true;
+        } else if (event->key.key == SDLK_LSHIFT) {
+            app->key_shift = true;
         }
+    } else if (event->type == SDL_EVENT_KEY_UP) {
+        if (event->key.key == SDLK_W) {
+            app->key_w = false;
+        } else if (event->key.key == SDLK_A) {
+            app->key_a = false;
+        } else if (event->key.key == SDLK_S) {
+            app->key_s = false;
+        } else if (event->key.key == SDLK_D) {
+            app->key_d = false;
+        } else if (event->key.key == SDLK_SPACE) {
+            app->key_space = false;
+        } else if (event->key.key == SDLK_LSHIFT) {
+            app->key_shift = false;
+        }
+    } else if (event->type == SDL_EVENT_MOUSE_MOTION) {
+        app->mouse_delta_x += event->motion.xrel;
+        app->mouse_delta_y += event->motion.yrel;
     }
 
     return SDL_APP_CONTINUE;
@@ -616,12 +713,10 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     }
 
     if (Update(app) < 0) {
-        SDL_Log("Update failed!");
         return SDL_APP_FAILURE;
     }
 
     if (Draw(app) < 0) {
-        SDL_Log("Draw failed!");
         return SDL_APP_FAILURE;
     }
 

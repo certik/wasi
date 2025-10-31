@@ -97,3 +97,52 @@ mat4 mat4_scale(float x, float y, float z) {
     result.m[10] = z;
     return result;
 }
+
+mat4 mat4_look_at_fps(float cam_x, float cam_y, float cam_z, float yaw, float pitch) {
+    // Build view matrix for FPS camera
+    // View matrix = inverse of camera transform
+
+    float cos_pitch = __builtin_cosf(pitch);
+    float sin_pitch = __builtin_sinf(pitch);
+    float cos_yaw = __builtin_cosf(yaw);
+    float sin_yaw = __builtin_sinf(yaw);
+
+    // Forward, right, up vectors from yaw and pitch
+    float forward_x = cos_pitch * sin_yaw;
+    float forward_y = sin_pitch;
+    float forward_z = cos_pitch * cos_yaw;
+
+    float right_x = cos_yaw;
+    float right_z = -sin_yaw;
+
+    float up_x = -sin_pitch * sin_yaw;
+    float up_y = cos_pitch;
+    float up_z = -sin_pitch * cos_yaw;
+
+    // Build view matrix (inverse of camera transform)
+    mat4 result;
+
+    // Rotation part (transpose of rotation matrix)
+    result.m[0] = right_x;
+    result.m[1] = up_x;
+    result.m[2] = -forward_x;
+    result.m[3] = 0.0f;
+
+    result.m[4] = 0.0f;
+    result.m[5] = up_y;
+    result.m[6] = -forward_y;
+    result.m[7] = 0.0f;
+
+    result.m[8] = right_z;
+    result.m[9] = up_z;
+    result.m[10] = -forward_z;
+    result.m[11] = 0.0f;
+
+    // Translation part
+    result.m[12] = -(right_x * cam_x + right_z * cam_z);
+    result.m[13] = -(up_x * cam_x + up_y * cam_y + up_z * cam_z);
+    result.m[14] = -(-forward_x * cam_x - forward_y * cam_y - forward_z * cam_z);
+    result.m[15] = 1.0f;
+
+    return result;
+}
