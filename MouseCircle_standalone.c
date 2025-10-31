@@ -1136,7 +1136,7 @@ static void build_overlay(GameApp *app) {
 // Shader sources (Metal Shading Language)
 // ============================================================================
 
-static const char *SceneVertexShaderMSL =
+static const char SceneVertexShaderMSL[] =
 "#include <metal_stdlib>\n"
 "using namespace metal;\n"
 "struct SceneUniforms {\n"
@@ -1169,7 +1169,7 @@ static const char *SceneVertexShaderMSL =
 "    return out;\n"
 "}\n";
 
-static const char *SceneFragmentShaderMSL =
+static const char SceneFragmentShaderMSL[] =
 "#include <metal_stdlib>\n"
 "using namespace metal;\n"
 "struct SceneUniforms {\n"
@@ -1210,7 +1210,7 @@ static const char *SceneFragmentShaderMSL =
 "    return float4(color, 1.0);\n"
 "}\n";
 
-static const char *OverlayVertexShaderMSL =
+static const char OverlayVertexShaderMSL[] =
 "#include <metal_stdlib>\n"
 "using namespace metal;\n"
 "struct OverlayInput {\n"
@@ -1228,7 +1228,7 @@ static const char *OverlayVertexShaderMSL =
 "    return out;\n"
 "}\n";
 
-static const char *OverlayFragmentShaderMSL =
+static const char OverlayFragmentShaderMSL[] =
 "#include <metal_stdlib>\n"
 "using namespace metal;\n"
 "struct OverlayOutput {\n"
