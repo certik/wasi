@@ -57,7 +57,7 @@
         if (vec->size == vec->max) { \
             size_t new_max_capacity = 2 * vec->max; \
             TYPE* new_data = arena_alloc_array(arena, TYPE, new_max_capacity); \
-            memcpy(new_data, vec->data, sizeof(TYPE) * vec->size); \
+            base_memcpy(new_data, vec->data, sizeof(TYPE) * vec->size); \
             vec->data = new_data; \
             vec->max = new_max_capacity; \
         } \

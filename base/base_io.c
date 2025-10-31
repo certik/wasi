@@ -36,9 +36,9 @@ void writeln(int fd, char* text) {
 
     ciovec_t iovs[2];
     iovs[0].buf = msg1;
-    iovs[0].buf_len = strlen(msg1);
+    iovs[0].buf_len = base_strlen(msg1);
     iovs[1].buf = msg2;
-    iovs[1].buf_len = strlen(msg2);
+    iovs[1].buf_len = base_strlen(msg2);
 
     write_all(fd, iovs, 2);
 }
@@ -51,13 +51,13 @@ void writeln_int(int fd, char* text, int n) {
 
     ciovec_t iovs[4];
     iovs[0].buf = msg1;
-    iovs[0].buf_len = strlen(msg1);
+    iovs[0].buf_len = base_strlen(msg1);
     iovs[1].buf = msg2;
-    iovs[1].buf_len = strlen(msg2);
+    iovs[1].buf_len = base_strlen(msg2);
     iovs[2].buf = p;
-    iovs[2].buf_len = strlen(p);
+    iovs[2].buf_len = base_strlen(p);
     iovs[3].buf = msg3;
-    iovs[3].buf_len = strlen(msg3);
+    iovs[3].buf_len = base_strlen(msg3);
 
     write_all(WASI_STDERR_FD, iovs, 4);
 }
@@ -72,7 +72,7 @@ void writeln_loc(int fd, const char *text, const char *file, unsigned int line, 
     ciovec_t iovs[array_size(msg)];
     for (int i=0; i<array_size(msg); i++) {
         iovs[i].buf = msg[i];
-        iovs[i].buf_len = strlen(msg[i]);
+        iovs[i].buf_len = base_strlen(msg[i]);
     }
 
     write_all(fd, iovs, array_size(msg));

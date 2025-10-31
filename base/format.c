@@ -55,7 +55,7 @@ string format_explicit_varg(Arena *arena, string fmt, size_t arg_count,
     const char *end = fmt.str + fmt.size;
     size_t arg_index = 0;
     while (p < end) {
-        const char *open_brace = memchr(p, '{', end - p);
+        const char *open_brace = base_memchr(p, '{', end - p);
         if (open_brace == NULL) {
             string remaining = {.str = (char*)p, .size = end - p};
             result = str_concat(scratch.arena, result, remaining);
@@ -77,13 +77,13 @@ string format_explicit_varg(Arena *arena, string fmt, size_t arg_count,
             p++;
             continue;
         }
-        const char *close_brace = memchr(p, '}', end - p);
+        const char *close_brace = base_memchr(p, '}', end - p);
         if (close_brace == NULL) {
             string error = str_from_cstr_view("Error: missing closing brace");
             result = str_concat(scratch.arena, result, error);
             break;
         }
-        const char *colon = memchr(p, ':', close_brace - p);
+        const char *colon = base_memchr(p, ':', close_brace - p);
         FormatSpec spec;
         if (colon) {
             string spec_str = {.str = (char*)colon + 1, .size = close_brace - (colon + 1)};
@@ -216,7 +216,7 @@ string format_explicit_varg(Arena *arena, string fmt, size_t arg_count,
             size_t pad_size = spec.width - s.size;
             char pad_char = ' ';
             string padding = {.str = arena_alloc_array(scratch.arena, char, pad_size), .size = pad_size};
-            memset(padding.str, pad_char, pad_size);
+            base_memset(padding.str, pad_char, pad_size);
             if (spec.alignment == '<') {
                 s = str_concat(scratch.arena, s, padding);
             } else if (spec.alignment == '^') {

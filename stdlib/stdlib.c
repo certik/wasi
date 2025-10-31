@@ -6,6 +6,7 @@
 #include <wasi.h>
 #include <buddy.h>
 #include <stdlib.h>
+#include <string.h>
 
 void* malloc(size_t size) {
     return buddy_alloc(size);
@@ -15,7 +16,13 @@ void free(void* ptr) {
     buddy_free(ptr);
 }
 
-// exit() and abort() now reuse implementations from base/exit.c
+void exit(int status) {
+    base_exit(status);
+}
+
+void abort(void) {
+    base_abort();
+}
 
 // Linear Congruential Generator (LCG)
 // Parameters: a = 1103515245, c = 12345, m = 2^31

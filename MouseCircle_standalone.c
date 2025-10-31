@@ -19,18 +19,8 @@
 #include <SDL3/SDL_main.h>
 #include <stdbool.h>
 
-#ifdef __wasm__
-// WASM build: use base/io.h for println
 #include <base/io.h>
 #include <base/buddy.h>
-#else
-// Native build: base files are compiled in, but skip headers to avoid conflicts
-// Just declare the functions we need directly
-void buddy_init(void);
-// Map println to no-op (base/io.c is compiled in but we don't use it)
-#define println(...) ((void)0)
-#define str_lit(x) x
-#endif
 
 // Embedded Metal Shaders (compiled MSL)
 static const char* VertexShaderMSL =
@@ -318,7 +308,11 @@ __attribute__((export_name("mc_init")))
 #endif
 int mc_init()
 {
-    buddy_init();
+    static bool buddy_initialized = false;
+    if (!buddy_initialized) {
+        buddy_init();
+        buddy_initialized = true;
+    }
 
     // Initialize
     if (Init() < 0)

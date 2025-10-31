@@ -82,10 +82,12 @@ void wasi_proc_exit(int status) {
 }
 
 void* wasi_heap_base() {
+    ensure_heap_initialized();
     return linux_heap_base;
 }
 
 size_t wasi_heap_size() {
+    ensure_heap_initialized();
     return committed_pages * WASM_PAGE_SIZE;
 }
 
@@ -96,6 +98,8 @@ static inline uintptr_t align(uintptr_t val, uintptr_t alignment) {
 // Implementation of wasi_heap_grow using mprotect to commit pages.
 void* wasi_heap_grow(size_t num_bytes) {
     size_t num_pages = align(num_bytes, WASM_PAGE_SIZE) / WASM_PAGE_SIZE;
+    ensure_heap_initialized();
+
     if (linux_heap_base == NULL) {
         return NULL;
     }
@@ -248,6 +252,7 @@ int wasi_args_get(char** argv, char* argv_buf) {
 
 // Entry point for macOS.
 // macOS passes argc and argv to the entry point (unlike raw Linux)
+#ifndef WASI_MACOS_SKIP_ENTRY
 void _start(int argc, char** argv) {
     stored_argc = argc;
     stored_argv = argv;
@@ -256,3 +261,4 @@ void _start(int argc, char** argv) {
     int status = main();
     wasi_proc_exit(status);
 }
+#endif

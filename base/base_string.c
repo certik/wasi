@@ -4,7 +4,7 @@
 #include <base/numconv.h>
 
 string str_from_cstr_view(char *cstr) {
-    return (string){cstr, strlen(cstr)};
+    return (string){cstr, base_strlen(cstr)};
 }
 
 string str_from_cstr_len_view(char *cstr, uint64_t size) {
@@ -17,14 +17,14 @@ string str_from_cstr_len_view_const(const char *cstr, uint64_t size) {
 
 char *str_to_cstr_copy(Arena *arena, string str) {
     char *cstr = arena_alloc_array(arena, char, str.size+1);
-    memcpy(cstr, str.str, str.size);
+    base_memcpy(cstr, str.str, str.size);
     cstr[str.size] = '\0';
     return cstr;
 }
 
 bool str_eq(string a, string b) {
     if (a.size == b.size) {
-        return (memcmp(a.str, b.str, a.size) == 0);
+        return (base_memcmp(a.str, b.str, a.size) == 0);
     } else {
         return false;
     }
@@ -38,7 +38,7 @@ string int_to_string(Arena *arena, int value) {
     char buf[32];
     size_t len = int_to_str(value, buf);
     char *str = arena_alloc_array(arena, char, len);
-    memcpy(str, buf, len);
+    base_memcpy(str, buf, len);
     return (string){str, len};
 }
 
@@ -46,7 +46,7 @@ string uint_to_string(Arena *arena, uint64_t value) {
     char buf[32];
     size_t len = uint64_to_str(value, buf);
     char *str = arena_alloc_array(arena, char, len);
-    memcpy(str, buf, len);
+    base_memcpy(str, buf, len);
     return (string){str, len};
 }
 
@@ -54,7 +54,7 @@ string double_to_string(Arena *arena, double value, int precision) {
     char buf[32];
     size_t len = double_to_str(value, buf, precision);
     char *str = arena_alloc_array(arena, char, len);
-    memcpy(str, buf, len);
+    base_memcpy(str, buf, len);
     return (string){str, len};
 }
 
@@ -66,8 +66,8 @@ string char_to_string(Arena *arena, char c) {
 
 string str_concat(Arena *arena, string a, string b) {
     char *str = arena_alloc_array(arena, char, a.size + b.size);
-    memcpy(str, a.str, a.size);
-    memcpy(str + a.size, b.str, b.size);
+    base_memcpy(str, a.str, a.size);
+    base_memcpy(str + a.size, b.str, b.size);
     return (string){str, a.size + b.size};
 }
 
@@ -75,7 +75,7 @@ string str_copy(Arena *arena, string a) {
     char *str = NULL;
     if (a.size > 0) {
         str = arena_alloc_array(arena, char, a.size);
-        memcpy(str, a.str, a.size);
+        base_memcpy(str, a.str, a.size);
     }
     return (string){str, a.size};
 }

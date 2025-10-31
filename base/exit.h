@@ -2,8 +2,8 @@
 
 #include <base/base_io.h>
 
-#define FATAL_ERROR(x) PRINT_ERR(x); abort();
+#define FATAL_ERROR(x) do { PRINT_ERR(x); base_abort(); } while (0)
 
 // Process exit for base/
-void exit(int status);
-void abort(void);
+void base_exit(int status);
+void base_abort(void);

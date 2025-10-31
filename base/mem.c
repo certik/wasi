@@ -1,18 +1,18 @@
 #include <base/mem.h>
 
-size_t strlen(const char* str) {
+size_t base_strlen(const char* str) {
     const char* s;
     for (s = str; *s; ++s);
     return (s - str);
 }
 
-char* strcpy(char* dest, const char* src) {
+char* base_strcpy(char* dest, const char* src) {
     char* d = dest;
     while ((*d++ = *src++) != '\0');
     return dest;
 }
 
-int strcmp(const char* s1, const char* s2) {
+int base_strcmp(const char* s1, const char* s2) {
     while (*s1 && (*s1 == *s2)) {
         s1++;
         s2++;
@@ -20,7 +20,7 @@ int strcmp(const char* s1, const char* s2) {
     return *(const unsigned char*)s1 - *(const unsigned char*)s2;
 }
 
-void* memcpy(void* dest, const void* src, size_t n) {
+void* base_memcpy(void* dest, const void* src, size_t n) {
     unsigned char* d = (unsigned char*)dest;
     const unsigned char* s = (const unsigned char*)src;
     for (size_t i = 0; i < n; i++) {
@@ -29,7 +29,7 @@ void* memcpy(void* dest, const void* src, size_t n) {
     return dest;
 }
 
-int memcmp(const void* s1, const void* s2, size_t n) {
+int base_memcmp(const void* s1, const void* s2, size_t n) {
     const unsigned char* p1 = (const unsigned char*)s1;
     const unsigned char* p2 = (const unsigned char*)s2;
     for (size_t i = 0; i < n; i++) {
@@ -40,7 +40,7 @@ int memcmp(const void* s1, const void* s2, size_t n) {
     return 0;
 }
 
-void* memset(void* s, int c, size_t n) {
+void* base_memset(void* s, int c, size_t n) {
     unsigned char* p = (unsigned char*)s;
     for (size_t i = 0; i < n; i++) {
         p[i] = (unsigned char)c;
@@ -48,7 +48,7 @@ void* memset(void* s, int c, size_t n) {
     return s;
 }
 
-void* memchr(const void* s, int c, size_t n) {
+void* base_memchr(const void* s, int c, size_t n) {
     const unsigned char* p = (const unsigned char*)s;
     for (size_t i = 0; i < n; i++) {
         if (p[i] == (unsigned char)c) {

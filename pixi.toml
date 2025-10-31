@@ -28,6 +28,7 @@ clang \
     stdlib/stdio.c \
     stdlib/stdlib.c \
     stdlib/printf.c \
+    stdlib/string.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
@@ -202,6 +203,7 @@ clang \
     -o mousecircle.wasm \
     MouseCircle_standalone.c \
     sdl_wasm.c \
+    stdlib/string.c \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
@@ -239,6 +241,7 @@ clang \
     stdlib/stdio.c \
     stdlib/stdlib.c \
     stdlib/printf.c \
+    stdlib/string.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
@@ -476,6 +479,7 @@ clang \
     -I$CONDA_PREFIX/include \
     -L$CONDA_PREFIX/lib \
     -Wl,-rpath,$CONDA_PREFIX/lib \
+    -DWASI_MACOS_SKIP_ENTRY \
     -I base \
     -I native \
     -I . \
@@ -485,16 +489,17 @@ clang \
     -Wno-macro-redefined \
     -o mousecircle_sdl \
     MouseCircle_standalone.c \
+    base/base_io.c \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
     base/format.c \
-    base/base_string.c \
-    base/numconv.c \
-    base/mem.c \
     base/io.c \
-    base/base_io.c \
+    base/base_string.c \
+    base/mem.c \
+    base/numconv.c \
     base/assert.c \
+    base/exit.c \
     native/wasi_macos.c
 """
 
