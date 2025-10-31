@@ -15,12 +15,14 @@
  *   ./MouseCircle_standalone
  */
 
+#define SDL_MAIN_USE_CALLBACKS 1
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <stdbool.h>
 
 #include <base/io.h>
 #include <base/buddy.h>
+#include <base/mem.h>
 
 // Embedded Metal Shaders (compiled MSL)
 static const char* VertexShaderMSL =
@@ -95,14 +97,22 @@ typedef struct MouseCircleUniforms
     float resolution_y;
 } MouseCircleUniforms;
 
-// Global state
-static SDL_Window* g_Window = NULL;
-static SDL_GPUDevice* g_Device = NULL;
-static SDL_GPUGraphicsPipeline* g_Pipeline = NULL;
-static MouseCircleUniforms g_UniformValues = {0};
+typedef struct MouseCircleApp {
+    SDL_Window* window;
+    SDL_GPUDevice* device;
+    SDL_GPUGraphicsPipeline* pipeline;
+    MouseCircleUniforms uniforms;
+    bool quit_requested;
+    int frame_count;
+} MouseCircleApp;
+
+static MouseCircleApp g_App;
+static bool g_buddy_initialized = false;
+
+void ensure_heap_initialized(void);
 
 // Initialize SDL, GPU device, window and graphics pipeline
-static int Init(void)
+static int Init(MouseCircleApp* app)
 {
     // Initialize SDL
     if (!SDL_Init(SDL_INIT_VIDEO))
@@ -112,27 +122,27 @@ static int Init(void)
     }
 
     // Create GPU device
-    g_Device = SDL_CreateGPUDevice(
+    app->device = SDL_CreateGPUDevice(
         SDL_GPU_SHADERFORMAT_MSL,
         true,
         NULL);
 
-    if (g_Device == NULL)
+    if (app->device == NULL)
     {
         SDL_Log("GPUCreateDevice failed: %s", SDL_GetError());
         return -1;
     }
 
     // Create window
-    g_Window = SDL_CreateWindow("MouseCircle", 640, 480, SDL_WINDOW_RESIZABLE);
-    if (g_Window == NULL)
+    app->window = SDL_CreateWindow("MouseCircle", 640, 480, SDL_WINDOW_RESIZABLE);
+    if (app->window == NULL)
     {
         SDL_Log("CreateWindow failed: %s", SDL_GetError());
         return -1;
     }
 
     // Claim window for GPU
-    if (!SDL_ClaimWindowForGPUDevice(g_Device, g_Window))
+    if (!SDL_ClaimWindowForGPUDevice(app->device, app->window))
     {
         SDL_Log("GPUClaimWindow failed: %s", SDL_GetError());
         return -1;
@@ -150,7 +160,7 @@ static int Init(void)
         .num_storage_buffers = 0,
         .num_storage_textures = 0
     };
-    SDL_GPUShader* vertexShader = SDL_CreateGPUShader(g_Device, &vertexShaderInfo);
+    SDL_GPUShader* vertexShader = SDL_CreateGPUShader(app->device, &vertexShaderInfo);
     if (vertexShader == NULL)
     {
         SDL_Log("Failed to create vertex shader: %s", SDL_GetError());
@@ -170,7 +180,7 @@ static int Init(void)
         .num_storage_buffers = 0,
         .num_storage_textures = 0
     };
-    SDL_GPUShader* fragmentShader = SDL_CreateGPUShader(g_Device, &fragmentShaderInfo);
+    SDL_GPUShader* fragmentShader = SDL_CreateGPUShader(app->device, &fragmentShaderInfo);
     if (fragmentShader == NULL)
     {
         SDL_Log("Failed to create fragment shader: %s", SDL_GetError());
@@ -183,7 +193,7 @@ static int Init(void)
         .target_info = {
             .num_color_targets = 1,
             .color_target_descriptions = (SDL_GPUColorTargetDescription[]){{
-                .format = SDL_GetGPUSwapchainTextureFormat(g_Device, g_Window)
+                .format = SDL_GetGPUSwapchainTextureFormat(app->device, app->window)
             }},
         },
         .primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
@@ -191,24 +201,24 @@ static int Init(void)
         .fragment_shader = fragmentShader,
     };
 
-    g_Pipeline = SDL_CreateGPUGraphicsPipeline(g_Device, &pipelineCreateInfo);
-    if (g_Pipeline == NULL)
+    app->pipeline = SDL_CreateGPUGraphicsPipeline(app->device, &pipelineCreateInfo);
+    if (app->pipeline == NULL)
     {
         SDL_Log("Failed to create pipeline: %s", SDL_GetError());
         return -1;
     }
 
     // Clean up shader resources
-    SDL_ReleaseGPUShader(g_Device, vertexShader);
-    SDL_ReleaseGPUShader(g_Device, fragmentShader);
+    SDL_ReleaseGPUShader(app->device, vertexShader);
+    SDL_ReleaseGPUShader(app->device, fragmentShader);
 
     // Initialize uniform values
     int width, height;
-    SDL_GetWindowSizeInPixels(g_Window, &width, &height);
-    g_UniformValues.mouse_x = width / 2.0f;
-    g_UniformValues.mouse_y = height / 2.0f;
-    g_UniformValues.resolution_x = (float)width;
-    g_UniformValues.resolution_y = (float)height;
+    SDL_GetWindowSizeInPixels(app->window, &width, &height);
+    app->uniforms.mouse_x = width / 2.0f;
+    app->uniforms.mouse_y = height / 2.0f;
+    app->uniforms.resolution_x = (float)width;
+    app->uniforms.resolution_y = (float)height;
 
     SDL_Log("Move the mouse to see the circle follow!");
 
@@ -216,27 +226,27 @@ static int Init(void)
 }
 
 // Update function - called each frame
-static int Update(void)
+static int Update(MouseCircleApp* app)
 {
     // Update mouse position
     float mouse_x, mouse_y;
     SDL_GetMouseState(&mouse_x, &mouse_y);
-    g_UniformValues.mouse_x = mouse_x;
-    g_UniformValues.mouse_y = mouse_y;
+    app->uniforms.mouse_x = mouse_x;
+    app->uniforms.mouse_y = mouse_y;
 
     // Update resolution in case window was resized
     int width, height;
-    SDL_GetWindowSizeInPixels(g_Window, &width, &height);
-    g_UniformValues.resolution_x = (float)width;
-    g_UniformValues.resolution_y = (float)height;
+    SDL_GetWindowSizeInPixels(app->window, &width, &height);
+    app->uniforms.resolution_x = (float)width;
+    app->uniforms.resolution_y = (float)height;
 
     return 0;
 }
 
 // Draw function - called each frame
-static int Draw(void)
+static int Draw(MouseCircleApp* app)
 {
-    SDL_GPUCommandBuffer* cmdbuf = SDL_AcquireGPUCommandBuffer(g_Device);
+    SDL_GPUCommandBuffer* cmdbuf = SDL_AcquireGPUCommandBuffer(app->device);
     if (cmdbuf == NULL)
     {
         SDL_Log("AcquireGPUCommandBuffer failed: %s", SDL_GetError());
@@ -244,7 +254,7 @@ static int Draw(void)
     }
 
     SDL_GPUTexture* swapchainTexture;
-    if (!SDL_WaitAndAcquireGPUSwapchainTexture(cmdbuf, g_Window, &swapchainTexture, NULL, NULL))
+    if (!SDL_WaitAndAcquireGPUSwapchainTexture(cmdbuf, app->window, &swapchainTexture, NULL, NULL))
     {
         SDL_Log("WaitAndAcquireGPUSwapchainTexture failed: %s", SDL_GetError());
         return -1;
@@ -260,8 +270,8 @@ static int Draw(void)
         };
 
         SDL_GPURenderPass* renderPass = SDL_BeginGPURenderPass(cmdbuf, &colorTargetInfo, 1, NULL);
-        SDL_BindGPUGraphicsPipeline(renderPass, g_Pipeline);
-        SDL_PushGPUFragmentUniformData(cmdbuf, 0, &g_UniformValues, sizeof(MouseCircleUniforms));
+        SDL_BindGPUGraphicsPipeline(renderPass, app->pipeline);
+        SDL_PushGPUFragmentUniformData(cmdbuf, 0, &app->uniforms, sizeof(MouseCircleUniforms));
         SDL_DrawGPUPrimitives(renderPass, 3, 1, 0, 0);
         SDL_EndGPURenderPass(renderPass);
     }
@@ -272,138 +282,173 @@ static int Draw(void)
 }
 
 // Cleanup function
-static void Quit(void)
+static void Quit(MouseCircleApp* app)
 {
-    if (g_Pipeline != NULL)
+    if (app->pipeline != NULL)
     {
-        SDL_ReleaseGPUGraphicsPipeline(g_Device, g_Pipeline);
-        g_Pipeline = NULL;
+        SDL_ReleaseGPUGraphicsPipeline(app->device, app->pipeline);
+        app->pipeline = NULL;
     }
 
-    if (g_Window != NULL && g_Device != NULL)
+    if (app->window != NULL && app->device != NULL)
     {
-        SDL_ReleaseWindowFromGPUDevice(g_Device, g_Window);
+        SDL_ReleaseWindowFromGPUDevice(app->device, app->window);
     }
 
-    if (g_Window != NULL)
+    if (app->window != NULL)
     {
-        SDL_DestroyWindow(g_Window);
-        g_Window = NULL;
+        SDL_DestroyWindow(app->window);
+        app->window = NULL;
     }
 
-    if (g_Device != NULL)
+    if (app->device != NULL)
     {
-        SDL_DestroyGPUDevice(g_Device);
-        g_Device = NULL;
+        SDL_DestroyGPUDevice(app->device);
+        app->device = NULL;
     }
 
     SDL_Quit();
 }
 
-static int frame_count = 0;
 static const int MAX_FRAMES = 300;
 
-void ensure_heap_initialized();
-
-// Main function
-#ifdef __wasm__
-__attribute__((export_name("mc_init")))
-#endif
-int mc_init()
-{
-    buddy_init();
-    ensure_heap_initialized();
-
-    // Initialize
-    if (Init() < 0)
-    {
-        SDL_Log("Init failed!");
-        Quit();
-        return 1;
-    }
-    return 0;
-}
-
-#ifdef __wasm__
-__attribute__((export_name("mc_frame")))
-#endif
-int mc_frame()
-{
-    // Main loop
-    println(str_lit("Main loop"));
-    frame_count++;
-    bool quit = false;
-    if (frame_count == MAX_FRAMES) quit = true;
-    // Handle events
-    SDL_Event evt;
-    while (SDL_PollEvent(&evt))
-    {
-        if (evt.type == SDL_EVENT_QUIT)
-        {
-            quit = true;
-        }
-        else if (evt.type == SDL_EVENT_KEY_DOWN)
-        {
-            if (evt.key.key == SDLK_ESCAPE)
-            {
-                quit = true;
-            } else if (evt.key.key == SDLK_Q) {
-                quit = true;
-            }
-        }
-    }
-
-    // Update
-    if (Update() < 0)
-    {
-        SDL_Log("Update failed!");
-        return 2;
-    }
-
-    // Draw
-    if (Draw() < 0)
-    {
-        SDL_Log("Draw failed!");
-        return 2;
-    }
-
-    if (quit) {
-        return 1;
-    } else {
-        return 0;
-    }
-}
-
-#ifdef __wasm__
-__attribute__((export_name("mc_quit")))
-#endif
-void mc_quit()
-{
-    // Cleanup
-    Quit();
-}
-
-#ifndef __wasm__
-// Native SDL main function
-int main(int argc, char** argv)
+SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 {
     (void)argc;
     (void)argv;
 
-    // Initialize
-    if (mc_init() != 0) {
+    if (!g_buddy_initialized) {
+        ensure_heap_initialized();
+        buddy_init();
+        g_buddy_initialized = true;
+    }
+
+    base_memset(&g_App, 0, sizeof(g_App));
+
+    if (Init(&g_App) < 0) {
+        SDL_Log("Init failed!");
+        Quit(&g_App);
+        return SDL_APP_FAILURE;
+    }
+
+    g_App.quit_requested = false;
+    g_App.frame_count = 0;
+
+    *appstate = &g_App;
+    return SDL_APP_CONTINUE;
+}
+
+SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
+{
+    MouseCircleApp *app = (MouseCircleApp *)appstate;
+    if (!app || !event) {
+        return SDL_APP_FAILURE;
+    }
+
+    if (event->type == SDL_EVENT_QUIT) {
+        app->quit_requested = true;
+    } else if (event->type == SDL_EVENT_KEY_DOWN) {
+        if (event->key.key == SDLK_ESCAPE || event->key.key == SDLK_Q) {
+            app->quit_requested = true;
+        }
+    }
+
+    return SDL_APP_CONTINUE;
+}
+
+SDL_AppResult SDL_AppIterate(void *appstate)
+{
+    MouseCircleApp *app = (MouseCircleApp *)appstate;
+    if (!app) {
+        return SDL_APP_FAILURE;
+    }
+
+    println(str_lit("Main loop"));
+
+#ifdef __wasi__
+    SDL_Event evt;
+    while (SDL_PollEvent(&evt)) {
+        SDL_AppEvent(app, &evt);
+    }
+#endif
+
+    if (Update(app) < 0) {
+        SDL_Log("Update failed!");
+        return SDL_APP_FAILURE;
+    }
+
+    if (Draw(app) < 0) {
+        SDL_Log("Draw failed!");
+        return SDL_APP_FAILURE;
+    }
+
+    app->frame_count++;
+    if (app->quit_requested || app->frame_count >= MAX_FRAMES) {
+        return SDL_APP_SUCCESS;
+    }
+
+    return SDL_APP_CONTINUE;
+}
+
+void SDL_AppQuit(void *appstate, SDL_AppResult result)
+{
+    (void)result;
+    MouseCircleApp *app = (MouseCircleApp *)appstate;
+    if (!app) {
+        return;
+    }
+
+    Quit(app);
+}
+
+#ifdef __wasi__
+static void *g_wasm_appstate = NULL;
+static SDL_AppResult g_wasm_last_result = SDL_APP_SUCCESS;
+
+__attribute__((export_name("app_init")))
+int app_init(void)
+{
+    void *state = NULL;
+    SDL_AppResult result = SDL_AppInit(&state, 0, NULL);
+    if (result == SDL_APP_FAILURE) {
+        return -1;
+    }
+
+    g_wasm_appstate = state;
+    g_wasm_last_result = result;
+
+    if (result == SDL_APP_SUCCESS) {
         return 1;
     }
 
-    // Main loop
-    int result;
-    while ((result = mc_frame()) == 0) {
-        // Continue loop while mc_frame returns 0
+    return 0;
+}
+
+__attribute__((export_name("app_iterate")))
+int app_iterate(void)
+{
+    if (!g_wasm_appstate) {
+        return -1;
     }
 
-    // Cleanup
-    mc_quit();
+    SDL_AppResult result = SDL_AppIterate(g_wasm_appstate);
+    if (result == SDL_APP_CONTINUE) {
+        return 0;
+    }
 
-    return 0;
+    g_wasm_last_result = result;
+    return (result == SDL_APP_SUCCESS) ? 1 : -1;
+}
+
+__attribute__((export_name("app_quit")))
+int app_quit(void)
+{
+    if (!g_wasm_appstate) {
+        return 0;
+    }
+
+    SDL_AppQuit(g_wasm_appstate, g_wasm_last_result);
+    g_wasm_appstate = NULL;
+    return (g_wasm_last_result == SDL_APP_SUCCESS) ? 0 : -1;
 }
 #endif

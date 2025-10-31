@@ -117,6 +117,13 @@ typedef struct SDL_GPUColorTargetInfo {
     SDL_GPUStoreOp store_op;
 } SDL_GPUColorTargetInfo;
 
+// App callbacks
+typedef enum SDL_AppResult {
+    SDL_APP_FAILURE = -1,
+    SDL_APP_SUCCESS = 0,
+    SDL_APP_CONTINUE = 1
+} SDL_AppResult;
+
 // Function declarations
 bool SDL_Init(Uint32 flags);
 void SDL_Quit(void);
@@ -153,5 +160,11 @@ bool SDL_PollEvent(SDL_Event* event);
 Uint32 SDL_GetMouseState(float* x, float* y);
 
 size_t SDL_strlen(const char* str);
+
+// Managed main callback prototypes (implemented by the app when using SDL_MAIN_USE_CALLBACKS)
+SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]);
+SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event);
+SDL_AppResult SDL_AppIterate(void *appstate);
+void SDL_AppQuit(void *appstate, SDL_AppResult result);
 
 #endif // SDL_H

@@ -578,20 +578,32 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
             sdlHost.setMemory(memory);
 
             // Call main
-            const mc_init = wasmInstance.exports.mc_init;
-            const mc_frame = wasmInstance.exports.mc_frame;
-            const mc_quit = wasmInstance.exports.mc_quit;
-            console.log('mc_init()');
-            if (mc_init() != 0) {
-                console.error('mc_init() failed');
+            const app_init = wasmInstance.exports.app_init;
+            const app_iterate = wasmInstance.exports.app_iterate;
+            const app_quit = wasmInstance.exports.app_quit;
+
+            console.log('app_init()');
+            const initResult = app_init();
+            if (initResult < 0) {
+                console.error('app_init() failed');
+                return;
+            }
+            if (initResult > 0) {
+                console.log('app_init() completed immediately');
+                app_quit();
+                return;
             }
 
             let animationFrameId = null;
             function frame() {
-                if (mc_frame() == 0) {
+                const iterateResult = app_iterate();
+                if (iterateResult === 0) {
                     animationFrameId = requestAnimationFrame(frame);
                 } else {
-                    mc_quit();
+                    if (iterateResult < 0) {
+                        console.error('app_iterate() failed');
+                    }
+                    app_quit();
                 }
             }
 

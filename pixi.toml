@@ -195,9 +195,9 @@ clang \
     -I native \
     -I . \
     -Wl,--no-entry \
-    -Wl,--export=mc_init \
-    -Wl,--export=mc_frame \
-    -Wl,--export=mc_quit \
+    -Wl,--export=app_init \
+    -Wl,--export=app_iterate \
+    -Wl,--export=app_quit \
     -Wl,--export=__heap_base \
     -Wl,--initial-memory=1048576 \
     -o mousecircle.wasm \
