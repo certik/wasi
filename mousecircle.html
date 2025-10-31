@@ -203,7 +203,8 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
                     const stage = dv.getUint32(info_ptr + 16, true);
 
                     // For our simple case, we use hardcoded WGSL shaders
-                    const shaderCode = (stage === 1) ? vertexShaderWGSL : fragmentShaderWGSL; // 1 = vertex, 2 = fragment
+                    // SDL_GPU_SHADERSTAGE_VERTEX = 0, SDL_GPU_SHADERSTAGE_FRAGMENT = 1
+                    const shaderCode = (stage === 0) ? vertexShaderWGSL : fragmentShaderWGSL;
 
                     console.log('[SDL] CreateGPUShader, stage:', stage);
 
