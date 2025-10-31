@@ -88,7 +88,6 @@ typedef struct {
     CubeUniforms uniforms;
     float rotation_angle;
     bool quit_requested;
-    int frame_count;
 } CubeApp;
 
 static CubeApp g_App;
@@ -487,8 +486,6 @@ static void Quit(CubeApp* app)
     SDL_Quit();
 }
 
-static const int MAX_FRAMES = 300;
-
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 {
     (void)argc;
@@ -509,7 +506,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     }
 
     g_App.quit_requested = false;
-    g_App.frame_count = 0;
 
     *appstate = &g_App;
     return SDL_APP_CONTINUE;
@@ -552,8 +548,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         return SDL_APP_FAILURE;
     }
 
-    app->frame_count++;
-    if (app->quit_requested || app->frame_count >= MAX_FRAMES) {
+    if (app->quit_requested) {
         return SDL_APP_SUCCESS;
     }
 
