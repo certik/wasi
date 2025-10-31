@@ -829,10 +829,10 @@ static void update_camera(GameState *state) {
     float cos_yaw = fast_cos(state->yaw);
     float sin_yaw = fast_sin(state->yaw);
 
-    float forward_x = sin_yaw;
-    float forward_z = cos_yaw;
-    float right_x = cos_yaw;
-    float right_z = -sin_yaw;
+    float forward_x = cos_yaw;
+    float forward_z = sin_yaw;
+    float right_x = -sin_yaw;
+    float right_z = cos_yaw;
 
     float speed_multiplier = state->keys[KEY_SHIFT] ? 2.0f : 1.0f;
     float base_speed = state->move_speed * speed_multiplier;
@@ -850,12 +850,12 @@ static void update_camera(GameState *state) {
         dz -= forward_z * base_speed;
     }
     if (state->keys['a']) {
-        dx -= right_x * base_speed;
-        dz -= right_z * base_speed;
-    }
-    if (state->keys['d']) {
         dx += right_x * base_speed;
         dz += right_z * base_speed;
+    }
+    if (state->keys['d']) {
+        dx -= right_x * base_speed;
+        dz -= right_z * base_speed;
     }
 
     if (state->keys[' ']) {
@@ -977,6 +977,36 @@ static uint32_t append_quad(OverlayVertex *verts, uint32_t offset, uint32_t max,
     return offset + 6;
 }
 
+static uint32_t append_convex_quad(OverlayVertex *verts, uint32_t offset, uint32_t max,
+                                   const float points[4][2], const float color[4]) {
+    if (offset + 6 > max) {
+        return offset;
+    }
+    static const int order[6] = {0, 1, 2, 0, 2, 3};
+    for (int i = 0; i < 6; i++) {
+        int idx = order[i];
+        verts[offset + i] = (OverlayVertex){
+            {points[idx][0], points[idx][1]},
+            {color[0], color[1], color[2], color[3]}
+        };
+    }
+    return offset + 6;
+}
+
+static uint32_t append_triangle(OverlayVertex *verts, uint32_t offset, uint32_t max,
+                                const float points[3][2], const float color[4]) {
+    if (offset + 3 > max) {
+        return offset;
+    }
+    for (int i = 0; i < 3; i++) {
+        verts[offset + i] = (OverlayVertex){
+            {points[i][0], points[i][1]},
+            {color[0], color[1], color[2], color[3]}
+        };
+    }
+    return offset + 3;
+}
+
 static uint32_t append_glyph(OverlayVertex *verts, uint32_t offset, uint32_t max,
                              float origin_x, float origin_y, float scale,
                              float canvas_w, float canvas_h, unsigned char ch,
@@ -1017,7 +1047,7 @@ static uint32_t append_text_line(GameApp *app, OverlayVertex *verts, uint32_t of
 
 static const char *direction_from_yaw(float yaw) {
     static const char *names[] = {"E", "SE", "S", "SW", "W", "NW", "N", "NE"};
-    float angle = (float)(PI / 2.0f - yaw);
+    float angle = yaw;
     float two_pi = (float)(2.0f * PI);
     while (angle < 0.0f) {
         angle += two_pi;
@@ -1025,8 +1055,7 @@ static const char *direction_from_yaw(float yaw) {
     while (angle >= two_pi) {
         angle -= two_pi;
     }
-    float octant = (angle + (float)(PI / 8.0f)) / (float)(PI / 4.0f);
-    int index = ((int)octant) & 7;
+    int index = (int)((angle + (float)(PI / 8.0f)) / (float)(PI / 4.0f)) & 7;
     return names[index];
 }
 
@@ -1085,46 +1114,87 @@ static void build_overlay(GameApp *app) {
     }
 
     if (state->map_visible) {
-        float map_origin_x;
-        if (state->map_relative_mode) {
-            map_origin_x = PANEL_MARGIN;
-        } else {
-            map_origin_x = canvas_w - MAP_SCALE * MAP_WIDTH - PANEL_MARGIN;
-        }
+        float max_cells = (float)((state->map_width > state->map_height) ? state->map_width : state->map_height);
+        float map_pixel_size = max_cells * MAP_SCALE;
+        float map_origin_x = state->map_relative_mode ? PANEL_MARGIN : canvas_w - map_pixel_size - PANEL_MARGIN;
         float map_origin_y = PANEL_MARGIN + line_height * 6.0f;
-    for (int z = 0; z < state->map_height; z++) {
-        for (int x = 0; x < state->map_width; x++) {
-            int cell = state->map_data[z * state->map_width + x];
-            const float *color = cell ? map_wall_color : map_floor_color;
-            int draw_x = state->map_width - 1 - x;
-            float px0 = map_origin_x + draw_x * MAP_SCALE;
-            float py0 = map_origin_y + z * MAP_SCALE;
-            float px1 = px0 + MAP_SCALE - 1.0f;
-            float py1 = py0 + MAP_SCALE - 1.0f;
-                float x0 = to_clip_x(px0, canvas_w);
-                float y0 = to_clip_y(py0, canvas_h);
-                float x1 = to_clip_x(px1, canvas_w);
-                float y1 = to_clip_y(py1, canvas_h);
-                offset = append_quad(app->overlay_cpu_vertices, offset, MAX_OVERLAY_VERTICES,
-                                     x0, y0, x1, y1, color);
+        float map_center_x = map_origin_x + map_pixel_size * 0.5f;
+        float map_center_y = map_origin_y + map_pixel_size * 0.5f;
+
+        float cos_yaw = fast_cos(state->yaw);
+        float sin_yaw = fast_sin(state->yaw);
+        const float corner_offsets[4][2] = {
+            {-0.5f, -0.5f},
+            { 0.5f, -0.5f},
+            { 0.5f,  0.5f},
+            {-0.5f,  0.5f}
+        };
+
+        for (int z = 0; z < state->map_height; z++) {
+            for (int x = 0; x < state->map_width; x++) {
+                int cell = state->map_data[z * state->map_width + x];
+                const float *color = cell ? map_wall_color : map_floor_color;
+
+                float cell_dx = ((float)x + 0.5f) - state->camera_x;
+                float cell_dz = ((float)z + 0.5f) - state->camera_z;
+
+                float points_clip[4][2];
+                for (int c = 0; c < 4; c++) {
+                    float corner_dx = cell_dx + corner_offsets[c][0];
+                    float corner_dz = cell_dz + corner_offsets[c][1];
+
+                    float forward = corner_dx * cos_yaw + corner_dz * sin_yaw;
+                    float right = -corner_dx * sin_yaw + corner_dz * cos_yaw;
+
+                    float screen_x = map_center_x + right * MAP_SCALE;
+                    float screen_y = map_center_y - forward * MAP_SCALE;
+
+                    points_clip[c][0] = to_clip_x(screen_x, canvas_w);
+                    points_clip[c][1] = to_clip_y(screen_y, canvas_h);
+                }
+
+                offset = append_convex_quad(app->overlay_cpu_vertices, offset, MAX_OVERLAY_VERTICES,
+                                             points_clip, color);
             }
         }
 
-        int player_x = (int)state->camera_x;
-        int player_z = (int)state->camera_z;
-        if (player_x >= 0 && player_x < state->map_width &&
-            player_z >= 0 && player_z < state->map_height) {
-            int draw_x = state->map_width - 1 - player_x;
-            float px0 = map_origin_x + draw_x * MAP_SCALE + MAP_SCALE * 0.2f;
-            float py0 = map_origin_y + player_z * MAP_SCALE + MAP_SCALE * 0.2f;
-            float px1 = px0 + MAP_SCALE * 0.6f;
-            float py1 = py0 + MAP_SCALE * 0.6f;
-            float x0 = to_clip_x(px0, canvas_w);
-            float y0 = to_clip_y(py0, canvas_h);
-            float x1 = to_clip_x(px1, canvas_w);
-            float y1 = to_clip_y(py1, canvas_h);
-            offset = append_quad(app->overlay_cpu_vertices, offset, MAX_OVERLAY_VERTICES,
-                                 x0, y0, x1, y1, map_player_color);
+        const float arrow_shape[3][2] = {
+            { 0.8f,  0.0f},
+            {-0.4f, -0.4f},
+            { 0.4f, -0.4f},
+        };
+        float arrow_points[3][2];
+        for (int i = 0; i < 3; i++) {
+            float forward = arrow_shape[i][0];
+            float right = arrow_shape[i][1];
+            float screen_x = map_center_x + right * MAP_SCALE;
+            float screen_y = map_center_y - forward * MAP_SCALE;
+            arrow_points[i][0] = to_clip_x(screen_x, canvas_w);
+            arrow_points[i][1] = to_clip_y(screen_y, canvas_h);
+        }
+        offset = append_triangle(app->overlay_cpu_vertices, offset, MAX_OVERLAY_VERTICES,
+                                 arrow_points, map_player_color);
+
+        struct LabelInfo { char label; float dx; float dz; };
+        const struct LabelInfo label_info[4] = {
+            {'N', 0.0f, -1.0f},
+            {'S', 0.0f,  1.0f},
+            {'E', 1.0f,  0.0f},
+            {'W', -1.0f, 0.0f},
+        };
+        float letter_offset_cells = max_cells * 0.5f + 0.8f;
+        float glyph_w = (float)GLYPH_WIDTH * TEXT_SCALE;
+        float glyph_h = (float)GLYPH_HEIGHT * TEXT_SCALE;
+        for (int i = 0; i < 4; i++) {
+            float dx = label_info[i].dx * letter_offset_cells;
+            float dz = label_info[i].dz * letter_offset_cells;
+            float forward = dx * cos_yaw + dz * sin_yaw;
+            float right = -dx * sin_yaw + dz * cos_yaw;
+            float glyph_x = map_center_x + right * MAP_SCALE - glyph_w * 0.5f;
+            float glyph_y = map_center_y - forward * MAP_SCALE - glyph_h * 0.5f;
+            offset = append_glyph(app->overlay_cpu_vertices, offset, MAX_OVERLAY_VERTICES,
+                                  glyph_x, glyph_y, TEXT_SCALE, canvas_w, canvas_h,
+                                  (unsigned char)label_info[i].label, text_color);
         }
     }
 
