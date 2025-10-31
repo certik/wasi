@@ -13,53 +13,55 @@
     <script type="module">
         // WGSL Shaders (converted from MSL in MouseCircle_standalone.c)
         const vertexShaderWGSL = `
+struct CubeVertex {
+    position: vec3f,
+    normal: vec3f,
+    uv: vec2f,
+};
+
+struct Uniforms {
+    mvp: mat4x4<f32>,
+    normal_matrix: mat4x4<f32>,
+    light_dir: vec4f,
+};
+
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+@group(0) @binding(1) var<storage, read> vertex_data: array<CubeVertex>;
+
 struct VertexOutput {
     @builtin(position) position: vec4f,
-    @location(0) uv: vec2f,
+    @location(0) normal: vec3f,
+    @location(1) uv: vec2f,
 };
 
 @vertex
 fn main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     var output: VertexOutput;
-
-    // Full-screen triangle
-    let x = f32(i32(vertex_index) - 1);
-    let y = f32(i32(vertex_index & 1u) * 2 - 1);
-    output.position = vec4f(x, y, 0.0, 1.0);
-
-    // Convert to UV coordinates (0,0 to 1,1)
-    output.uv = vec2f((x + 1.0) * 0.5, (1.0 - y) * 0.5);
-
+    let vertex = vertex_data[vertex_index];
+    output.position = uniforms.mvp * vec4f(vertex.position, 1.0);
+    let transformed = uniforms.normal_matrix * vec4f(vertex.normal, 0.0);
+    output.normal = normalize(transformed.xyz);
+    output.uv = vertex.uv;
     return output;
 }
 `;
 
         const fragmentShaderWGSL = `
 struct Uniforms {
-    mouse_pos: vec2f,
-    resolution: vec2f,
+    mvp: mat4x4<f32>,
+    normal_matrix: mat4x4<f32>,
+    light_dir: vec4f,
 };
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 
 @fragment
-fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
-    // Convert UV to screen coordinates
-    let screen_pos = uv * uniforms.resolution;
-
-    // Calculate distance from mouse position
-    let dist = length(screen_pos - uniforms.mouse_pos);
-
-    // Draw a circle with radius 50 pixels
-    let circle_radius = 50.0;
-    let circle_color = vec4f(1.0, 0.0, 0.0, 1.0); // Red
-    let bg_color = vec4f(0.0, 1.0, 0.0, 1.0); // Green
-
-    // Smooth circle edge
-    let edge_smoothness = 2.0;
-    let t = smoothstep(circle_radius + edge_smoothness, circle_radius - edge_smoothness, dist);
-
-    return mix(bg_color, circle_color, t);
+fn main(@location(0) normal: vec3f) -> @location(0) vec4f {
+    let light_dir = normalize(uniforms.light_dir.xyz);
+    let diffuse = max(dot(normal, light_dir), 0.0);
+    let base_color = vec3f(0.8, 0.3, 0.2);
+    let color = base_color * (0.2 + 0.8 * diffuse);
+    return vec4f(color, 1.0);
 }
 `;
 
@@ -71,6 +73,9 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
 
             const context = canvas.getContext('webgpu');
 
+            const performanceStart = performance.now();
+            const performanceFrequency = 1000000n;
+
             // SDL object storage
             const devices = new Map();
             const windows = new Map();
@@ -79,6 +84,7 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
             const commandBuffers = new Map();
             const renderPasses = new Map();
             const textures = new Map();
+            const buffers = new Map();
 
             // Mouse state
             let mouseX = 0;
@@ -265,16 +271,23 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
                     }
 
                     try {
-                        const pipelineLayout = device.createPipelineLayout({
-                            bindGroupLayouts: [
-                                device.createBindGroupLayout({
-                                    entries: [{
-                                        binding: 0,
-                                        visibility: GPUShaderStage.FRAGMENT,
-                                        buffer: { type: 'uniform' }
-                                    }]
-                                })
+                        const bindGroupLayout = device.createBindGroupLayout({
+                            entries: [
+                                {
+                                    binding: 0,
+                                    visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+                                    buffer: { type: 'uniform' }
+                                },
+                                {
+                                    binding: 1,
+                                    visibility: GPUShaderStage.VERTEX,
+                                    buffer: { type: 'read-only-storage' }
+                                }
                             ]
+                        });
+
+                        const pipelineLayout = device.createPipelineLayout({
+                            bindGroupLayouts: [bindGroupLayout]
                         });
 
                         const pipeline = device.createRenderPipeline({
@@ -296,11 +309,41 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
                         });
 
                         const handle = nextHandle++;
-                        pipelines.set(handle, { pipeline, layout: pipelineLayout });
+                        pipelines.set(handle, { pipeline, layout: pipelineLayout, bindGroupLayout });
                         return handle;
                     } catch (e) {
                         setError('Failed to create pipeline: ' + e.message);
                         return 0;
+                    }
+                },
+
+                create_gpu_buffer(deviceHandle, info_ptr) {
+                    if (!memory) return 0;
+                    const dv = new DataView(memory.buffer);
+                    const usage = dv.getUint32(info_ptr + 0, true);
+                    const size = dv.getUint32(info_ptr + 4, true);
+                    const data_ptr = dv.getUint32(info_ptr + 8, true);
+
+                    const buffer = device.createBuffer({
+                        size,
+                        usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX,
+                    });
+
+                    if (data_ptr && size > 0) {
+                        const initialData = new Uint8Array(memory.buffer, data_ptr, size);
+                        device.queue.writeBuffer(buffer, 0, initialData);
+                    }
+
+                    const handle = nextHandle++;
+                    buffers.set(handle, { buffer, size, usage });
+                    return handle;
+                },
+
+                destroy_gpu_buffer(deviceHandle, bufferHandle) {
+                    const entry = buffers.get(bufferHandle);
+                    if (entry) {
+                        entry.buffer.destroy();
+                        buffers.delete(bufferHandle);
                     }
                 },
 
@@ -312,7 +355,14 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
                 acquire_gpu_command_buffer(deviceHandle) {
                     const encoder = device.createCommandEncoder();
                     const handle = nextHandle++;
-                    commandBuffers.set(handle, { encoder, uniformBuffer: null, bindGroup: null });
+                    commandBuffers.set(handle, {
+                        encoder,
+                        uniformBuffer: null,
+                        uniformBufferSize: 0,
+                        bindGroup: null,
+                        vertexBuffer: null,
+                        pipelineHandle: null
+                    });
                     console.log('[SDL] AcquireGPUCommandBuffer, handle:', handle);
                     return handle;
                 },
@@ -372,15 +422,15 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
                     });
 
                     const handle = nextHandle++;
-                    renderPasses.set(handle, renderPass);
+                    renderPasses.set(handle, { pass: renderPass, cmdbufHandle: cmdbufHandle });
                     return handle;
                 },
 
                 end_gpu_render_pass(passHandle) {
                     console.log('[SDL] EndGPURenderPass, handle:', passHandle);
-                    const pass = renderPasses.get(passHandle);
-                    if (pass) {
-                        pass.end();
+                    const passInfo = renderPasses.get(passHandle);
+                    if (passInfo) {
+                        passInfo.pass.end();
                         renderPasses.delete(passHandle);
                         console.log('[SDL] Render pass ended');
                     } else {
@@ -390,14 +440,39 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
 
                 bind_gpu_graphics_pipeline(passHandle, pipelineHandle) {
                     console.log('[SDL] BindGPUGraphicsPipeline, pass:', passHandle, 'pipeline:', pipelineHandle);
-                    const pass = renderPasses.get(passHandle);
+                    const passInfo = renderPasses.get(passHandle);
                     const pipelineInfo = pipelines.get(pipelineHandle);
 
-                    if (pass && pipelineInfo) {
-                        pass.setPipeline(pipelineInfo.pipeline);
+                    if (passInfo && pipelineInfo) {
+                        passInfo.pass.setPipeline(pipelineInfo.pipeline);
+                        const cmdbuf = commandBuffers.get(passInfo.cmdbufHandle);
+                        if (cmdbuf) {
+                            cmdbuf.pipelineHandle = pipelineHandle;
+                        }
                         console.log('[SDL] Pipeline set');
                     } else {
-                        console.error('[SDL] bind_gpu_graphics_pipeline: invalid handles', { pass: !!pass, pipeline: !!pipelineInfo });
+                        console.error('[SDL] bind_gpu_graphics_pipeline: invalid handles', { pass: !!passInfo, pipeline: !!pipelineInfo });
+                    }
+                },
+
+                bind_gpu_vertex_buffer(passHandle, slot, bufferHandle, offset, stride) {
+                    const passInfo = renderPasses.get(passHandle);
+                    const bufferEntry = buffers.get(bufferHandle);
+                    if (!passInfo || !bufferEntry) {
+                        console.error('[SDL] bind_gpu_vertex_buffer: invalid handles', passHandle, bufferHandle);
+                        return;
+                    }
+
+                    try {
+                        passInfo.pass.setVertexBuffer(slot, bufferEntry.buffer, offset, stride);
+                    } catch (e) {
+                        console.warn('[SDL] setVertexBuffer failed:', e.message);
+                    }
+
+                    const cmdbuf = commandBuffers.get(passInfo.cmdbufHandle);
+                    if (cmdbuf) {
+                        cmdbuf.vertexBuffer = bufferEntry;
+                        cmdbuf.bindGroup = null;
                     }
                 },
 
@@ -412,54 +487,65 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
 
                     // Read uniform data from WASM memory
                     const uniformData = new Float32Array(memory.buffer, data_ptr, length / 4);
-                    console.log('[SDL] PushGPUFragmentUniformData, slot:', slot, 'data:', Array.from(uniformData));
+                    console.log('[SDL] PushGPUFragmentUniformData, slot:', slot, 'floats:', uniformData.length);
 
                     // Create or update uniform buffer
-                    if (!cmdbuf.uniformBuffer) {
+                    if (!cmdbuf.uniformBuffer || cmdbuf.uniformBufferSize !== length) {
+                        if (cmdbuf.uniformBuffer) {
+                            cmdbuf.uniformBuffer.destroy();
+                        }
                         cmdbuf.uniformBuffer = device.createBuffer({
-                            size: 16, // vec2 + vec2 = 4 floats
+                            size: length,
                             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
                         });
+                        cmdbuf.uniformBufferSize = length;
                     }
 
                     device.queue.writeBuffer(cmdbuf.uniformBuffer, 0, uniformData);
 
-                    // Create bind group if not exists
-                    if (!cmdbuf.bindGroup) {
-                        // Get the first pipeline to get its layout
-                        const firstPipeline = Array.from(pipelines.values())[0];
-                        if (firstPipeline) {
-                            const bindGroupLayout = firstPipeline.pipeline.getBindGroupLayout(0);
-                            cmdbuf.bindGroup = device.createBindGroup({
-                                layout: bindGroupLayout,
-                                entries: [{
-                                    binding: 0,
-                                    resource: { buffer: cmdbuf.uniformBuffer }
-                                }]
-                            });
-                        }
+                    const pipelineInfo = pipelines.get(cmdbuf.pipelineHandle ?? 0);
+                    if (!pipelineInfo) {
+                        console.error('[SDL] push_gpu_fragment_uniform_data: pipeline not bound');
+                        return;
                     }
+
+                    const bindGroupLayout = pipelineInfo.pipeline.getBindGroupLayout(0);
+                    const entries = [{
+                        binding: 0,
+                        resource: { buffer: cmdbuf.uniformBuffer }
+                    }];
+
+                    if (cmdbuf.vertexBuffer) {
+                        entries.push({
+                            binding: 1,
+                            resource: { buffer: cmdbuf.vertexBuffer.buffer }
+                        });
+                    }
+
+                    cmdbuf.bindGroup = device.createBindGroup({
+                        layout: bindGroupLayout,
+                        entries
+                    });
                 },
 
                 draw_gpu_primitives(passHandle, vertexCount, instanceCount, firstVertex, firstInstance) {
                     console.log('[SDL] DrawGPUPrimitives, pass:', passHandle, 'verts:', vertexCount, 'instances:', instanceCount);
-                    const pass = renderPasses.get(passHandle);
+                    const passInfo = renderPasses.get(passHandle);
 
-                    if (!pass) {
+                    if (!passInfo) {
                         console.error('[SDL] draw_gpu_primitives: invalid pass handle', passHandle);
                         return;
                     }
 
-                    // Set bind group before drawing
-                    const cmdbufEntry = Array.from(commandBuffers.values()).find(cb => cb.bindGroup);
-                    if (cmdbufEntry && cmdbufEntry.bindGroup) {
-                        pass.setBindGroup(0, cmdbufEntry.bindGroup);
+                    const cmdbuf = commandBuffers.get(passInfo.cmdbufHandle);
+                    if (cmdbuf && cmdbuf.bindGroup) {
+                        passInfo.pass.setBindGroup(0, cmdbuf.bindGroup);
                         console.log('[SDL] Set bind group');
                     } else {
                         console.warn('[SDL] No bind group available');
                     }
 
-                    pass.draw(vertexCount, instanceCount, firstVertex, firstInstance);
+                    passInfo.pass.draw(vertexCount, instanceCount, firstVertex, firstInstance);
                     console.log('[SDL] Draw call executed');
                 },
 
@@ -469,6 +555,12 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
                     if (cmdbuf) {
                         const commandBuffer = cmdbuf.encoder.finish();
                         device.queue.submit([commandBuffer]);
+                        if (cmdbuf.uniformBuffer) {
+                            cmdbuf.uniformBuffer.destroy();
+                        }
+                        cmdbuf.uniformBufferSize = 0;
+                        cmdbuf.bindGroup = null;
+                        cmdbuf.vertexBuffer = null;
                         commandBuffers.delete(cmdbufHandle);
                         console.log('[SDL] Command buffer submitted');
                     } else {
@@ -507,8 +599,9 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
                 get_error(buffer_ptr, buffer_size) {
                     if (memory && buffer_ptr && buffer_size > 0) {
                         writeString(buffer_ptr, buffer_size, lastError);
+                        return lastError.length;
                     }
-                    return buffer_ptr;
+                    return 0;
                 },
 
                 log(msg_ptr, msg_len) {
@@ -516,6 +609,15 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
                         const msg = readString(msg_ptr, msg_len);
                         console.log('[SDL Log]', msg);
                     }
+                },
+
+                get_performance_counter() {
+                    const elapsedMs = performance.now() - performanceStart;
+                    return BigInt(Math.floor(elapsedMs * 1000.0));
+                },
+
+                get_performance_frequency() {
+                    return performanceFrequency;
                 },
             };
 

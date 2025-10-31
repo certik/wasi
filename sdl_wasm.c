@@ -86,6 +86,21 @@ uint32_t sdl_host_get_error(uint32_t buffer_ptr, uint32_t buffer_size);
 WASM_IMPORT("sdl", "log")
 void sdl_host_log(uint32_t msg_ptr, uint32_t msg_len);
 
+WASM_IMPORT("sdl", "create_gpu_buffer")
+uint32_t sdl_host_create_gpu_buffer(uint32_t device, uint32_t info_ptr);
+
+WASM_IMPORT("sdl", "destroy_gpu_buffer")
+void sdl_host_destroy_gpu_buffer(uint32_t device, uint32_t buffer);
+
+WASM_IMPORT("sdl", "bind_gpu_vertex_buffer")
+void sdl_host_bind_gpu_vertex_buffer(uint32_t pass, uint32_t slot, uint32_t buffer, uint32_t offset, uint32_t stride);
+
+WASM_IMPORT("sdl", "get_performance_counter")
+uint64_t sdl_host_get_performance_counter(void);
+
+WASM_IMPORT("sdl", "get_performance_frequency")
+uint64_t sdl_host_get_performance_frequency(void);
+
 // String utilities
 static size_t wasm_strlen(const char* str) {
     size_t len = 0;
@@ -245,6 +260,25 @@ void SDL_SubmitGPUCommandBuffer(SDL_GPUCommandBuffer* cmdbuf) {
     sdl_host_submit_gpu_command_buffer((uint32_t)(uintptr_t)cmdbuf);
 }
 
+SDL_GPUBuffer* SDL_CreateGPUBuffer(SDL_GPUDevice* device, const SDL_GPUBufferCreateInfo* info) {
+    uint32_t handle = sdl_host_create_gpu_buffer((uint32_t)(uintptr_t)device, (uint32_t)(uintptr_t)info);
+    return (SDL_GPUBuffer*)(uintptr_t)handle;
+}
+
+void SDL_DestroyGPUBuffer(SDL_GPUDevice* device, SDL_GPUBuffer* buffer) {
+    sdl_host_destroy_gpu_buffer((uint32_t)(uintptr_t)device, (uint32_t)(uintptr_t)buffer);
+}
+
+void SDL_BindGPUVertexBuffer(SDL_GPURenderPass* pass, Uint32 slot, SDL_GPUBuffer* buffer, size_t offset, Uint32 stride) {
+    sdl_host_bind_gpu_vertex_buffer(
+        (uint32_t)(uintptr_t)pass,
+        slot,
+        (uint32_t)(uintptr_t)buffer,
+        (uint32_t)offset,
+        stride
+    );
+}
+
 bool SDL_PollEvent(SDL_Event* event) {
     return sdl_host_poll_event((uint32_t)(uintptr_t)event) != 0;
 }
@@ -273,6 +307,14 @@ void SDL_Log(const char* fmt, ...) {
 
 size_t SDL_strlen(const char* str) {
     return wasm_strlen(str);
+}
+
+Uint64 SDL_GetPerformanceCounter(void) {
+    return sdl_host_get_performance_counter();
+}
+
+Uint64 SDL_GetPerformanceFrequency(void) {
+    return sdl_host_get_performance_frequency();
 }
 
 // Managed main bridging for WASM builds

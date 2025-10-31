@@ -152,11 +152,37 @@ void SDL_DrawGPUPrimitives(SDL_GPURenderPass* pass, Uint32 vertexCount, Uint32 i
     fprintf(stderr, "ERROR: SDL_DrawGPUPrimitives called - mock implementation\n");
 }
 
+SDL_GPUBuffer* SDL_CreateGPUBuffer(SDL_GPUDevice* device, const SDL_GPUBufferCreateInfo* info) {
+    (void)device; (void)info;
+    fprintf(stderr, "ERROR: SDL_CreateGPUBuffer called - mock implementation\n");
+    return NULL;
+}
+
+void SDL_DestroyGPUBuffer(SDL_GPUDevice* device, SDL_GPUBuffer* buffer) {
+    (void)device; (void)buffer;
+    fprintf(stderr, "ERROR: SDL_DestroyGPUBuffer called - mock implementation\n");
+}
+
+void SDL_BindGPUVertexBuffer(SDL_GPURenderPass* pass, Uint32 slot, SDL_GPUBuffer* buffer, size_t offset, Uint32 stride) {
+    (void)pass; (void)slot; (void)buffer; (void)offset; (void)stride;
+    fprintf(stderr, "ERROR: SDL_BindGPUVertexBuffer called - mock implementation\n");
+}
+
 // Events
 bool SDL_PollEvent(SDL_Event* event) {
     (void)event;
     fprintf(stderr, "ERROR: SDL_PollEvent called - mock implementation\n");
     return false;
+}
+
+Uint64 SDL_GetPerformanceCounter(void) {
+    fprintf(stderr, "ERROR: SDL_GetPerformanceCounter called - mock implementation\n");
+    return 0;
+}
+
+Uint64 SDL_GetPerformanceFrequency(void) {
+    fprintf(stderr, "ERROR: SDL_GetPerformanceFrequency called - mock implementation\n");
+    return 1;
 }
 
 Uint32 SDL_GetMouseState(float* x, float* y) {

@@ -202,6 +202,7 @@ clang \
     -Wl,--initial-memory=1048576 \
     -o mousecircle.wasm \
     MouseCircle_standalone.c \
+    sdl_helpers.c \
     sdl_wasm.c \
     stdlib/string.c \
     base/buddy.c \
@@ -476,19 +477,20 @@ test_hotel2gltf_macos = { cmd="./hotel2gltf_macos", depends-on=["build_hotel2glt
 
 build_mousecircle_sdl = """
 clang \
+    -I base \
+    -I native \
+    -I . \
     -I$CONDA_PREFIX/include \
     -L$CONDA_PREFIX/lib \
     -Wl,-rpath,$CONDA_PREFIX/lib \
     -DWASI_MACOS_SKIP_ENTRY \
-    -I base \
-    -I native \
-    -I . \
     -lSDL3 \
     -lSystem \
     -framework Metal -framework CoreGraphics -framework AppKit \
     -Wno-macro-redefined \
     -o mousecircle_sdl \
     MouseCircle_standalone.c \
+    sdl_helpers.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \

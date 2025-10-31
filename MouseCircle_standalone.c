@@ -23,6 +23,7 @@
 #include <base/io.h>
 #include <base/buddy.h>
 #include <base/mem.h>
+#include <base/base_math.h>
 
 // Embedded Metal Shaders (compiled MSL)
 static const char* VertexShaderMSL =
@@ -31,23 +32,32 @@ static const char* VertexShaderMSL =
 "\n"
 "using namespace metal;\n"
 "\n"
-"struct VertexOutput {\n"
-"    float4 position [[position]];\n"
-"    float2 uv [[user(locn0)]];\n"
+"struct VertexInput {\n"
+"    float3 position [[attribute(0)]];\n"
+"    float3 normal [[attribute(1)]];\n"
+"    float2 uv [[attribute(2)]];\n"
 "};\n"
 "\n"
-"vertex VertexOutput main0(uint vertex_index [[vertex_id]]) {\n"
-"    VertexOutput output;\n"
+"struct Uniforms {\n"
+"    float4x4 mvp;\n"
+"    float4x4 normal_matrix;\n"
+"    float4 light_dir;\n"
+"};\n"
 "\n"
-"    // Full-screen triangle\n"
-"    float x = float(int(vertex_index) - 1);\n"
-"    float y = float(int(vertex_index & 1u) * 2 - 1);\n"
-"    output.position = float4(x, y, 0.0, 1.0);\n"
+"struct VertexOutput {\n"
+"    float4 position [[position]];\n"
+"    float3 normal;\n"
+"    float2 uv;\n"
+"};\n"
 "\n"
-"    // Convert to UV coordinates (0,0 to 1,1)\n"
-"    output.uv = float2((x + 1.0) * 0.5, (1.0 - y) * 0.5);\n"
-"\n"
-"    return output;\n"
+"vertex VertexOutput main0(VertexInput in [[stage_in]], constant Uniforms& uniforms [[buffer(1)]]) {\n"
+"    VertexOutput out;\n"
+"    float4 pos = float4(in.position, 1.0);\n"
+"    out.position = uniforms.mvp * pos;\n"
+"    float4 transformed_normal = uniforms.normal_matrix * float4(in.normal, 0.0);\n"
+"    out.normal = normalize(transformed_normal.xyz);\n"
+"    out.uv = in.uv;\n"
+"    return out;\n"
 "}\n";
 
 static const char* FragmentShaderMSL =
@@ -57,59 +67,179 @@ static const char* FragmentShaderMSL =
 "using namespace metal;\n"
 "\n"
 "struct Uniforms {\n"
-"    float2 mouse_pos;\n"
-"    float2 resolution;\n"
+"    float4x4 mvp;\n"
+"    float4x4 normal_matrix;\n"
+"    float4 light_dir;\n"
 "};\n"
 "\n"
 "struct VertexOutput {\n"
 "    float4 position [[position]];\n"
-"    float2 uv [[user(locn0)]];\n"
+"    float3 normal;\n"
+"    float2 uv;\n"
 "};\n"
 "\n"
-"fragment float4 main0(\n"
-"    VertexOutput input [[stage_in]],\n"
-"    constant Uniforms& uniforms [[buffer(0)]]\n"
-") {\n"
-"    // Convert UV to screen coordinates\n"
-"    float2 screen_pos = input.uv * uniforms.resolution;\n"
-"\n"
-"    // Calculate distance from mouse position\n"
-"    float dist = length(screen_pos - uniforms.mouse_pos);\n"
-"\n"
-"    // Draw a circle with radius 50 pixels\n"
-"    float circle_radius = 50.0;\n"
-"    float4 circle_color = float4(1.0, 0.0, 0.0, 1.0); // Red\n"
-"    float4 bg_color = float4(0.0, 1.0, 0.0, 1.0); // Green\n"
-"\n"
-"    // Smooth circle edge\n"
-"    float edge_smoothness = 2.0;\n"
-"    float t = smoothstep(circle_radius + edge_smoothness, circle_radius - edge_smoothness, dist);\n"
-"\n"
-"    return mix(bg_color, circle_color, t);\n"
+"fragment float4 main0(VertexOutput input [[stage_in]], constant Uniforms& uniforms [[buffer(1)]]) {\n"
+"    float3 light_dir = normalize(uniforms.light_dir.xyz);\n"
+"    float diffuse = max(dot(input.normal, light_dir), 0.0);\n"
+"    float3 base_color = float3(0.8, 0.3, 0.2);\n"
+"    float3 color = base_color * (0.2 + 0.8 * diffuse);\n"
+"    return float4(color, 1.0);\n"
 "}\n";
 
-// Uniform data structure
-typedef struct MouseCircleUniforms
-{
-    float mouse_x;
-    float mouse_y;
-    float resolution_x;
-    float resolution_y;
-} MouseCircleUniforms;
+typedef struct CubeVertex {
+    float position[3];
+    float normal[3];
+    float uv[2];
+} CubeVertex;
+
+typedef struct CubeUniforms {
+    float mvp[16];
+    float normal_matrix[16];
+    float light_dir[4];
+} CubeUniforms;
 
 typedef struct MouseCircleApp {
     SDL_Window* window;
     SDL_GPUDevice* device;
     SDL_GPUGraphicsPipeline* pipeline;
-    MouseCircleUniforms uniforms;
+    SDL_GPUBuffer* vertex_buffer;
+    CubeUniforms uniforms;
     bool quit_requested;
     int frame_count;
+    float rotation;
+    Uint64 previous_counter;
+    double time_accumulator;
+    int fps_frames;
+    Uint32 vertex_count;
 } MouseCircleApp;
 
 static MouseCircleApp g_App;
 static bool g_buddy_initialized = false;
 
 void ensure_heap_initialized(void);
+
+static inline void mat4_identity(float *m) {
+    for (int i = 0; i < 16; i++) {
+        m[i] = (i % 5 == 0) ? 1.0f : 0.0f;
+    }
+}
+
+static void mat4_multiply(float *out, const float *a, const float *b) {
+    for (int col = 0; col < 4; col++) {
+        for (int row = 0; row < 4; row++) {
+            out[col * 4 + row] =
+                a[0 * 4 + row] * b[col * 4 + 0] +
+                a[1 * 4 + row] * b[col * 4 + 1] +
+                a[2 * 4 + row] * b[col * 4 + 2] +
+                a[3 * 4 + row] * b[col * 4 + 3];
+        }
+    }
+}
+
+static void mat4_rotate_x(float *m, float angle) {
+    float c = __builtin_cosf(angle);
+    float s = __builtin_sinf(angle);
+    mat4_identity(m);
+    m[5] = c;
+    m[9] = -s;
+    m[6] = s;
+    m[10] = c;
+}
+
+static void mat4_rotate_y(float *m, float angle) {
+    float c = __builtin_cosf(angle);
+    float s = __builtin_sinf(angle);
+    mat4_identity(m);
+    m[0] = c;
+    m[8] = s;
+    m[2] = -s;
+    m[10] = c;
+}
+
+static void mat4_translate(float *m, float x, float y, float z) {
+    mat4_identity(m);
+    m[12] = x;
+    m[13] = y;
+    m[14] = z;
+}
+
+static void mat4_perspective(float *m, float fov_degrees, float aspect, float znear, float zfar) {
+    const float pi = 3.14159265358979323846f;
+    float fov_radians = fov_degrees * (pi / 180.0f);
+    float f = 1.0f / __builtin_tanf(fov_radians * 0.5f);
+
+    for (int i = 0; i < 16; i++) {
+        m[i] = 0.0f;
+    }
+    m[0] = f / aspect;
+    m[5] = f;
+    m[10] = (zfar + znear) / (znear - zfar);
+    m[11] = -1.0f;
+    m[14] = (2.0f * zfar * znear) / (znear - zfar);
+}
+
+static void mat4_copy(float *dest, const float *src) {
+    for (int i = 0; i < 16; i++) {
+        dest[i] = src[i];
+    }
+}
+
+static void vec3_normalize(float v[3]) {
+    float length_sq = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+    if (length_sq > 0.0f) {
+        float inv_len = 1.0f / __builtin_sqrtf(length_sq);
+        v[0] *= inv_len;
+        v[1] *= inv_len;
+        v[2] *= inv_len;
+    }
+}
+
+static const CubeVertex g_CubeVertices[] = {
+    // Front face
+    {{-1.0f, -1.0f,  1.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+    {{ 1.0f, -1.0f,  1.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+    {{ 1.0f,  1.0f,  1.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}},
+    {{-1.0f, -1.0f,  1.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+    {{ 1.0f,  1.0f,  1.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}},
+    {{-1.0f,  1.0f,  1.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}},
+    // Back face
+    {{-1.0f, -1.0f, -1.0f}, {0.0f, 0.0f,-1.0f}, {1.0f, 1.0f}},
+    {{-1.0f,  1.0f, -1.0f}, {0.0f, 0.0f,-1.0f}, {1.0f, 0.0f}},
+    {{ 1.0f,  1.0f, -1.0f}, {0.0f, 0.0f,-1.0f}, {0.0f, 0.0f}},
+    {{-1.0f, -1.0f, -1.0f}, {0.0f, 0.0f,-1.0f}, {1.0f, 1.0f}},
+    {{ 1.0f,  1.0f, -1.0f}, {0.0f, 0.0f,-1.0f}, {0.0f, 0.0f}},
+    {{ 1.0f, -1.0f, -1.0f}, {0.0f, 0.0f,-1.0f}, {0.0f, 1.0f}},
+    // Left face
+    {{-1.0f, -1.0f, -1.0f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}},
+    {{-1.0f, -1.0f,  1.0f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}},
+    {{-1.0f,  1.0f,  1.0f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+    {{-1.0f, -1.0f, -1.0f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}},
+    {{-1.0f,  1.0f,  1.0f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+    {{-1.0f,  1.0f, -1.0f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+    // Right face
+    {{ 1.0f, -1.0f, -1.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}},
+    {{ 1.0f,  1.0f,  1.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+    {{ 1.0f, -1.0f,  1.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}},
+    {{ 1.0f, -1.0f, -1.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}},
+    {{ 1.0f,  1.0f, -1.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+    {{ 1.0f,  1.0f,  1.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+    // Top face
+    {{-1.0f,  1.0f, -1.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
+    {{-1.0f,  1.0f,  1.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+    {{ 1.0f,  1.0f,  1.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
+    {{-1.0f,  1.0f, -1.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
+    {{ 1.0f,  1.0f,  1.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
+    {{ 1.0f,  1.0f, -1.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f}},
+    // Bottom face
+    {{-1.0f, -1.0f, -1.0f}, {0.0f,-1.0f, 0.0f}, {0.0f, 0.0f}},
+    {{ 1.0f, -1.0f,  1.0f}, {0.0f,-1.0f, 0.0f}, {1.0f, 1.0f}},
+    {{-1.0f, -1.0f,  1.0f}, {0.0f,-1.0f, 0.0f}, {0.0f, 1.0f}},
+    {{-1.0f, -1.0f, -1.0f}, {0.0f,-1.0f, 0.0f}, {0.0f, 0.0f}},
+    {{ 1.0f, -1.0f, -1.0f}, {0.0f,-1.0f, 0.0f}, {1.0f, 0.0f}},
+    {{ 1.0f, -1.0f,  1.0f}, {0.0f,-1.0f, 0.0f}, {1.0f, 1.0f}},
+};
+
+static int Update(MouseCircleApp* app, float delta_time);
 
 // Initialize SDL, GPU device, window and graphics pipeline
 static int Init(MouseCircleApp* app)
@@ -156,7 +286,7 @@ static int Init(MouseCircleApp* app)
         .format = SDL_GPU_SHADERFORMAT_MSL,
         .stage = SDL_GPU_SHADERSTAGE_VERTEX,
         .num_samplers = 0,
-        .num_uniform_buffers = 0,
+        .num_uniform_buffers = 1,
         .num_storage_buffers = 0,
         .num_storage_textures = 0
     };
@@ -215,30 +345,72 @@ static int Init(MouseCircleApp* app)
     // Initialize uniform values
     int width, height;
     SDL_GetWindowSizeInPixels(app->window, &width, &height);
-    app->uniforms.mouse_x = width / 2.0f;
-    app->uniforms.mouse_y = height / 2.0f;
-    app->uniforms.resolution_x = (float)width;
-    app->uniforms.resolution_y = (float)height;
 
-    SDL_Log("Move the mouse to see the circle follow!");
+    SDL_GPUBufferCreateInfo buffer_info = {
+        .usage = SDL_GPU_BUFFERUSAGE_VERTEX,
+        .size = (Uint32)sizeof(g_CubeVertices),
+        .initial_data = g_CubeVertices
+    };
+
+    app->vertex_buffer = SDL_CreateGPUBuffer(app->device, &buffer_info);
+    if (!app->vertex_buffer) {
+        SDL_Log("Failed to create vertex buffer: %s", SDL_GetError());
+        return -1;
+    }
+
+    app->vertex_count = (Uint32)(sizeof(g_CubeVertices) / sizeof(g_CubeVertices[0]));
+    app->rotation = 0.0f;
+    app->previous_counter = SDL_GetPerformanceCounter();
+    app->time_accumulator = 0.0;
+    app->fps_frames = 0;
+    Update(app, 0.0f);
+
+    SDL_Log("Initialized rotating cube demo (%dx%d)", width, height);
 
     return 0;
 }
 
 // Update function - called each frame
-static int Update(MouseCircleApp* app)
+static int Update(MouseCircleApp* app, float delta_time)
 {
-    // Update mouse position
-    float mouse_x, mouse_y;
-    SDL_GetMouseState(&mouse_x, &mouse_y);
-    app->uniforms.mouse_x = mouse_x;
-    app->uniforms.mouse_y = mouse_y;
-
-    // Update resolution in case window was resized
-    int width, height;
+    int width = 0;
+    int height = 0;
     SDL_GetWindowSizeInPixels(app->window, &width, &height);
-    app->uniforms.resolution_x = (float)width;
-    app->uniforms.resolution_y = (float)height;
+    float aspect = (height != 0) ? ((float)width / (float)height) : 1.0f;
+
+    app->rotation += delta_time;
+
+    float model_y[16];
+    float model_x[16];
+    float model[16];
+    float view[16];
+    float proj[16];
+    float vp[16];
+
+    mat4_rotate_y(model_y, app->rotation);
+    mat4_rotate_x(model_x, app->rotation * 0.5f);
+    mat4_multiply(model, model_y, model_x);
+
+    mat4_translate(view, 0.0f, 0.0f, -5.0f);
+    mat4_perspective(proj, 60.0f, aspect, 0.1f, 100.0f);
+    mat4_multiply(vp, proj, view);
+    mat4_multiply(app->uniforms.mvp, vp, model);
+
+    mat4_copy(app->uniforms.normal_matrix, model);
+    app->uniforms.normal_matrix[3] = 0.0f;
+    app->uniforms.normal_matrix[7] = 0.0f;
+    app->uniforms.normal_matrix[11] = 0.0f;
+    app->uniforms.normal_matrix[12] = 0.0f;
+    app->uniforms.normal_matrix[13] = 0.0f;
+    app->uniforms.normal_matrix[14] = 0.0f;
+    app->uniforms.normal_matrix[15] = 1.0f;
+
+    float light_dir[3] = {0.5f, 1.0f, -0.6f};
+    vec3_normalize(light_dir);
+    app->uniforms.light_dir[0] = light_dir[0];
+    app->uniforms.light_dir[1] = light_dir[1];
+    app->uniforms.light_dir[2] = light_dir[2];
+    app->uniforms.light_dir[3] = 0.0f;
 
     return 0;
 }
@@ -271,8 +443,9 @@ static int Draw(MouseCircleApp* app)
 
         SDL_GPURenderPass* renderPass = SDL_BeginGPURenderPass(cmdbuf, &colorTargetInfo, 1, NULL);
         SDL_BindGPUGraphicsPipeline(renderPass, app->pipeline);
-        SDL_PushGPUFragmentUniformData(cmdbuf, 0, &app->uniforms, sizeof(MouseCircleUniforms));
-        SDL_DrawGPUPrimitives(renderPass, 3, 1, 0, 0);
+        SDL_BindGPUVertexBuffer(renderPass, 0, app->vertex_buffer, 0, sizeof(CubeVertex));
+        SDL_PushGPUFragmentUniformData(cmdbuf, 0, &app->uniforms, sizeof(CubeUniforms));
+        SDL_DrawGPUPrimitives(renderPass, app->vertex_count, 1, 0, 0);
         SDL_EndGPURenderPass(renderPass);
     }
 
@@ -299,6 +472,12 @@ static void Quit(MouseCircleApp* app)
     {
         SDL_DestroyWindow(app->window);
         app->window = NULL;
+    }
+
+    if (app->vertex_buffer != NULL)
+    {
+        SDL_DestroyGPUBuffer(app->device, app->vertex_buffer);
+        app->vertex_buffer = NULL;
     }
 
     if (app->device != NULL)
@@ -363,9 +542,23 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         return SDL_APP_FAILURE;
     }
 
-    println(str_lit("Main loop"));
+    Uint64 now = SDL_GetPerformanceCounter();
+    float delta_time = 0.0f;
+    Uint64 freq = SDL_GetPerformanceFrequency();
+    if (app->previous_counter != 0 && freq != 0) {
+        delta_time = (float)((double)(now - app->previous_counter) / (double)freq);
+    }
+    app->previous_counter = now;
 
-    if (Update(app) < 0) {
+    SDL_Event evt;
+    while (SDL_PollEvent(&evt)) {
+        SDL_AppResult event_result = SDL_AppEvent(app, &evt);
+        if (event_result != SDL_APP_CONTINUE) {
+            return event_result;
+        }
+    }
+
+    if (Update(app, delta_time) < 0) {
         SDL_Log("Update failed!");
         return SDL_APP_FAILURE;
     }
@@ -376,6 +569,16 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     }
 
     app->frame_count++;
+    app->time_accumulator += delta_time;
+    app->fps_frames++;
+
+    if (app->time_accumulator >= 1.0) {
+        double fps = (double)app->fps_frames / app->time_accumulator;
+        SDL_Log("FPS: %.2f", fps);
+        app->time_accumulator = 0.0;
+        app->fps_frames = 0;
+    }
+
     if (app->quit_requested || app->frame_count >= MAX_FRAMES) {
         return SDL_APP_SUCCESS;
     }
