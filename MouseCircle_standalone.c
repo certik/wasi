@@ -17,8 +17,14 @@
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
+#ifdef __wasm__
 #include <base/io.h>
 #include <base/buddy.h>
+#else
+// For non-WASM builds, map println to SDL_Log (or no-op)
+#define println(...) ((void)0)  // No-op for now, can use SDL_Log if needed
+#define str_lit(x) x
+#endif
 #include <stdbool.h>
 
 // Embedded Metal Shaders (compiled MSL)
@@ -307,7 +313,9 @@ __attribute__((export_name("mc_init")))
 #endif
 int mc_init()
 {
+#ifdef __wasm__
     buddy_init();
+#endif
 
     // Initialize
     if (Init() < 0)
@@ -377,3 +385,28 @@ void mc_quit()
     // Cleanup
     Quit();
 }
+
+#ifndef __wasm__
+// Native SDL main function
+int main(int argc, char** argv)
+{
+    (void)argc;
+    (void)argv;
+
+    // Initialize
+    if (mc_init() != 0) {
+        return 1;
+    }
+
+    // Main loop
+    int result;
+    while ((result = mc_frame()) == 0) {
+        // Continue loop while mc_frame returns 0
+    }
+
+    // Cleanup
+    mc_quit();
+
+    return 0;
+}
+#endif

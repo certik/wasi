@@ -471,6 +471,19 @@ clang \
 
 test_hotel2gltf_macos = { cmd="./hotel2gltf_macos", depends-on=["build_hotel2gltf_macos"] }
 
+build_mousecircle_sdl = """
+clang \
+    -I$CONDA_PREFIX/include \
+    -L$CONDA_PREFIX/lib \
+    -Wl,-rpath,$CONDA_PREFIX/lib \
+    -lSDL3 \
+    -framework Metal -framework CoreGraphics -framework AppKit \
+    -o mousecircle_sdl \
+    MouseCircle_standalone.c
+"""
+
+test_mousecircle_sdl = { cmd="./mousecircle_sdl", depends-on=["build_mousecircle_sdl"] }
+
 [feature.macos.dependencies]
 # Use the system Clang on macOS
 #clang = ">=20.1.4,<21"
