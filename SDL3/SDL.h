@@ -64,8 +64,8 @@ typedef enum {
     SDLK_S = 's',
     SDLK_D = 'd',
     SDLK_Q = 'q',
-    SDLK_LSHIFT = 1073742049,
-    SDLK_LCTRL = 1073742048,
+    SDLK_LSHIFT = 16,
+    SDLK_LCTRL = 17,
 } SDL_Keycode;
 
 // Init flags
@@ -230,6 +230,8 @@ typedef struct SDL_GPUBufferBinding {
     SDL_GPUBuffer* buffer;
     Uint32 offset;
 } SDL_GPUBufferBinding;
+
+Uint32 SDL_GetTicks(void);
 
 typedef struct SDL_GPUTransferBufferLocation {
     SDL_GPUTransferBuffer* transfer_buffer;

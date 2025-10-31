@@ -161,20 +161,31 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
             });
 
             // Map JS key codes to SDL key codes
-            function jsKeyToSDLKey(key) {
-                const keyMap = {
-                    'KeyW': 0x77,       // SDLK_W ('w')
-                    'KeyA': 0x61,       // SDLK_A ('a')
-                    'KeyS': 0x73,       // SDLK_S ('s')
-                    'KeyD': 0x64,       // SDLK_D ('d')
-                    'Space': 0x20,      // SDLK_SPACE
-                    'ShiftLeft': 1073742049,  // SDLK_LSHIFT
-                    'ControlLeft': 1073742048,// SDLK_LCTRL
-                    'Escape': 0x1B,     // SDLK_ESCAPE
-                    'KeyQ': 0x71,       // SDLK_Q ('q')
-                };
-                return keyMap[key] || 0;
-            }
+                function jsKeyToSDLKey(key) {
+                    const keyMap = {
+                        'KeyW': 'w'.charCodeAt(0),
+                        'KeyA': 'a'.charCodeAt(0),
+                        'KeyS': 's'.charCodeAt(0),
+                        'KeyD': 'd'.charCodeAt(0),
+                        'KeyQ': 'q'.charCodeAt(0),
+                        'KeyM': 'm'.charCodeAt(0),
+                        'KeyR': 'r'.charCodeAt(0),
+                        'KeyH': 'h'.charCodeAt(0),
+                        'KeyT': 't'.charCodeAt(0),
+                        'KeyI': 'i'.charCodeAt(0),
+                        'KeyB': 'b'.charCodeAt(0),
+                        'KeyF': 'f'.charCodeAt(0),
+                        'Space': 0x20,
+                        'ShiftLeft': 16,
+                        'ControlLeft': 17,
+                        'Escape': 0x1B,
+                        'ArrowUp': 38,
+                        'ArrowDown': 40,
+                        'ArrowLeft': 37,
+                        'ArrowRight': 39,
+                    };
+                    return keyMap[key] || 0;
+                }
 
             window.addEventListener('keydown', (e) => {
                 const sdlKey = jsKeyToSDLKey(e.code);
