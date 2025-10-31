@@ -299,7 +299,12 @@ static void Quit(void)
     SDL_Quit();
 }
 
+static int frame_count = 0;
+
 // Main function
+#ifdef __wasm__
+__attribute__((export_name("mc_init")))
+#endif
 int mc_init()
 {
     buddy_init();
@@ -314,11 +319,16 @@ int mc_init()
     return 0;
 }
 
+#ifdef __wasm__
+__attribute__((export_name("mc_frame")))
+#endif
 int mc_frame()
 {
     // Main loop
     println(str_lit("Main loop"));
+    frame_count++;
     bool quit = false;
+    if (frame_count == 10) quit = true;
     // Handle events
     SDL_Event evt;
     while (SDL_PollEvent(&evt))
@@ -359,6 +369,9 @@ int mc_frame()
     }
 }
 
+#ifdef __wasm__
+__attribute__((export_name("mc_quit")))
+#endif
 void mc_quit()
 {
     // Cleanup

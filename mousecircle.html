@@ -555,8 +555,11 @@ fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
 
             let animationFrameId = null;
             function frame() {
-                mc_frame();
-                animationFrameId = requestAnimationFrame(frame);
+                if (mc_frame() == 0) {
+                    animationFrameId = requestAnimationFrame(frame);
+                } else {
+                    mc_quit();
+                }
             }
 
             animationFrameId = requestAnimationFrame(frame);
