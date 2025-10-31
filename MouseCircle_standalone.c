@@ -301,6 +301,7 @@ static void Quit(void)
 }
 
 static int frame_count = 0;
+static const int MAX_FRAMES = 300;
 
 // Main function
 #ifdef __wasm__
@@ -333,7 +334,7 @@ int mc_frame()
     println(str_lit("Main loop"));
     frame_count++;
     bool quit = false;
-    if (frame_count == 2000) quit = true;
+    if (frame_count == MAX_FRAMES) quit = true;
     // Handle events
     SDL_Event evt;
     while (SDL_PollEvent(&evt))

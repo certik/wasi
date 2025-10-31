@@ -12,6 +12,13 @@
 #include <base/assert.h>
 #include <test_base.h>
 
+#define strlen base_strlen
+#define strcpy base_strcpy
+#define strcmp base_strcmp
+#define memcpy base_memcpy
+#define memcmp base_memcmp
+#define memset base_memset
+
 // Define hashtable and vector types for tests
 #define MapIntString_HASH(key) ((size_t)(key))
 #define MapIntString_EQUAL(key1, key2) ((key1) == (key2))
