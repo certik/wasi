@@ -850,12 +850,12 @@ static void update_camera(GameState *state) {
         dz -= forward_z * base_speed;
     }
     if (state->keys['a']) {
-        dx += right_x * base_speed;
-        dz += right_z * base_speed;
-    }
-    if (state->keys['d']) {
         dx -= right_x * base_speed;
         dz -= right_z * base_speed;
+    }
+    if (state->keys['d']) {
+        dx += right_x * base_speed;
+        dz += right_z * base_speed;
     }
 
     if (state->keys[' ']) {
