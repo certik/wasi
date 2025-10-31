@@ -66,6 +66,10 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
             const encoder = new TextEncoder();
 
             const context = canvas.getContext('webgpu');
+            canvas.tabIndex = 0;
+            canvas.addEventListener('click', () => {
+                canvas.focus();
+            });
 
             // SDL object storage
             const devices = new Map();
@@ -82,6 +86,29 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
             let mouseX = 0;
             let mouseY = 0;
             let mouseLocked = false;
+            let pendingPointerLockRequest = false;
+
+            function tryRequestPointerLock() {
+                if (document.pointerLockElement === canvas) {
+                    pendingPointerLockRequest = false;
+                    return;
+                }
+
+                pendingPointerLockRequest = true;
+                canvas.focus();
+
+                try {
+                    const result = canvas.requestPointerLock?.();
+                    if (result && typeof result.then === 'function') {
+                        result.catch(() => {
+                            pendingPointerLockRequest = true;
+                        });
+                    }
+                } catch (err) {
+                    console.warn('[SDL] requestPointerLock threw:', err);
+                    pendingPointerLockRequest = true;
+                }
+            }
 
             // Event queue
             const eventQueue = [];
@@ -127,6 +154,12 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
                 }
             });
 
+            canvas.addEventListener('mousedown', () => {
+                if (pendingPointerLockRequest && document.pointerLockElement !== canvas) {
+                    tryRequestPointerLock();
+                }
+            });
+
             // Map JS key codes to SDL key codes
             function jsKeyToSDLKey(key) {
                 const keyMap = {
@@ -146,6 +179,7 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
             window.addEventListener('keydown', (e) => {
                 const sdlKey = jsKeyToSDLKey(e.code);
                 if (sdlKey) {
+                    e.preventDefault();
                     eventQueue.push({
                         type: 'keydown',
                         key: sdlKey
@@ -156,6 +190,7 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
             window.addEventListener('keyup', (e) => {
                 const sdlKey = jsKeyToSDLKey(e.code);
                 if (sdlKey) {
+                    e.preventDefault();
                     eventQueue.push({
                         type: 'keyup',
                         key: sdlKey
@@ -166,6 +201,14 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
             // Handle pointer lock
             document.addEventListener('pointerlockchange', () => {
                 mouseLocked = document.pointerLockElement === canvas;
+                if (mouseLocked) {
+                    pendingPointerLockRequest = false;
+                }
+            });
+
+            document.addEventListener('pointerlockerror', () => {
+                console.warn('[SDL] Pointer lock error');
+                pendingPointerLockRequest = true;
             });
 
             window.addEventListener('beforeunload', () => {
@@ -460,7 +503,7 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
                 acquire_gpu_command_buffer(deviceHandle) {
                     const encoder = device.createCommandEncoder();
                     const handle = nextHandle++;
-                    commandBuffers.set(handle, { encoder, uniformBuffer: null, bindGroup: null });
+                    commandBuffers.set(handle, { encoder, uniformBuffer: null, bindGroup: null, swapchainTextures: [] });
                     console.log('[SDL] AcquireGPUCommandBuffer, handle:', handle);
                     return handle;
                 },
@@ -469,6 +512,11 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
                     const texture = context.getCurrentTexture();
                     const textureHandle = nextHandle++;
                     textures.set(textureHandle, texture);
+
+                    const cmdbuf = commandBuffers.get(cmdbufHandle);
+                    if (cmdbuf) {
+                        cmdbuf.swapchainTextures.push(textureHandle);
+                    }
 
                     if (memory && texture_out_ptr) {
                         const dv = new DataView(memory.buffer);
@@ -538,15 +586,15 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
                     const renderPass = cmdbuf.encoder.beginRenderPass(renderPassDesc);
 
                     const handle = nextHandle++;
-                    renderPasses.set(handle, renderPass);
+                    renderPasses.set(handle, { pass: renderPass, cmdbufHandle: cmdbufHandle });
                     return handle;
                 },
 
                 end_gpu_render_pass(passHandle) {
                     console.log('[SDL] EndGPURenderPass, handle:', passHandle);
-                    const pass = renderPasses.get(passHandle);
-                    if (pass) {
-                        pass.end();
+                    const passEntry = renderPasses.get(passHandle);
+                    if (passEntry) {
+                        passEntry.pass.end();
                         renderPasses.delete(passHandle);
                         console.log('[SDL] Render pass ended');
                     } else {
@@ -556,14 +604,14 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
 
                 bind_gpu_graphics_pipeline(passHandle, pipelineHandle) {
                     console.log('[SDL] BindGPUGraphicsPipeline, pass:', passHandle, 'pipeline:', pipelineHandle);
-                    const pass = renderPasses.get(passHandle);
+                    const passEntry = renderPasses.get(passHandle);
                     const pipelineInfo = pipelines.get(pipelineHandle);
 
-                    if (pass && pipelineInfo) {
-                        pass.setPipeline(pipelineInfo.pipeline);
+                    if (passEntry && pipelineInfo) {
+                        passEntry.pass.setPipeline(pipelineInfo.pipeline);
                         console.log('[SDL] Pipeline set');
                     } else {
-                        console.error('[SDL] bind_gpu_graphics_pipeline: invalid handles', { pass: !!pass, pipeline: !!pipelineInfo });
+                        console.error('[SDL] bind_gpu_graphics_pipeline: invalid handles', { pass: !!passEntry, pipeline: !!pipelineInfo });
                     }
                 },
 
@@ -752,8 +800,8 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
                 bind_gpu_vertex_buffers(passHandle, first_slot, bindings_ptr, num_bindings) {
                     if (!memory) return;
                     const dv = new DataView(memory.buffer);
-                    const pass = renderPasses.get(passHandle);
-                    if (!pass) return;
+                    const passEntry = renderPasses.get(passHandle);
+                    if (!passEntry) return;
 
                     for (let i = 0; i < num_bindings; i++) {
                         const bindingOffset = bindings_ptr + i * 8;
@@ -762,7 +810,7 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
 
                         const buffer = buffers.get(bufferHandle);
                         if (buffer) {
-                            pass.setVertexBuffer(first_slot + i, buffer, offset);
+                            passEntry.pass.setVertexBuffer(first_slot + i, buffer, offset);
                             console.log('[SDL] BindGPUVertexBuffer, slot:', first_slot + i, 'handle:', bufferHandle, 'buffer:', buffer);
                         } else {
                             console.error('[SDL] BindGPUVertexBuffer: buffer not found, handle:', bufferHandle);
@@ -773,8 +821,8 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
                 bind_gpu_index_buffer(passHandle, binding_ptr, index_element_size) {
                     if (!memory) return;
                     const dv = new DataView(memory.buffer);
-                    const pass = renderPasses.get(passHandle);
-                    if (!pass) return;
+                    const passEntry = renderPasses.get(passHandle);
+                    if (!passEntry) return;
 
                     const bufferHandle = dv.getUint32(binding_ptr, true);
                     const offset = dv.getUint32(binding_ptr + 4, true);
@@ -782,7 +830,7 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
                     const buffer = buffers.get(bufferHandle);
                     if (buffer) {
                         const format = index_element_size === 1 ? 'uint32' : 'uint16';
-                        pass.setIndexBuffer(buffer, format, offset);
+                        passEntry.pass.setIndexBuffer(buffer, format, offset);
                         console.log('[SDL] BindGPUIndexBuffer, format:', format, 'handle:', bufferHandle, 'buffer:', buffer);
                     } else {
                         console.error('[SDL] BindGPUIndexBuffer: buffer not found, handle:', bufferHandle);
@@ -791,19 +839,18 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
 
                 draw_gpu_indexed_primitives(passHandle, indexCount, instanceCount, firstIndex, vertexOffset, firstInstance) {
                     console.log('[SDL] DrawGPUIndexedPrimitives, indices:', indexCount);
-                    const pass = renderPasses.get(passHandle);
-                    if (!pass) return;
+                    const passEntry = renderPasses.get(passHandle);
+                    if (!passEntry) return;
 
-                    // Set bind group before drawing
-                    const cmdbufEntry = Array.from(commandBuffers.values()).find(cb => cb.bindGroup);
-                    if (cmdbufEntry && cmdbufEntry.bindGroup) {
+                    const cmdbuf = commandBuffers.get(passEntry.cmdbufHandle);
+                    if (cmdbuf && cmdbuf.bindGroup) {
                         console.log('[SDL] Setting bind group for draw');
-                        pass.setBindGroup(0, cmdbufEntry.bindGroup);
+                        passEntry.pass.setBindGroup(0, cmdbuf.bindGroup);
                     } else {
                         console.error('[SDL] No bind group found for draw!');
                     }
 
-                    pass.drawIndexed(indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
+                    passEntry.pass.drawIndexed(indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
                 },
 
                 create_gpu_texture(deviceHandle, info_ptr) {
@@ -846,24 +893,27 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
                 set_window_relative_mouse_mode(windowHandle, enabled) {
                     console.log('[SDL] SetWindowRelativeMouseMode:', enabled);
                     if (enabled) {
-                        canvas.requestPointerLock();
+                        tryRequestPointerLock();
                     } else {
-                        document.exitPointerLock();
+                        pendingPointerLockRequest = false;
+                        if (document.pointerLockElement === canvas) {
+                            document.exitPointerLock();
+                        }
                     }
                     return 1;
                 },
 
                 draw_gpu_primitives(passHandle, vertexCount, instanceCount, firstVertex, firstInstance) {
                     console.log('[SDL] DrawGPUPrimitives, pass:', passHandle, 'verts:', vertexCount);
-                    const pass = renderPasses.get(passHandle);
-                    if (!pass) return;
+                    const passEntry = renderPasses.get(passHandle);
+                    if (!passEntry) return;
 
-                    const cmdbufEntry = Array.from(commandBuffers.values()).find(cb => cb.bindGroup);
-                    if (cmdbufEntry && cmdbufEntry.bindGroup) {
-                        pass.setBindGroup(0, cmdbufEntry.bindGroup);
+                    const cmdbuf = commandBuffers.get(passEntry.cmdbufHandle);
+                    if (cmdbuf && cmdbuf.bindGroup) {
+                        passEntry.pass.setBindGroup(0, cmdbuf.bindGroup);
                     }
 
-                    pass.draw(vertexCount, instanceCount, firstVertex, firstInstance);
+                    passEntry.pass.draw(vertexCount, instanceCount, firstVertex, firstInstance);
                 },
 
                 submit_gpu_command_buffer(cmdbufHandle) {
@@ -872,6 +922,11 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
                     if (cmdbuf) {
                         const commandBuffer = cmdbuf.encoder.finish();
                         device.queue.submit([commandBuffer]);
+                        if (cmdbuf.swapchainTextures) {
+                            for (const handle of cmdbuf.swapchainTextures) {
+                                textures.delete(handle);
+                            }
+                        }
                         commandBuffers.delete(cmdbufHandle);
                         console.log('[SDL] Command buffer submitted');
                     } else {
