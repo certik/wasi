@@ -26,7 +26,7 @@ typedef struct {
     float color[3];     // r, g, b
 } Vertex;
 
-// Embedded Metal Shaders for 3D cube rendering
+// Embedded Metal Shaders for 3D cube rendering with checkerboard
 static const char* VertexShaderMSL =
 "#include <metal_stdlib>\n"
 "#include <simd/simd.h>\n"
@@ -41,6 +41,7 @@ static const char* VertexShaderMSL =
 "struct VertexOutput {\n"
 "    float4 position [[position]];\n"
 "    float3 color;\n"
+"    float3 world_pos;\n"
 "};\n"
 "\n"
 "struct Uniforms {\n"
@@ -54,6 +55,7 @@ static const char* VertexShaderMSL =
 "    VertexOutput out;\n"
 "    out.position = uniforms.mvp * float4(in.position, 1.0);\n"
 "    out.color = in.color;\n"
+"    out.world_pos = in.position;\n"
 "    return out;\n"
 "}\n";
 
@@ -66,10 +68,17 @@ static const char* FragmentShaderMSL =
 "struct VertexOutput {\n"
 "    float4 position [[position]];\n"
 "    float3 color;\n"
+"    float3 world_pos;\n"
 "};\n"
 "\n"
 "fragment float4 main0(VertexOutput in [[stage_in]]) {\n"
-"    return float4(in.color, 1.0);\n"
+"    // Small checkerboard pattern based on world position\n"
+"    float checker_size = 0.25;\n"
+"    float3 scaled = in.world_pos / checker_size;\n"
+"    int check = int(floor(scaled.x) + floor(scaled.y) + floor(scaled.z));\n"
+"    float checker = (check & 1) ? 0.8 : 1.0;\n"
+"    \n"
+"    return float4(in.color * checker, 1.0);\n"
 "}\n";
 
 // Uniform data structure (MVP matrix)
@@ -85,6 +94,9 @@ typedef struct {
     SDL_GPUBuffer* index_buffer;
     SDL_GPUTransferBuffer* vertex_transfer_buffer;
     SDL_GPUTransferBuffer* index_transfer_buffer;
+    SDL_GPUTexture* depth_texture;
+    int window_width;
+    int window_height;
     CubeUniforms uniforms;
     float rotation_angle;
     bool quit_requested;
@@ -205,6 +217,25 @@ static int Init(CubeApp* app)
     }
     println(str_lit("Fragment shader created. Handle: {}"), (uint64_t)fragmentShader);
 
+    // Get window dimensions for depth buffer
+    SDL_GetWindowSizeInPixels(app->window, &app->window_width, &app->window_height);
+
+    // Create depth texture
+    SDL_GPUTextureCreateInfo depthTextureInfo = {
+        .usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
+        .format = SDL_GPU_TEXTUREFORMAT_D16_UNORM,
+        .width = (Uint32)app->window_width,
+        .height = (Uint32)app->window_height,
+        .layer_count_or_depth = 1,
+        .num_levels = 1
+    };
+    app->depth_texture = SDL_CreateGPUTexture(app->device, &depthTextureInfo);
+    if (app->depth_texture == NULL)
+    {
+        SDL_Log("Failed to create depth texture: %s", SDL_GetError());
+        return -1;
+    }
+
     // Configure vertex input layout
     SDL_GPUVertexAttribute vertexAttributes[] = {
         {
@@ -234,16 +265,26 @@ static int Init(CubeApp* app)
         .num_vertex_attributes = 2
     };
 
+    // Configure depth/stencil state
+    SDL_GPUDepthStencilState depthStencilState = {
+        .enable_depth_test = true,
+        .enable_depth_write = true,
+        .compare_op = SDL_GPU_COMPAREOP_LESS
+    };
+
     // Create graphics pipeline
     SDL_GPUGraphicsPipelineCreateInfo pipelineCreateInfo = {
         .vertex_shader = vertexShader,
         .fragment_shader = fragmentShader,
         .vertex_input_state = vertexInputState,
+        .depth_stencil_state = depthStencilState,
         .target_info = {
             .num_color_targets = 1,
             .color_target_descriptions = (SDL_GPUColorTargetDescription[]){{
                 .format = SDL_GetGPUSwapchainTextureFormat(app->device, app->window)
             }},
+            .depth_stencil_format = SDL_GPU_TEXTUREFORMAT_D16_UNORM,
+            .has_depth_stencil_target = true
         },
         .primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
     };
@@ -399,7 +440,14 @@ static int Draw(CubeApp* app)
             .store_op = SDL_GPU_STOREOP_STORE
         };
 
-        SDL_GPURenderPass* renderPass = SDL_BeginGPURenderPass(cmdbuf, &colorTargetInfo, 1, NULL);
+        SDL_GPUDepthStencilTargetInfo depthTargetInfo = {
+            .texture = app->depth_texture,
+            .clear_depth = 1.0f,
+            .load_op = SDL_GPU_LOADOP_CLEAR,
+            .store_op = SDL_GPU_STOREOP_STORE
+        };
+
+        SDL_GPURenderPass* renderPass = SDL_BeginGPURenderPass(cmdbuf, &colorTargetInfo, 1, &depthTargetInfo);
 
         // Bind pipeline
         SDL_BindGPUGraphicsPipeline(renderPass, app->pipeline);
@@ -458,6 +506,12 @@ static void Quit(CubeApp* app)
     {
         SDL_ReleaseGPUTransferBuffer(app->device, app->index_transfer_buffer);
         app->index_transfer_buffer = NULL;
+    }
+
+    if (app->depth_texture != NULL)
+    {
+        SDL_ReleaseGPUTexture(app->device, app->depth_texture);
+        app->depth_texture = NULL;
     }
 
     if (app->pipeline != NULL)

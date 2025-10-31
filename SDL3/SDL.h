@@ -82,7 +82,14 @@ typedef enum {
 
 typedef enum {
     SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+    SDL_GPU_TEXTUREFORMAT_D16_UNORM,
 } SDL_GPUTextureFormat;
+
+typedef enum {
+    SDL_GPU_TEXTUREUSAGE_SAMPLER = 1 << 0,
+    SDL_GPU_TEXTUREUSAGE_COLOR_TARGET = 1 << 1,
+    SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET = 1 << 2,
+} SDL_GPUTextureUsageFlags;
 
 typedef enum {
     SDL_GPU_BUFFERUSAGE_VERTEX = 1 << 0,
@@ -126,6 +133,8 @@ typedef struct SDL_GPUColorTargetDescription {
 typedef struct SDL_GPUGraphicsPipelineTargetInfo {
     Uint32 num_color_targets;
     SDL_GPUColorTargetDescription* color_target_descriptions;
+    SDL_GPUTextureFormat depth_stencil_format;
+    bool has_depth_stencil_target;
 } SDL_GPUGraphicsPipelineTargetInfo;
 
 typedef struct SDL_GPUVertexAttribute {
@@ -148,10 +157,22 @@ typedef struct SDL_GPUVertexInputState {
     Uint32 num_vertex_attributes;
 } SDL_GPUVertexInputState;
 
+typedef enum {
+    SDL_GPU_COMPAREOP_LESS,
+    SDL_GPU_COMPAREOP_LESS_OR_EQUAL,
+} SDL_GPUCompareOp;
+
+typedef struct SDL_GPUDepthStencilState {
+    bool enable_depth_test;
+    bool enable_depth_write;
+    SDL_GPUCompareOp compare_op;
+} SDL_GPUDepthStencilState;
+
 typedef struct SDL_GPUGraphicsPipelineCreateInfo {
     SDL_GPUShader* vertex_shader;
     SDL_GPUShader* fragment_shader;
     SDL_GPUVertexInputState vertex_input_state;
+    SDL_GPUDepthStencilState depth_stencil_state;
     SDL_GPUGraphicsPipelineTargetInfo target_info;
     SDL_GPUPrimitiveType primitive_type;
 } SDL_GPUGraphicsPipelineCreateInfo;
@@ -162,6 +183,22 @@ typedef struct SDL_GPUColorTargetInfo {
     SDL_GPULoadOp load_op;
     SDL_GPUStoreOp store_op;
 } SDL_GPUColorTargetInfo;
+
+typedef struct SDL_GPUDepthStencilTargetInfo {
+    SDL_GPUTexture* texture;
+    float clear_depth;
+    SDL_GPULoadOp load_op;
+    SDL_GPUStoreOp store_op;
+} SDL_GPUDepthStencilTargetInfo;
+
+typedef struct SDL_GPUTextureCreateInfo {
+    SDL_GPUTextureUsageFlags usage;
+    SDL_GPUTextureFormat format;
+    Uint32 width;
+    Uint32 height;
+    Uint32 layer_count_or_depth;
+    Uint32 num_levels;
+} SDL_GPUTextureCreateInfo;
 
 typedef struct SDL_GPUBufferCreateInfo {
     SDL_GPUBufferUsageFlags usage;
@@ -222,7 +259,10 @@ SDL_GPUCommandBuffer* SDL_AcquireGPUCommandBuffer(SDL_GPUDevice* device);
 bool SDL_WaitAndAcquireGPUSwapchainTexture(SDL_GPUCommandBuffer* cmdbuf, SDL_Window* window, SDL_GPUTexture** texture, Uint32* w, Uint32* h);
 void SDL_SubmitGPUCommandBuffer(SDL_GPUCommandBuffer* cmdbuf);
 
-SDL_GPURenderPass* SDL_BeginGPURenderPass(SDL_GPUCommandBuffer* cmdbuf, const SDL_GPUColorTargetInfo* colorTargets, Uint32 numColorTargets, void* depthStencilTarget);
+SDL_GPUTexture* SDL_CreateGPUTexture(SDL_GPUDevice* device, const SDL_GPUTextureCreateInfo* info);
+void SDL_ReleaseGPUTexture(SDL_GPUDevice* device, SDL_GPUTexture* texture);
+
+SDL_GPURenderPass* SDL_BeginGPURenderPass(SDL_GPUCommandBuffer* cmdbuf, const SDL_GPUColorTargetInfo* colorTargets, Uint32 numColorTargets, const SDL_GPUDepthStencilTargetInfo* depthStencilTarget);
 void SDL_EndGPURenderPass(SDL_GPURenderPass* pass);
 void SDL_BindGPUGraphicsPipeline(SDL_GPURenderPass* pass, SDL_GPUGraphicsPipeline* pipeline);
 void SDL_PushGPUFragmentUniformData(SDL_GPUCommandBuffer* cmdbuf, Uint32 slot, const void* data, Uint32 length);
