@@ -1790,6 +1790,11 @@ static void update_game(GameApp *app) {
     static uint32_t frame_count = 0;
     frame_count++;
 
+    // Unconditional log to verify this code is running
+    if (frame_count <= 3) {
+        SDL_Log("=== UPDATE_GAME Frame %u: overlay_vertex_count=%u ===", frame_count, app->overlay_vertex_count);
+    }
+
     if (frame_count < 5 || (app->overlay_vertex_count > 7937 && frame_count < 10)) {
         SDL_Log("Frame %u: overlay_vertex_count=%u", frame_count, app->overlay_vertex_count);
 
