@@ -73,6 +73,15 @@ static void test_string_functions(void) {
         assert(nums_dst[i] == nums_src[i]);
     }
 
+    // Overlapping regions should copy safely (memmove semantics)
+    char overlap_forward[] = "abcdefghij";
+    memcpy(overlap_forward + 2, overlap_forward, 8);
+    test_streq(overlap_forward, "ababcdefgh", "memcpy overlap forward");
+
+    char overlap_backward[] = "abcdefghij";
+    memcpy(overlap_backward, overlap_backward + 2, 8);
+    test_streq(overlap_backward, "cdefghijij", "memcpy overlap backward");
+
     printf("String function tests passed\n");
 }
 
