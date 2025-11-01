@@ -644,7 +644,7 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
                     // Create or update uniform buffer
                     if (!cmdbuf.uniformBuffer) {
                         cmdbuf.uniformBuffer = device.createBuffer({
-                            size: 64, // mat4x4 = 16 floats = 64 bytes
+                            size: 256, // Large enough for scene uniforms (96 bytes) and overlay uniforms
                             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
                         });
                         console.log('[SDL] Created uniform buffer');
