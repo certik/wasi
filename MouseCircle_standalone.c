@@ -957,18 +957,37 @@ typedef struct {
 } Rect;
 
 static inline float to_clip_x(float pixel_x, float width) {
+    if (width <= 0.0f) {
+        SDL_Log("ERROR: to_clip_x called with invalid width %.2f", width);
+        return 0.0f;
+    }
     return (pixel_x / width) * 2.0f - 1.0f;
 }
 
 static inline float to_clip_y(float pixel_y, float height) {
+    if (height <= 0.0f) {
+        SDL_Log("ERROR: to_clip_y called with invalid height %.2f", height);
+        return 0.0f;
+    }
     return 1.0f - (pixel_y / height) * 2.0f;
 }
 
 static uint32_t append_quad(OverlayVertex *verts, uint32_t offset, uint32_t max,
                             float x0, float y0, float x1, float y1, const float color[4]) {
     if (offset + 6 > max) {
+        SDL_Log("append_quad: buffer full at offset %u", offset);
         return offset;
     }
+
+    // Sanity check coordinates - overlay quads should be small (text pixels or minimap cells)
+    // A quad larger than 0.5 in clip space is suspicious (that's 1/4 of the screen)
+    float quad_width = (x1 > x0 ? x1 - x0 : x0 - x1);
+    float quad_height = (y1 > y0 ? y1 - y0 : y0 - y1);
+    if (quad_width > 0.5f || quad_height > 0.5f) {
+        SDL_Log("WARNING: Large quad at offset %u: (%.2f,%.2f) to (%.2f,%.2f), size %.2fx%.2f",
+                offset, x0, y0, x1, y1, quad_width, quad_height);
+    }
+
     verts[offset + 0] = (OverlayVertex){ {x0, y0}, {color[0], color[1], color[2], color[3]} };
     verts[offset + 1] = (OverlayVertex){ {x1, y0}, {color[0], color[1], color[2], color[3]} };
     verts[offset + 2] = (OverlayVertex){ {x0, y1}, {color[0], color[1], color[2], color[3]} };
@@ -983,6 +1002,23 @@ static uint32_t append_convex_quad(OverlayVertex *verts, uint32_t offset, uint32
     if (offset + 6 > max) {
         return offset;
     }
+
+    // Check for excessively large quads
+    float minX = points[0][0], maxX = points[0][0];
+    float minY = points[0][1], maxY = points[0][1];
+    for (int i = 1; i < 4; i++) {
+        if (points[i][0] < minX) minX = points[i][0];
+        if (points[i][0] > maxX) maxX = points[i][0];
+        if (points[i][1] < minY) minY = points[i][1];
+        if (points[i][1] > maxY) maxY = points[i][1];
+    }
+    float width = maxX - minX;
+    float height = maxY - minY;
+    if (width > 0.5f || height > 0.5f) {
+        SDL_Log("WARNING: Large convex_quad at offset %u: bounds (%.2f,%.2f) to (%.2f,%.2f), size %.2fx%.2f",
+                offset, minX, minY, maxX, maxY, width, height);
+    }
+
     static const int order[6] = {0, 1, 2, 0, 2, 3};
     for (int i = 0; i < 6; i++) {
         int idx = order[i];
@@ -999,6 +1035,25 @@ static uint32_t append_triangle(OverlayVertex *verts, uint32_t offset, uint32_t 
     if (offset + 3 > max) {
         return offset;
     }
+
+    // Check for excessively large triangles
+    float minX = points[0][0], maxX = points[0][0];
+    float minY = points[0][1], maxY = points[0][1];
+    for (int i = 1; i < 3; i++) {
+        if (points[i][0] < minX) minX = points[i][0];
+        if (points[i][0] > maxX) maxX = points[i][0];
+        if (points[i][1] < minY) minY = points[i][1];
+        if (points[i][1] > maxY) maxY = points[i][1];
+    }
+    float width = maxX - minX;
+    float height = maxY - minY;
+    if (width > 0.5f || height > 0.5f) {
+        SDL_Log("WARNING: Large triangle at offset %u: bounds (%.2f,%.2f) to (%.2f,%.2f), size %.2fx%.2f",
+                offset, minX, minY, maxX, maxY, width, height);
+        SDL_Log("  v1=(%.2f,%.2f) v2=(%.2f,%.2f) v3=(%.2f,%.2f)",
+                points[0][0], points[0][1], points[1][0], points[1][1], points[2][0], points[2][1]);
+    }
+
     for (int i = 0; i < 3; i++) {
         verts[offset + i] = (OverlayVertex){
             {points[i][0], points[i][1]},
@@ -1013,6 +1068,15 @@ static uint32_t append_glyph(OverlayVertex *verts, uint32_t offset, uint32_t max
                              float canvas_w, float canvas_h, unsigned char ch,
                              const float color[4]) {
     const uint32_t *glyph = GM_FONT_GLYPHS[ch];
+
+    // Log if we're near the problematic offset (triangle 2652 = vertex ~7956)
+    static bool logged_once = false;
+    if (!logged_once && offset >= 7950 && offset <= 7960) {
+        SDL_Log("append_glyph at offset %u: char='%c' origin=(%.1f,%.1f) canvas=%.0fx%.0f",
+                offset, (ch >= 32 && ch < 127) ? ch : '?', origin_x, origin_y, canvas_w, canvas_h);
+        logged_once = true;
+    }
+
     for (int row = 0; row < GLYPH_HEIGHT; row++) {
         uint32_t row_bits = glyph[row];
         for (int col = 0; col < GLYPH_WIDTH; col++) {
@@ -1026,6 +1090,12 @@ static uint32_t append_glyph(OverlayVertex *verts, uint32_t offset, uint32_t max
                 float y0 = to_clip_y(py0, canvas_h);
                 float x1 = to_clip_x(px1, canvas_w);
                 float y1 = to_clip_y(py1, canvas_h);
+
+                if (offset >= 7950 && offset <= 7960) {
+                    SDL_Log("  quad at %u: pixel (%.1f,%.1f)-(%.1f,%.1f) -> clip (%.2f,%.2f)-(%.2f,%.2f)",
+                            offset, px0, py0, px1, py1, x0, y0, x1, y1);
+                }
+
                 offset = append_quad(verts, offset, max, x0, y0, x1, y1, color);
             }
         }
