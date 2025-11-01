@@ -74,10 +74,16 @@ typedef enum {
 // Window flags
 #define SDL_WINDOW_RESIZABLE 0x00000020
 
-// GPU enums
-typedef enum {
-    SDL_GPU_SHADERFORMAT_MSL,
-} SDL_GPUShaderFormat;
+typedef Uint32 SDL_GPUShaderFormat;
+
+#define SDL_GPU_SHADERFORMAT_INVALID  0
+#define SDL_GPU_SHADERFORMAT_PRIVATE  (1u << 0) /**< Shaders for NDA'd platforms. */
+#define SDL_GPU_SHADERFORMAT_SPIRV    (1u << 1) /**< SPIR-V shaders for Vulkan. */
+#define SDL_GPU_SHADERFORMAT_DXBC     (1u << 2) /**< DXBC SM5_1 shaders for D3D12. */
+#define SDL_GPU_SHADERFORMAT_DXIL     (1u << 3) /**< DXIL SM6_0 shaders for D3D12. */
+#define SDL_GPU_SHADERFORMAT_MSL      (1u << 4) /**< MSL shaders for Metal. */
+#define SDL_GPU_SHADERFORMAT_METALLIB (1u << 5) /**< Precompiled metallib shaders for Metal. */
+#define SDL_GPU_SHADERFORMAT_WGSL     (1u << 6) /**< WGSL shaders for WebGPU. */
 
 typedef enum {
     SDL_GPU_SHADERSTAGE_VERTEX,
