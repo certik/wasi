@@ -57,16 +57,16 @@ fragment main_Output main_fragment(
         }
     }
     metal::float3 n = metal::normalize(input.normal);
-    metal::float3 lightDir = metal::float3(0.30406055, 0.8687445, 0.390935);
+    metal::float3 lightDir = metal::normalize(metal::float3(0.35, 1.0, 0.45));
     float diff = metal::max(metal::dot(n, lightDir), 0.15);
-    metal::float4 _e39 = uniforms.cameraPos;
-    float fogFactor = metal::exp(-(metal::distance(input.worldPos, _e39.xyz)) * 0.08);
-    metal::float3 _e46 = baseColor;
-    float _e48 = checker(input.uv);
-    color = (_e46 * _e48) * diff;
-    metal::float4 _e54 = uniforms.fogColor;
-    metal::float3 _e56 = color;
-    color = metal::mix(_e54.xyz, _e56, fogFactor);
-    metal::float3 _e58 = color;
-    return main_Output { metal::float4(_e58, 1.0) };
+    metal::float4 _e40 = uniforms.cameraPos;
+    float fogFactor = metal::exp(-(metal::distance(input.worldPos, _e40.xyz)) * 0.08);
+    metal::float3 _e47 = baseColor;
+    float _e49 = checker(input.uv);
+    color = (_e47 * _e49) * diff;
+    metal::float4 _e55 = uniforms.fogColor;
+    metal::float3 _e57 = color;
+    color = metal::mix(_e55.xyz, _e57, fogFactor);
+    metal::float3 _e59 = color;
+    return main_Output { metal::float4(_e59, 1.0) };
 }
