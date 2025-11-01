@@ -834,19 +834,32 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
                         // For overlay buffer (17), validate vertices
                         if (bufferHandle === 17) {
                             const floats = new Float32Array(transferBuf.mappedData.buffer);
-                            // Check for any vertices with extreme coordinates that might create large triangles
-                            let suspiciousVertices = [];
+
+                            // Sample vertices to see the range and look for patterns
+                            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+                            let colorCounts = {white: 0, red: 0, blue: 0, other: 0};
+
                             for (let i = 0; i < Math.min(20000, floats.length / 6); i++) {
                                 const x = floats[i * 6 + 0];
                                 const y = floats[i * 6 + 1];
-                                // Clip space should be [-1, 1]
-                                if (Math.abs(x) > 1.5 || Math.abs(y) > 1.5 || isNaN(x) || isNaN(y)) {
-                                    suspiciousVertices.push({vertex: i, x, y});
-                                }
+                                const r = floats[i * 6 + 2];
+                                const g = floats[i * 6 + 3];
+                                const b = floats[i * 6 + 4];
+
+                                minX = Math.min(minX, x);
+                                maxX = Math.max(maxX, x);
+                                minY = Math.min(minY, y);
+                                maxY = Math.max(maxY, y);
+
+                                // Categorize colors
+                                if (r > 0.9 && g > 0.9 && b > 0.9) colorCounts.white++;
+                                else if (r > 0.7 && g < 0.3 && b < 0.3) colorCounts.red++;
+                                else if (r < 0.2 && g < 0.2 && b < 0.3) colorCounts.blue++;
+                                else colorCounts.other++;
                             }
-                            if (suspiciousVertices.length > 0) {
-                                console.warn('[SDL] Found suspicious overlay vertices:', suspiciousVertices.slice(0, 5));
-                            }
+
+                            console.log('[SDL] Overlay stats: bounds [', minX.toFixed(2), ',', maxX.toFixed(2), '] x [',
+                                       minY.toFixed(2), ',', maxY.toFixed(2), '], colors:', colorCounts);
                         } else {
                             console.log('[SDL] UnmapGPUTransferBuffer, size:', transferBuf.size);
                         }
