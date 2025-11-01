@@ -1786,16 +1786,21 @@ static void update_game(GameApp *app) {
 
     build_overlay(app);
 
-    // Debug: dump vertex buffer data at offset 7932 (triangle 2644)
-    static bool dumped_once = false;
-    if (!dumped_once && app->overlay_vertex_count > 7937) {
-        SDL_Log("DEBUG: Vertex buffer dump at offset 7932-7937 (total vertices: %u)", app->overlay_vertex_count);
-        for (uint32_t i = 7932; i <= 7937 && i < app->overlay_vertex_count; i++) {
-            OverlayVertex *v = &app->overlay_cpu_vertices[i];
-            SDL_Log("  v[%u]: pos=(%.2f,%.2f) color=(%.2f,%.2f,%.2f,%.2f)",
-                    i, v->position[0], v->position[1], v->color[0], v->color[1], v->color[2], v->color[3]);
+    // Debug: Always log vertex count and check for issues
+    static uint32_t frame_count = 0;
+    frame_count++;
+
+    if (frame_count < 5 || (app->overlay_vertex_count > 7937 && frame_count < 10)) {
+        SDL_Log("Frame %u: overlay_vertex_count=%u", frame_count, app->overlay_vertex_count);
+
+        if (app->overlay_vertex_count > 7937) {
+            SDL_Log("  Vertex buffer dump at offset 7932-7937:");
+            for (uint32_t i = 7932; i <= 7937 && i < app->overlay_vertex_count; i++) {
+                OverlayVertex *v = &app->overlay_cpu_vertices[i];
+                SDL_Log("  v[%u]: pos=(%.2f,%.2f) color=(%.2f,%.2f,%.2f,%.2f)",
+                        i, v->position[0], v->position[1], v->color[0], v->color[1], v->color[2], v->color[3]);
+            }
         }
-        dumped_once = true;
     }
 
     if (app->overlay_vertex_count > 0) {
