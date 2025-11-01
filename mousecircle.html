@@ -64,6 +64,9 @@ const stdoutDecoder = new TextDecoder();
                 },
                 proc_exit: (code) => {
                     console.log('WASM exited with code:', code);
+                    if (code != 0) {
+                        throw new Error("WASM exited with non-zero exit code");
+                    }
                 },
                 path_open: (...args) => wasiFs.path_open(...args),
                 fd_read: (...args) => wasiFs.fd_read(...args),
