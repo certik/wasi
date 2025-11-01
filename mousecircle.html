@@ -835,31 +835,40 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
                         if (bufferHandle === 17) {
                             const floats = new Float32Array(transferBuf.mappedData.buffer);
 
-                            // Sample vertices to see the range and look for patterns
-                            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-                            let colorCounts = {white: 0, red: 0, blue: 0, other: 0};
+                            // Look for triangles that might span large areas
+                            let largeTriangles = [];
+                            for (let i = 0; i < Math.min(20000, floats.length / 6) - 2; i += 3) {
+                                // Get triangle vertices
+                                const x1 = floats[i * 6 + 0], y1 = floats[i * 6 + 1];
+                                const x2 = floats[(i+1) * 6 + 0], y2 = floats[(i+1) * 6 + 1];
+                                const x3 = floats[(i+2) * 6 + 0], y3 = floats[(i+2) * 6 + 1];
 
-                            for (let i = 0; i < Math.min(20000, floats.length / 6); i++) {
-                                const x = floats[i * 6 + 0];
-                                const y = floats[i * 6 + 1];
-                                const r = floats[i * 6 + 2];
-                                const g = floats[i * 6 + 3];
-                                const b = floats[i * 6 + 4];
+                                // Calculate triangle area (cross product / 2)
+                                const area = Math.abs((x2 - x1) * (y3 - y1) - (x3 - x1) * (y2 - y1)) / 2;
 
-                                minX = Math.min(minX, x);
-                                maxX = Math.max(maxX, x);
-                                minY = Math.min(minY, y);
-                                maxY = Math.max(maxY, y);
-
-                                // Categorize colors
-                                if (r > 0.9 && g > 0.9 && b > 0.9) colorCounts.white++;
-                                else if (r > 0.7 && g < 0.3 && b < 0.3) colorCounts.red++;
-                                else if (r < 0.2 && g < 0.2 && b < 0.3) colorCounts.blue++;
-                                else colorCounts.other++;
+                                // If triangle is very large, record it
+                                if (area > 0.5) { // > 0.5 in clip space is huge
+                                    const r = floats[i * 6 + 2], g = floats[i * 6 + 3], b = floats[i * 6 + 4];
+                                    largeTriangles.push({
+                                        tri: i/3,
+                                        area: area.toFixed(3),
+                                        color: `rgb(${r.toFixed(2)},${g.toFixed(2)},${b.toFixed(2)})`,
+                                        v1: `(${x1.toFixed(2)},${y1.toFixed(2)})`,
+                                        v2: `(${x2.toFixed(2)},${y2.toFixed(2)})`,
+                                        v3: `(${x3.toFixed(2)},${y3.toFixed(2)})`
+                                    });
+                                }
                             }
 
-                            console.log('[SDL] Overlay stats: bounds [', minX.toFixed(2), ',', maxX.toFixed(2), '] x [',
-                                       minY.toFixed(2), ',', maxY.toFixed(2), '], colors:', colorCounts);
+                            if (largeTriangles.length > 0) {
+                                console.warn('[SDL] Found', largeTriangles.length, 'large overlay triangle(s):');
+                                largeTriangles.slice(0, 3).forEach(t => {
+                                    console.warn(`  Triangle ${t.tri}: area=${t.area}, color=${t.color}`);
+                                    console.warn(`    v1=${t.v1}, v2=${t.v2}, v3=${t.v3}`);
+                                });
+                            } else {
+                                console.log('[SDL] Overlay: no suspicious large triangles found');
+                            }
                         } else {
                             console.log('[SDL] UnmapGPUTransferBuffer, size:', transferBuf.size);
                         }
@@ -903,7 +912,36 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
                     const transferBuf = transferBuffers.get(transferBufferHandle);
 
                     if (transferBuf && destBuffer && transferBuf.mappedData) {
-                        const srcArray = transferBuf.mappedData;
+                        let srcArray = transferBuf.mappedData;
+
+                        // WORKAROUND: Filter out malformed overlay triangles (buffer 16)
+                        if (destBufferHandle === 16) {
+                            const floats = new Float32Array(srcArray.buffer, srcArray.byteOffset, size / 4);
+                            let fixed = false;
+
+                            // Check each triangle for excessive size
+                            for (let i = 0; i < vertexCount - 2; i += 3) {
+                                const x1 = floats[i * 6 + 0], y1 = floats[i * 6 + 1];
+                                const x2 = floats[(i+1) * 6 + 0], y2 = floats[(i+1) * 6 + 1];
+                                const x3 = floats[(i+2) * 6 + 0], y3 = floats[(i+2) * 6 + 1];
+
+                                const area = Math.abs((x2 - x1) * (y3 - y1) - (x3 - x1) * (y2 - y1)) / 2;
+
+                                // If triangle area > 0.5, collapse it to a degenerate triangle at origin
+                                if (area > 0.5) {
+                                    console.warn(`[SDL] Fixing malformed triangle ${i/3} with area ${area.toFixed(3)}`);
+                                    for (let v = 0; v < 3; v++) {
+                                        floats[(i + v) * 6 + 0] = 0; // x = 0
+                                        floats[(i + v) * 6 + 1] = 0; // y = 0
+                                    }
+                                    fixed = true;
+                                }
+                            }
+
+                            if (fixed) {
+                                srcArray = new Uint8Array(floats.buffer, floats.byteOffset, size);
+                            }
+                        }
 
                         // Write mapped data directly to GPU buffer
                         device.queue.writeBuffer(destBuffer, destOffset, srcArray, sourceOffset, size);
