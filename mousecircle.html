@@ -1002,7 +1002,16 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
                 draw_gpu_primitives(passHandle, vertexCount, instanceCount, firstVertex, firstInstance) {
                     console.log('[SDL] DrawGPUPrimitives, pass:', passHandle, 'verts:', vertexCount);
                     const passEntry = renderPasses.get(passHandle);
-                    if (!passEntry) return;
+                    if (!passEntry) {
+                        console.error('[SDL] DrawGPUPrimitives: invalid pass handle', passHandle);
+                        return;
+                    }
+
+                    // Skip drawing if vertex count is 0
+                    if (vertexCount === 0) {
+                        console.log('[SDL] DrawGPUPrimitives: skipping draw with 0 vertices');
+                        return;
+                    }
 
                     const cmdbuf = commandBuffers.get(passEntry.cmdbufHandle);
                     if (cmdbuf && cmdbuf.bindGroup) {
