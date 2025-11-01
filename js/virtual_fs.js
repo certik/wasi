@@ -25,40 +25,6 @@ export function createFetchingVirtualFileSystem() {
         return path;
     }
 
-    const pendingFetches = new Map(); // path -> Promise<Uint8Array>
-
-    async function fetchAndCache(path) {
-        if (fileCache.has(path)) {
-            return fileCache.get(path);
-        }
-        if (pendingFetches.has(path)) {
-            return pendingFetches.get(path);
-        }
-
-        const fetchPromise = (async () => {
-            try {
-                console.log(`[VFS] Fetching: ${path}`);
-                const response = await fetch(path);
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
-                }
-                const arrayBuffer = await response.arrayBuffer();
-                const data = new Uint8Array(arrayBuffer);
-                fileCache.set(path, data);
-                console.log(`[VFS] Cached: ${path} (${data.length} bytes)`);
-                return data;
-            } catch (err) {
-                console.error(`[VFS] Fetch error for ${path}:`, err);
-                throw err;
-            } finally {
-                pendingFetches.delete(path);
-            }
-        })();
-
-        pendingFetches.set(path, fetchPromise);
-        return fetchPromise;
-    }
-
     // WASI path_open - fetch file on demand
     function path_open(dirfd, dirflags, pathPtr, pathLen, oflags,
                             rightsBase, rightsInheriting, fdflags, fdOutPtr) {
@@ -81,19 +47,6 @@ export function createFetchingVirtualFileSystem() {
         } catch (err) {
             console.error('[VFS] path_open failed:', err);
             return 8; // EBADF - Bad file descriptor
-        }
-    }
-
-    async function prefetch(paths) {
-        if (!paths || paths.length === 0) {
-            return;
-        }
-
-        for (const path of paths) {
-            if (fileCache.has(path)) {
-                continue;
-            }
-            await fetchAndCache(path);
         }
     }
 
@@ -190,7 +143,6 @@ export function createFetchingVirtualFileSystem() {
         fd_tell: fd_seek,  // fd_tell is same as fd_seek in practice
         args_sizes_get,
         args_get,
-        prefetch,
         preloadFromBundle,
         setMemory(mem) {
             memory = mem;

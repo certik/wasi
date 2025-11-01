@@ -163,7 +163,6 @@ typedef struct {
     char scene_fragment_path[256];
     char overlay_vertex_path[256];
     char overlay_fragment_path[256];
-    bool resources_ready;
 } GameApp;
 
 static GameApp g_App;
@@ -1421,10 +1420,6 @@ static bool create_overlay_pipeline(GameApp *app, SDL_GPUShader *vertex_shader, 
 }
 
 static int complete_gpu_setup(GameApp *app) {
-    if (app->resources_ready) {
-        return 0;
-    }
-
     if (app->device == NULL || app->window == NULL) {
         SDL_Log("GPU setup requires valid device and window");
         return -1;
@@ -1659,7 +1654,6 @@ static int complete_gpu_setup(GameApp *app) {
     app->frame_time_ms = 0.0f;
     app->quit_requested = false;
     app->overlay_dirty = true;
-    app->resources_ready = true;
     SDL_SetWindowRelativeMouseMode(app->window, true);
     return 0;
 }
@@ -1669,8 +1663,6 @@ static int complete_gpu_setup(GameApp *app) {
 
 static int init_game(GameApp *app) {
     ensure_runtime_heap();
-
-    app->resources_ready = false;
 
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
@@ -1970,9 +1962,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         return SDL_APP_FAILURE;
     }
 
-    if (g_App.resources_ready) {
-        build_overlay(&g_App);
-    }
+    build_overlay(&g_App);
 
     *appstate = &g_App;
     return SDL_APP_CONTINUE;
@@ -2016,10 +2006,6 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
     if (app->quit_requested) {
         return SDL_APP_SUCCESS;
-    }
-
-    if (!app->resources_ready) {
-        return SDL_APP_CONTINUE;
     }
 
     update_game(app);
