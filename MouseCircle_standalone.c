@@ -1705,10 +1705,12 @@ static int init_game(GameApp *app) {
         shader_dir = "shaders/HLSL/";
         app->shader_format = SDL_GPU_SHADERFORMAT_DXIL;
         shader_ext = ".hlsl";
+#if defined(__wasi__)
     } else if (base_strcmp(driver, "wgsl") == 0) {
         shader_dir = "shaders/WGSL/";
         app->shader_format = SDL_GPU_SHADERFORMAT_WGSL;
         shader_ext = ".wgsl";
+#endif
     } else {
         SDL_Log("ERROR: Unsupported GPU driver '%s'", driver);
         return -1;
