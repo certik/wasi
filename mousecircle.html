@@ -830,7 +830,26 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
                     if (memory) {
                         const data = new Uint8Array(memory.buffer, transferBuf.mappedPtr, transferBuf.size);
                         transferBuf.mappedData = data.slice(); // Copy the data
-                        console.log('[SDL] UnmapGPUTransferBuffer, size:', transferBuf.size);
+
+                        // For overlay buffer (17), validate vertices
+                        if (bufferHandle === 17) {
+                            const floats = new Float32Array(transferBuf.mappedData.buffer);
+                            // Check for any vertices with extreme coordinates that might create large triangles
+                            let suspiciousVertices = [];
+                            for (let i = 0; i < Math.min(20000, floats.length / 6); i++) {
+                                const x = floats[i * 6 + 0];
+                                const y = floats[i * 6 + 1];
+                                // Clip space should be [-1, 1]
+                                if (Math.abs(x) > 1.5 || Math.abs(y) > 1.5 || isNaN(x) || isNaN(y)) {
+                                    suspiciousVertices.push({vertex: i, x, y});
+                                }
+                            }
+                            if (suspiciousVertices.length > 0) {
+                                console.warn('[SDL] Found suspicious overlay vertices:', suspiciousVertices.slice(0, 5));
+                            }
+                        } else {
+                            console.log('[SDL] UnmapGPUTransferBuffer, size:', transferBuf.size);
+                        }
                     }
                 },
 
