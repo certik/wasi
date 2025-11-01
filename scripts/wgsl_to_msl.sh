@@ -36,5 +36,36 @@ for src in "${wgsl_files[@]}"; do
 
     echo "Compiling ${src} -> ${dest}"
     "${NAGA_BIN}" "${src}" "${tmp_out}"
+
+    python3 - "${tmp_out}" <<'PY'
+from pathlib import Path
+import sys
+
+tmp_path = Path(sys.argv[1])
+base = tmp_path.stem
+text = tmp_path.read_text()
+
+# Fix buffer bindings emitted as fake user attributes
+for idx in range(8):
+    text = text.replace(f"[[user(fake{idx})]]", f"[[buffer({idx})]]")
+
+# Determine stage and target entrypoint name
+entry = None
+if base.endswith('_vertex'):
+    if '_overlay_' in base:
+        entry = 'overlay_vertex'
+    else:
+        entry = 'main_vertex'
+    text = text.replace('vertex main_Output main_(', f'vertex main_Output {entry}(')
+elif base.endswith('_fragment'):
+    if '_overlay_' in base:
+        entry = 'overlay_fragment'
+    else:
+        entry = 'main_fragment'
+    text = text.replace('fragment main_Output main_(', f'fragment main_Output {entry}(')
+
+tmp_path.write_text(text)
+PY
+
     mv "${tmp_out}" "${dest}"
 done

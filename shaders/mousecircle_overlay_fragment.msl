@@ -1,12 +1,24 @@
+// language: metal1.0
 #include <metal_stdlib>
-using namespace metal;
+#include <simd/simd.h>
 
-struct OverlayOutput {
-    float4 position [[position]];
-    float4 color;
+using metal::uint;
+
+struct VertexOutput {
+    metal::float4 position;
+    metal::float4 color;
 };
 
-fragment float4 overlay_fragment(OverlayOutput in [[stage_in]]) {
-    return in.color;
+struct main_Input {
+    metal::float4 color [[user(loc0), center_perspective]];
+};
+struct main_Output {
+    metal::float4 member [[color(0)]];
+};
+fragment main_Output overlay_fragment(
+  main_Input varyings [[stage_in]]
+, metal::float4 position [[position]]
+) {
+    const VertexOutput input = { position, varyings.color };
+    return main_Output { input.color };
 }
-

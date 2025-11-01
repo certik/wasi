@@ -1,45 +1,72 @@
+// language: metal1.0
 #include <metal_stdlib>
-using namespace metal;
+#include <simd/simd.h>
+
+using metal::uint;
 
 struct SceneUniforms {
-    float4x4 mvp;
-    float4 cameraPos;
-    float4 fogColor;
+    metal::float4x4 mvp;
+    metal::float4 cameraPos;
+    metal::float4 fogColor;
 };
-
 struct VertexOutput {
-    float4 position [[position]];
+    metal::float4 position;
     float surfaceType;
-    float2 uv;
-    float3 normal;
-    float3 worldPos;
+    char _pad2[4];
+    metal::float2 uv;
+    metal::float3 normal;
+    metal::float3 worldPos;
 };
 
-float checker(float2 uv) {
-    float2 scaled = floor(uv * 4.0);
-    float v = fmod(scaled.x + scaled.y, 2.0);
-    return v < 0.5 ? 1.0 : 0.7;
+float checker(
+    metal::float2 uv
+) {
+    metal::float2 scaled = metal::floor(uv * 4.0);
+    float v = metal::fmod(scaled.x + scaled.y, 2.0);
+    return (v < 0.5) ? 1.0 : 0.7;
 }
 
-fragment float4 main_fragment(VertexOutput in [[stage_in]],
-                              constant SceneUniforms &uniforms [[buffer(0)]]) {
-    float3 baseColor;
-    if (in.surfaceType < 0.5) {
-        baseColor = float3(0.1, 0.1, 0.9);
-    } else if (in.surfaceType < 1.5) {
-        baseColor = float3(0.9, 0.2, 0.2);
-    } else if (in.surfaceType < 2.5) {
-        baseColor = float3(0.9, 0.9, 0.2);
+struct main_Input {
+    float surfaceType [[user(loc0), center_perspective]];
+    metal::float2 uv [[user(loc1), center_perspective]];
+    metal::float3 normal [[user(loc2), center_perspective]];
+    metal::float3 worldPos [[user(loc3), center_perspective]];
+};
+struct main_Output {
+    metal::float4 member [[color(0)]];
+};
+fragment main_Output main_fragment(
+  main_Input varyings [[stage_in]]
+, metal::float4 position [[position]]
+, constant SceneUniforms& uniforms [[buffer(0)]]
+) {
+    const VertexOutput input = { position, varyings.surfaceType, {}, varyings.uv, varyings.normal, varyings.worldPos };
+    metal::float3 baseColor = {};
+    metal::float3 color = {};
+    if (input.surfaceType < 0.5) {
+        baseColor = metal::float3(0.1, 0.1, 0.9);
     } else {
-        baseColor = float3(0.7, 0.5, 0.3);
+        if (input.surfaceType < 1.5) {
+            baseColor = metal::float3(0.9, 0.2, 0.2);
+        } else {
+            if (input.surfaceType < 2.5) {
+                baseColor = metal::float3(0.9, 0.9, 0.2);
+            } else {
+                baseColor = metal::float3(0.7, 0.5, 0.3);
+            }
+        }
     }
-
-    float3 n = normalize(in.normal);
-    float3 lightDir = normalize(float3(0.35, 1.0, 0.45));
-    float diff = max(dot(n, lightDir), 0.15);
-    float fogFactor = exp(-distance(in.worldPos, uniforms.cameraPos.xyz) * 0.08);
-    float3 color = baseColor * checker(in.uv) * diff;
-    color = mix(uniforms.fogColor.xyz, color, fogFactor);
-    return float4(color, 1.0);
+    metal::float3 n = metal::normalize(input.normal);
+    metal::float3 lightDir = metal::float3(0.30406055, 0.8687445, 0.390935);
+    float diff = metal::max(metal::dot(n, lightDir), 0.15);
+    metal::float4 _e39 = uniforms.cameraPos;
+    float fogFactor = metal::exp(-(metal::distance(input.worldPos, _e39.xyz)) * 0.08);
+    metal::float3 _e46 = baseColor;
+    float _e48 = checker(input.uv);
+    color = (_e46 * _e48) * diff;
+    metal::float4 _e54 = uniforms.fogColor;
+    metal::float3 _e56 = color;
+    color = metal::mix(_e54.xyz, _e56, fogFactor);
+    metal::float3 _e58 = color;
+    return main_Output { metal::float4(_e58, 1.0) };
 }
-
