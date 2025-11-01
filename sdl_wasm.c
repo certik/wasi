@@ -134,6 +134,9 @@ void sdl_host_release_gpu_texture(uint32_t device, uint32_t texture);
 WASM_IMPORT("sdl", "set_window_relative_mouse_mode")
 uint32_t sdl_host_set_window_relative_mouse_mode(uint32_t window, uint32_t enabled);
 
+WASM_IMPORT("sdl", "get_ticks")
+uint32_t sdl_host_get_ticks(void);
+
 // String utilities
 static size_t wasm_strlen(const char* str) {
     size_t len = 0;
@@ -513,4 +516,90 @@ bool SDL_SetWindowRelativeMouseMode(SDL_Window* window, bool enabled) {
         (uint32_t)(uintptr_t)window,
         enabled ? 1 : 0
     ) != 0;
+}
+
+// SDL_snprintf wrapper - calls base/ snprintf implementation
+#include <base/numconv.h>
+#include <base/stdarg.h>
+
+int SDL_snprintf(char *str, size_t size, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+
+    // For now, we'll implement a simple version that forwards to snprintf
+    // We need to reconstruct the call since we can't directly forward variadic args
+    // This is a simplified implementation that handles the common cases
+
+    if (size == 0) {
+        va_end(args);
+        return 0;
+    }
+
+    size_t pos = 0;
+    const char* p = format;
+    char temp_buf[32];
+
+    while (*p && pos < size - 1) {
+        if (*p == '%' && *(p + 1)) {
+            p++;
+
+            // Check for precision specifier
+            int precision = -1;
+            if (*p == '.') {
+                p++;
+                precision = 0;
+                while (*p >= '0' && *p <= '9') {
+                    precision = precision * 10 + (*p - '0');
+                    p++;
+                }
+            }
+
+            switch (*p) {
+                case 'd': {
+                    int val = va_arg(args, int);
+                    size_t len = int_to_str(val, temp_buf);
+                    size_t copy_len = (pos + len < size - 1) ? len : (size - 1 - pos);
+                    for (size_t i = 0; i < copy_len; i++) {
+                        str[pos++] = temp_buf[i];
+                    }
+                    break;
+                }
+                case 'f': {
+                    double val = va_arg(args, double);
+                    if (precision < 0) precision = 6;
+                    size_t len = double_to_str(val, temp_buf, precision);
+                    size_t copy_len = (pos + len < size - 1) ? len : (size - 1 - pos);
+                    for (size_t i = 0; i < copy_len; i++) {
+                        str[pos++] = temp_buf[i];
+                    }
+                    break;
+                }
+                case 's': {
+                    char* s = va_arg(args, char*);
+                    if (s == NULL) s = "(null)";
+                    while (*s && pos < size - 1) {
+                        str[pos++] = *s++;
+                    }
+                    break;
+                }
+                case '%': {
+                    str[pos++] = '%';
+                    break;
+                }
+                default:
+                    break;
+            }
+            p++;
+        } else {
+            str[pos++] = *p++;
+        }
+    }
+
+    str[pos] = '\0';
+    va_end(args);
+    return (int)pos;
+}
+
+Uint32 SDL_GetTicks(void) {
+    return sdl_host_get_ticks();
 }

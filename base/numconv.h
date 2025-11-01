@@ -21,3 +21,8 @@ size_t int_to_str(int val, char* buf);
 // Returns length of string written (not including null terminator)
 // precision: number of decimal places (-1 for default of 6)
 size_t double_to_str(double val, char* buf, int precision);
+
+// Simple snprintf implementation for base/
+// Supports: %d, %f, %.Nf, %s
+// Returns number of characters written (not including null terminator)
+int snprintf(char *str, size_t size, const char *format, ...);

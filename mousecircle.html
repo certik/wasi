@@ -1002,6 +1002,10 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
                         console.log('[SDL Log]', msg);
                     }
                 },
+
+                get_ticks() {
+                    return performance.now();
+                },
             };
 
             return {

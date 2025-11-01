@@ -307,6 +307,8 @@ Uint32 SDL_GetMouseState(float* x, float* y);
 bool SDL_SetWindowRelativeMouseMode(SDL_Window* window, bool enabled);
 
 size_t SDL_strlen(const char* str);
+int SDL_snprintf(char *str, size_t size, const char *format, ...);
+Uint32 SDL_GetTicks(void);
 
 // Managed main callback prototypes (implemented by the app when using SDL_MAIN_USE_CALLBACKS)
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]);

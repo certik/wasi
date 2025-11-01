@@ -199,11 +199,10 @@ clang \
     -Wl,--export=app_iterate \
     -Wl,--export=app_quit \
     -Wl,--export=__heap_base \
-    -Wl,--initial-memory=1048576 \
+    -Wl,--initial-memory=2097152 \
     -o mousecircle.wasm \
     MouseCircle_standalone.c \
     sdl_wasm.c \
-    stdlib/string.c \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \
