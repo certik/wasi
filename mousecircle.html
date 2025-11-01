@@ -836,8 +836,6 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
 
                 begin_gpu_copy_pass(cmdbufHandle) {
                     const cmdbuf = commandBuffers.get(cmdbufHandle);
-                    console.log('[SDL] BeginGPUCopyPass, cmdbuf:', cmdbufHandle, 'exists:', !!cmdbuf);
-                    console.trace('[SDL] BeginGPUCopyPass call stack');
                     if (!cmdbuf) {
                         console.error('[SDL] BeginGPUCopyPass: invalid cmdbuf', cmdbufHandle);
                         return 0;
@@ -847,7 +845,7 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
                     // We'll handle copies directly in upload_to_gpu_buffer
                     const handle = nextHandle++;
                     cmdbuf.copyPassHandle = handle;
-                    console.log('[SDL] BeginGPUCopyPass created, handle:', handle);
+                    console.log('[SDL] BeginGPUCopyPass, handle:', handle, 'for cmdbuf:', cmdbufHandle);
                     return handle;
                 },
 
@@ -866,7 +864,9 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
 
                     const destBuffer = buffers.get(destBufferHandle);
                     const bufferSize = destBuffer ? destBuffer.size : 0;
-                    console.log('[SDL] UploadToGPUBuffer, transferBuf:', transferBufferHandle, 'destBuf:', destBufferHandle, 'destSize:', bufferSize, 'uploadSize:', size);
+                    const vertexSize = (destBufferHandle === 16) ? 24 : 36; // overlay=24, scene=36
+                    const vertexCount = Math.floor(size / vertexSize);
+                    console.log('[SDL] UploadToGPUBuffer, destBuf:', destBufferHandle, 'uploadSize:', size, 'bytes (', vertexCount, 'vertices)');
 
                     const transferBuf = transferBuffers.get(transferBufferHandle);
 
@@ -875,13 +875,13 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
 
                         // Write mapped data directly to GPU buffer
                         device.queue.writeBuffer(destBuffer, destOffset, srcArray, sourceOffset, size);
-                        console.log('[SDL] UploadToGPUBuffer SUCCESS - uploaded', size, 'bytes to buffer of size', bufferSize);
 
                         // Track which buffers have been uploaded
                         if (!destBuffer.uploadedSize) {
                             destBuffer.uploadedSize = 0;
                         }
                         destBuffer.uploadedSize = Math.max(destBuffer.uploadedSize, destOffset + size);
+                        destBuffer.uploadedVertexCount = vertexCount;
                     } else {
                         console.error('[SDL] UploadToGPUBuffer FAILED:', {
                             transferBuf: !!transferBuf,
@@ -1004,7 +1004,6 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
                 },
 
                 draw_gpu_primitives(passHandle, vertexCount, instanceCount, firstVertex, firstInstance) {
-                    console.log('[SDL] DrawGPUPrimitives, pass:', passHandle, 'verts:', vertexCount, 'instances:', instanceCount);
                     const passEntry = renderPasses.get(passHandle);
                     if (!passEntry) {
                         console.error('[SDL] DrawGPUPrimitives: invalid pass handle', passHandle);
@@ -1017,7 +1016,12 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
                         return;
                     }
 
+                    // Check if we're drawing overlay (buffer 16)
                     const cmdbuf = commandBuffers.get(passEntry.cmdbufHandle);
+                    const overlayBuffer = buffers.get(16);
+                    const uploadedCount = overlayBuffer ? overlayBuffer.uploadedVertexCount : 0;
+                    console.log('[SDL] DrawGPUPrimitives, verts:', vertexCount, '(uploaded:', uploadedCount, ')');
+
                     if (cmdbuf && cmdbuf.bindGroup) {
                         passEntry.pass.setBindGroup(0, cmdbuf.bindGroup);
                     }
