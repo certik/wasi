@@ -1,6 +1,7 @@
 #pragma once
 
 #include <base/base_types.h>
+#include <base/stdarg.h>
 
 // Number to string conversion functions for base/
 // Self-contained implementations with no external dependencies
@@ -22,7 +23,12 @@ size_t int_to_str(int val, char* buf);
 // precision: number of decimal places (-1 for default of 6)
 size_t double_to_str(double val, char* buf, int precision);
 
+// Simple vsnprintf implementation for base/
+// Supports: %d, %u, %f, %.Nf, %s
+// Returns number of characters written (not including null terminator)
+int vsnprintf(char *str, size_t size, const char *format, va_list args);
+
 // Simple snprintf implementation for base/
-// Supports: %d, %f, %.Nf, %s
+// Supports: %d, %u, %f, %.Nf, %s
 // Returns number of characters written (not including null terminator)
 int snprintf(char *str, size_t size, const char *format, ...);

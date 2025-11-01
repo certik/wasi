@@ -68,13 +68,9 @@ size_t double_to_str(double val, char* buf, int precision) {
     return pos;
 }
 
-// Simple snprintf implementation for base/
-// Supports: %d, %f, %.Nf, %s
-int snprintf(char *str, size_t size, const char *format, ...) {
+// vsnprintf implementation (called by snprintf)
+int vsnprintf(char *str, size_t size, const char *format, va_list args) {
     if (size == 0) return 0;
-
-    va_list args;
-    va_start(args, format);
 
     size_t pos = 0;
     const char* p = format;
@@ -96,7 +92,8 @@ int snprintf(char *str, size_t size, const char *format, ...) {
             }
 
             switch (*p) {
-                case 'd': {
+                case 'd':
+                case 'u': {
                     int val = va_arg(args, int);
                     size_t len = int_to_str(val, temp_buf);
                     size_t copy_len = (pos + len < size - 1) ? len : (size - 1 - pos);
@@ -138,6 +135,15 @@ int snprintf(char *str, size_t size, const char *format, ...) {
     }
 
     str[pos] = '\0';
-    va_end(args);
     return (int)pos;
+}
+
+// Simple snprintf implementation for base/
+// Supports: %d, %u, %f, %.Nf, %s
+int snprintf(char *str, size_t size, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    int result = vsnprintf(str, size, format, args);
+    va_end(args);
+    return result;
 }

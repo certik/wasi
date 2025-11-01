@@ -4,6 +4,8 @@
 #include "SDL3/SDL.h"
 #include <stdint.h>
 #include <stddef.h>
+#include <base/stdarg.h>
+#include <base/numconv.h>
 
 #define WASM_IMPORT(module, name) __attribute__((import_module(module), import_name(name)))
 
@@ -314,11 +316,16 @@ const char* SDL_GetError(void) {
 }
 
 void SDL_Log(const char* fmt, ...) {
-    // For now, just pass the format string directly
-    // A full implementation would need to handle variadic args
-    if (fmt) {
-        uint32_t len = wasm_strlen(fmt);
-        sdl_host_log((uint32_t)(uintptr_t)fmt, len);
+    if (!fmt) return;
+
+    char buffer[512];
+    va_list args;
+    va_start(args, fmt);
+    int len = vsnprintf(buffer, sizeof(buffer), fmt, args);
+    va_end(args);
+
+    if (len > 0 && len < (int)sizeof(buffer)) {
+        sdl_host_log((uint32_t)(uintptr_t)buffer, (uint32_t)len);
     }
 }
 
