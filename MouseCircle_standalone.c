@@ -24,14 +24,6 @@
 
 #include "gm_font_data.h"
 
-#if defined(__wasi__)
-__attribute__((import_module("app_host"), import_name("register_prefetch_path")))
-int wasm_register_prefetch_path(const char *path, size_t path_len);
-
-__attribute__((import_module("app_host"), import_name("commit_prefetches")))
-int wasm_commit_prefetches(void);
-#endif
-
 #ifndef SDL_arraysize
 #define SDL_arraysize(arr) (sizeof(arr) / sizeof((arr)[0]))
 #endif
@@ -172,9 +164,6 @@ typedef struct {
     char overlay_vertex_path[256];
     char overlay_fragment_path[256];
     bool resources_ready;
-#if defined(__wasi__)
-    bool prefetch_in_progress;
-#endif
 } GameApp;
 
 static GameApp g_App;
@@ -1671,9 +1660,6 @@ static int complete_gpu_setup(GameApp *app) {
     app->quit_requested = false;
     app->overlay_dirty = true;
     app->resources_ready = true;
-#if defined(__wasi__)
-    app->prefetch_in_progress = false;
-#endif
     SDL_SetWindowRelativeMouseMode(app->window, true);
     return 0;
 }
@@ -1685,9 +1671,6 @@ static int init_game(GameApp *app) {
     ensure_runtime_heap();
 
     app->resources_ready = false;
-#if defined(__wasi__)
-    app->prefetch_in_progress = false;
-#endif
 
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
@@ -1730,12 +1713,10 @@ static int init_game(GameApp *app) {
         shader_dir = "shaders/HLSL/";
         app->shader_format = SDL_GPU_SHADERFORMAT_DXIL;
         shader_ext = ".hlsl";
-#ifdef __wasi__
     } else if (base_strcmp(driver, "wgsl") == 0) {
         shader_dir = "shaders/WGSL/";
         app->shader_format = SDL_GPU_SHADERFORMAT_WGSL;
         shader_ext = ".wgsl";
-#endif
     } else {
         SDL_Log("ERROR: Unsupported GPU driver '%s'", driver);
         return -1;
@@ -1751,33 +1732,6 @@ static int init_game(GameApp *app) {
                  "%smousecircle_overlay_vertex%s", shader_dir, shader_ext);
     SDL_snprintf(app->overlay_fragment_path, sizeof(app->overlay_fragment_path),
                  "%smousecircle_overlay_fragment%s", shader_dir, shader_ext);
-
-#if defined(__wasi__)
-    if (app->shader_format == SDL_GPU_SHADERFORMAT_WGSL) {
-        const char *paths[] = {
-            app->scene_vertex_path,
-            app->scene_fragment_path,
-            app->overlay_vertex_path,
-            app->overlay_fragment_path,
-        };
-
-        for (size_t i = 0; i < SDL_arraysize(paths); i++) {
-            size_t len = base_strlen(paths[i]);
-            if (wasm_register_prefetch_path(paths[i], len) != 0) {
-                SDL_Log("Failed to register prefetch for %s", paths[i]);
-                return -1;
-            }
-        }
-
-        if (wasm_commit_prefetches() != 0) {
-            SDL_Log("Failed to commit prefetch requests");
-            return -1;
-        }
-
-        app->prefetch_in_progress = true;
-        return 1;
-    }
-#endif
 
     return complete_gpu_setup(app);
 }
@@ -2023,18 +1977,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     *appstate = &g_App;
     return SDL_APP_CONTINUE;
 }
-
-#if defined(__wasi__)
-__attribute__((export_name("app_on_prefetch_ready")))
-int app_on_prefetch_ready(void) {
-    int result = complete_gpu_setup(&g_App);
-    g_App.prefetch_in_progress = false;
-    if (result == 0) {
-        build_overlay(&g_App);
-    }
-    return result;
-}
-#endif
 
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
     GameApp *app = (GameApp *)appstate;
