@@ -1014,6 +1014,13 @@ static uint32_t append_convex_quad(OverlayVertex *verts, uint32_t offset, uint32
     }
     float width = maxX - minX;
     float height = maxY - minY;
+
+    // Log if we're near the problematic offset
+    if (offset >= 7920 && offset <= 7940) {
+        SDL_Log("append_convex_quad at offset %u: bounds (%.2f,%.2f)-(%.2f,%.2f), size %.2fx%.2f",
+                offset, minX, minY, maxX, maxY, width, height);
+    }
+
     if (width > 0.5f || height > 0.5f) {
         SDL_Log("WARNING: Large convex_quad at offset %u: bounds (%.2f,%.2f) to (%.2f,%.2f), size %.2fx%.2f",
                 offset, minX, minY, maxX, maxY, width, height);
@@ -1047,6 +1054,13 @@ static uint32_t append_triangle(OverlayVertex *verts, uint32_t offset, uint32_t 
     }
     float width = maxX - minX;
     float height = maxY - minY;
+
+    // Log if we're near the problematic offset
+    if (offset >= 7920 && offset <= 7940) {
+        SDL_Log("append_triangle at offset %u: v1=(%.2f,%.2f) v2=(%.2f,%.2f) v3=(%.2f,%.2f)",
+                offset, points[0][0], points[0][1], points[1][0], points[1][1], points[2][0], points[2][1]);
+    }
+
     if (width > 0.5f || height > 0.5f) {
         SDL_Log("WARNING: Large triangle at offset %u: bounds (%.2f,%.2f) to (%.2f,%.2f), size %.2fx%.2f",
                 offset, minX, minY, maxX, maxY, width, height);
@@ -1069,9 +1083,9 @@ static uint32_t append_glyph(OverlayVertex *verts, uint32_t offset, uint32_t max
                              const float color[4]) {
     const uint32_t *glyph = GM_FONT_GLYPHS[ch];
 
-    // Log if we're near the problematic offset (triangle 2652 = vertex ~7956)
+    // Log if we're near the problematic offset (triangle 2644 = vertex 7932)
     static bool logged_once = false;
-    if (!logged_once && offset >= 7950 && offset <= 7960) {
+    if (!logged_once && offset >= 7920 && offset <= 7940) {
         SDL_Log("append_glyph at offset %u: char='%c' origin=(%.1f,%.1f) canvas=%.0fx%.0f",
                 offset, (ch >= 32 && ch < 127) ? ch : '?', origin_x, origin_y, canvas_w, canvas_h);
         logged_once = true;
@@ -1091,7 +1105,7 @@ static uint32_t append_glyph(OverlayVertex *verts, uint32_t offset, uint32_t max
                 float x1 = to_clip_x(px1, canvas_w);
                 float y1 = to_clip_y(py1, canvas_h);
 
-                if (offset >= 7950 && offset <= 7960) {
+                if (offset >= 7920 && offset <= 7940) {
                     SDL_Log("  quad at %u: pixel (%.1f,%.1f)-(%.1f,%.1f) -> clip (%.2f,%.2f)-(%.2f,%.2f)",
                             offset, px0, py0, px1, py1, x0, y0, x1, y1);
                 }
@@ -1771,6 +1785,18 @@ static void update_game(GameApp *app) {
     app->scene_uniforms.fog_color[3] = 1.0f;
 
     build_overlay(app);
+
+    // Debug: dump vertex buffer data at offset 7932 (triangle 2644)
+    static bool dumped_once = false;
+    if (!dumped_once && app->overlay_vertex_count > 7937) {
+        SDL_Log("DEBUG: Vertex buffer dump at offset 7932-7937 (total vertices: %u)", app->overlay_vertex_count);
+        for (uint32_t i = 7932; i <= 7937 && i < app->overlay_vertex_count; i++) {
+            OverlayVertex *v = &app->overlay_cpu_vertices[i];
+            SDL_Log("  v[%u]: pos=(%.2f,%.2f) color=(%.2f,%.2f,%.2f,%.2f)",
+                    i, v->position[0], v->position[1], v->color[0], v->color[1], v->color[2], v->color[3]);
+        }
+        dumped_once = true;
+    }
 
     if (app->overlay_vertex_count > 0) {
         OverlayVertex *mapped = (OverlayVertex *)SDL_MapGPUTransferBuffer(app->device, app->overlay_transfer_buffer, false);
