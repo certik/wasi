@@ -1804,9 +1804,28 @@ static void update_game(GameApp *app) {
     }
 
     if (app->overlay_vertex_count > 0) {
+        // Debug: Check source buffer before memcpy
+        if (frame_count < 5 && app->overlay_vertex_count > 7925) {
+            SDL_Log("  Source buffer (app->overlay_cpu_vertices) at 7920-7925:");
+            for (uint32_t i = 7920; i <= 7925; i++) {
+                OverlayVertex *v = &app->overlay_cpu_vertices[i];
+                SDL_Log("    v[%u]: pos=(%.2f,%.2f)", i, v->position[0], v->position[1]);
+            }
+        }
+
         OverlayVertex *mapped = (OverlayVertex *)SDL_MapGPUTransferBuffer(app->device, app->overlay_transfer_buffer, false);
         if (mapped) {
             base_memcpy(mapped, app->overlay_cpu_vertices, sizeof(OverlayVertex) * app->overlay_vertex_count);
+
+            // Debug: Check destination buffer after memcpy
+            if (frame_count < 5 && app->overlay_vertex_count > 7925) {
+                SDL_Log("  Dest buffer (mapped transfer) at 7920-7925:");
+                for (uint32_t i = 7920; i <= 7925; i++) {
+                    OverlayVertex *v = &mapped[i];
+                    SDL_Log("    v[%u]: pos=(%.2f,%.2f)", i, v->position[0], v->position[1]);
+                }
+            }
+
             SDL_UnmapGPUTransferBuffer(app->device, app->overlay_transfer_buffer);
         }
     }
