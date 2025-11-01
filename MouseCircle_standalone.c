@@ -1674,6 +1674,7 @@ static int complete_gpu_setup(GameApp *app) {
 #if defined(__wasi__)
     app->prefetch_in_progress = false;
 #endif
+    SDL_SetWindowRelativeMouseMode(app->window, true);
     return 0;
 }
 // ============================================================================
