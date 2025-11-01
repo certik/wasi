@@ -40,14 +40,14 @@ async function fetchTextWithBust(path, cacheBust) {
 
             const cacheBust = Date.now();
             const shaderEntries = [
-                ['sceneVertex', 'shaders/mousecircle_scene_vertex.wgsl'],
-                ['sceneFragment', 'shaders/mousecircle_scene_fragment.wgsl'],
-                ['overlayVertex', 'shaders/mousecircle_overlay_vertex.wgsl'],
-                ['overlayFragment', 'shaders/mousecircle_overlay_fragment.wgsl'],
-                ['sceneVertexMSL', 'shaders/mousecircle_scene_vertex.msl'],
-                ['sceneFragmentMSL', 'shaders/mousecircle_scene_fragment.msl'],
-                ['overlayVertexMSL', 'shaders/mousecircle_overlay_vertex.msl'],
-                ['overlayFragmentMSL', 'shaders/mousecircle_overlay_fragment.msl'],
+                ['sceneVertex', 'shaders/WGSL/mousecircle_scene_vertex.wgsl'],
+                ['sceneFragment', 'shaders/WGSL/mousecircle_scene_fragment.wgsl'],
+                ['overlayVertex', 'shaders/WGSL/mousecircle_overlay_vertex.wgsl'],
+                ['overlayFragment', 'shaders/WGSL/mousecircle_overlay_fragment.wgsl'],
+                ['sceneVertexMSL', 'shaders/MSL/mousecircle_scene_vertex.msl'],
+                ['sceneFragmentMSL', 'shaders/MSL/mousecircle_scene_fragment.msl'],
+                ['overlayVertexMSL', 'shaders/MSL/mousecircle_overlay_vertex.msl'],
+                ['overlayFragmentMSL', 'shaders/MSL/mousecircle_overlay_fragment.msl'],
             ];
 
             const shaderText = {};
@@ -63,10 +63,10 @@ async function fetchTextWithBust(path, cacheBust) {
             };
 
             const wasiFs = createVirtualFileSystem(new Map([
-                ['shaders/mousecircle_scene_vertex.msl', fileEncoder.encode(shaderText.sceneVertexMSL)],
-                ['shaders/mousecircle_scene_fragment.msl', fileEncoder.encode(shaderText.sceneFragmentMSL)],
-                ['shaders/mousecircle_overlay_vertex.msl', fileEncoder.encode(shaderText.overlayVertexMSL)],
-                ['shaders/mousecircle_overlay_fragment.msl', fileEncoder.encode(shaderText.overlayFragmentMSL)],
+                ['shaders/MSL/mousecircle_scene_vertex.msl', fileEncoder.encode(shaderText.sceneVertexMSL)],
+                ['shaders/MSL/mousecircle_scene_fragment.msl', fileEncoder.encode(shaderText.sceneFragmentMSL)],
+                ['shaders/MSL/mousecircle_overlay_vertex.msl', fileEncoder.encode(shaderText.overlayVertexMSL)],
+                ['shaders/MSL/mousecircle_overlay_fragment.msl', fileEncoder.encode(shaderText.overlayFragmentMSL)],
             ]));
 
 

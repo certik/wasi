@@ -168,10 +168,10 @@ static string g_scene_fragment_shader = {0};
 static string g_overlay_vertex_shader = {0};
 static string g_overlay_fragment_shader = {0};
 
-static const char *kSceneVertexShaderPath = "shaders/mousecircle_scene_vertex.msl";
-static const char *kSceneFragmentShaderPath = "shaders/mousecircle_scene_fragment.msl";
-static const char *kOverlayVertexShaderPath = "shaders/mousecircle_overlay_vertex.msl";
-static const char *kOverlayFragmentShaderPath = "shaders/mousecircle_overlay_fragment.msl";
+static const char *kSceneVertexShaderPath = "shaders/MSL/mousecircle_scene_vertex.msl";
+static const char *kSceneFragmentShaderPath = "shaders/MSL/mousecircle_scene_fragment.msl";
+static const char *kOverlayVertexShaderPath = "shaders/MSL/mousecircle_overlay_vertex.msl";
+static const char *kOverlayFragmentShaderPath = "shaders/MSL/mousecircle_overlay_fragment.msl";
 
 static void ensure_runtime_heap(void) {
     if (!g_buddy_initialized) {
