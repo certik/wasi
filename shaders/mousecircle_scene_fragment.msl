@@ -1,0 +1,45 @@
+#include <metal_stdlib>
+using namespace metal;
+
+struct SceneUniforms {
+    float4x4 mvp;
+    float4 cameraPos;
+    float4 fogColor;
+};
+
+struct VertexOutput {
+    float4 position [[position]];
+    float surfaceType;
+    float2 uv;
+    float3 normal;
+    float3 worldPos;
+};
+
+float checker(float2 uv) {
+    float2 scaled = floor(uv * 4.0);
+    float v = fmod(scaled.x + scaled.y, 2.0);
+    return v < 0.5 ? 1.0 : 0.7;
+}
+
+fragment float4 main_fragment(VertexOutput in [[stage_in]],
+                              constant SceneUniforms &uniforms [[buffer(0)]]) {
+    float3 baseColor;
+    if (in.surfaceType < 0.5) {
+        baseColor = float3(0.1, 0.1, 0.9);
+    } else if (in.surfaceType < 1.5) {
+        baseColor = float3(0.9, 0.2, 0.2);
+    } else if (in.surfaceType < 2.5) {
+        baseColor = float3(0.9, 0.9, 0.2);
+    } else {
+        baseColor = float3(0.7, 0.5, 0.3);
+    }
+
+    float3 n = normalize(in.normal);
+    float3 lightDir = normalize(float3(0.35, 1.0, 0.45));
+    float diff = max(dot(n, lightDir), 0.15);
+    float fogFactor = exp(-distance(in.worldPos, uniforms.cameraPos.xyz) * 0.08);
+    float3 color = baseColor * checker(in.uv) * diff;
+    color = mix(uniforms.fogColor.xyz, color, fogFactor);
+    return float4(color, 1.0);
+}
+

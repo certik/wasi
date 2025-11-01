@@ -14,6 +14,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include <base/arena.h>
 #include <base/buddy.h>
 #include <base/mem.h>
 #include <base/mat4.h>
@@ -161,12 +162,43 @@ typedef struct {
 
 static GameApp g_App;
 static bool g_buddy_initialized = false;
+static Arena *g_shader_arena = NULL;
+static string g_scene_vertex_shader = {0};
+static string g_scene_fragment_shader = {0};
+static string g_overlay_vertex_shader = {0};
+static string g_overlay_fragment_shader = {0};
 
-static void ensure_heap_initialized(void) {
+static const char *kSceneVertexShaderPath = "shaders/mousecircle_scene_vertex.msl";
+static const char *kSceneFragmentShaderPath = "shaders/mousecircle_scene_fragment.msl";
+static const char *kOverlayVertexShaderPath = "shaders/mousecircle_overlay_vertex.msl";
+static const char *kOverlayFragmentShaderPath = "shaders/mousecircle_overlay_fragment.msl";
+
+static void ensure_runtime_heap(void) {
     if (!g_buddy_initialized) {
+        extern void ensure_heap_initialized(void);
+        ensure_heap_initialized();
         buddy_init();
         g_buddy_initialized = true;
     }
+    if (g_shader_arena == NULL) {
+        g_shader_arena = arena_new(64 * 1024);
+    }
+}
+
+static string load_shader_source(string *cache, const char *path_literal) {
+    if (cache->str == NULL) {
+        ensure_runtime_heap();
+        string path = str_from_cstr_len_view_const(path_literal, base_strlen(path_literal));
+        *cache = read_file_ok(g_shader_arena, path);
+    }
+    return *cache;
+}
+
+static Uint32 shader_code_size(string source) {
+    if (source.size == 0) {
+        return 0;
+    }
+    return (Uint32)(source.size - 1);
 }
 
 // ============================================================================
@@ -1291,109 +1323,6 @@ static void build_overlay(GameApp *app) {
 // Shader sources (Metal Shading Language)
 // ============================================================================
 
-static const char SceneVertexShaderMSL[] =
-"#include <metal_stdlib>\n"
-"using namespace metal;\n"
-"struct SceneUniforms {\n"
-"    float4x4 mvp;\n"
-"    float4 cameraPos;\n"
-"    float4 fogColor;\n"
-"};\n"
-"struct VertexInput {\n"
-"    float3 position [[attribute(0)]];\n"
-"    float surfaceType [[attribute(1)]];\n"
-"    float2 uv [[attribute(2)]];\n"
-"    float3 normal [[attribute(3)]];\n"
-"};\n"
-"struct VertexOutput {\n"
-"    float4 position [[position]];\n"
-"    float surfaceType;\n"
-"    float2 uv;\n"
-"    float3 normal;\n"
-"    float3 worldPos;\n"
-"};\n"
-"vertex VertexOutput main_vertex(VertexInput in [[stage_in]],\n"
-"                                 constant SceneUniforms &uniforms [[buffer(0)]]) {\n"
-"    VertexOutput out;\n"
-"    float4 world = float4(in.position, 1.0);\n"
-"    out.position = uniforms.mvp * world;\n"
-"    out.surfaceType = in.surfaceType;\n"
-"    out.uv = in.uv;\n"
-"    out.normal = in.normal;\n"
-"    out.worldPos = in.position;\n"
-"    return out;\n"
-"}\n";
-
-static const char SceneFragmentShaderMSL[] =
-"#include <metal_stdlib>\n"
-"using namespace metal;\n"
-"struct SceneUniforms {\n"
-"    float4x4 mvp;\n"
-"    float4 cameraPos;\n"
-"    float4 fogColor;\n"
-"};\n"
-"struct VertexOutput {\n"
-"    float4 position [[position]];\n"
-"    float surfaceType;\n"
-"    float2 uv;\n"
-"    float3 normal;\n"
-"    float3 worldPos;\n"
-"};\n"
-"float checker(float2 uv) {\n"
-"    float2 scaled = floor(uv * 4.0);\n"
-"    float v = fmod(scaled.x + scaled.y, 2.0);\n"
-"    return v < 0.5 ? 1.0 : 0.7;\n"
-"}\n"
-"fragment float4 main_fragment(VertexOutput in [[stage_in]],\n"
-"                               constant SceneUniforms &uniforms [[buffer(0)]]) {\n"
-"    float3 baseColor;\n"
-"    if (in.surfaceType < 0.5) {\n"
-"        baseColor = float3(0.1, 0.1, 0.9);\n"
-"    } else if (in.surfaceType < 1.5) {\n"
-"        baseColor = float3(0.9, 0.2, 0.2);\n"
-"    } else if (in.surfaceType < 2.5) {\n"
-"        baseColor = float3(0.9, 0.9, 0.2);\n"
-"    } else {\n"
-"        baseColor = float3(0.7, 0.5, 0.3);\n"
-"    }\n"
-"    float3 n = normalize(in.normal);\n"
-"    float3 lightDir = normalize(float3(0.35, 1.0, 0.45));\n"
-"    float diff = max(dot(n, lightDir), 0.15);\n"
-"    float fogFactor = exp(-distance(in.worldPos, uniforms.cameraPos.xyz) * 0.08);\n"
-"    float3 color = baseColor * checker(in.uv) * diff;\n"
-"    color = mix(uniforms.fogColor.xyz, color, fogFactor);\n"
-"    return float4(color, 1.0);\n"
-"}\n";
-
-static const char OverlayVertexShaderMSL[] =
-"#include <metal_stdlib>\n"
-"using namespace metal;\n"
-"struct OverlayInput {\n"
-"    float2 position [[attribute(0)]];\n"
-"    float4 color [[attribute(1)]];\n"
-"};\n"
-"struct OverlayOutput {\n"
-"    float4 position [[position]];\n"
-"    float4 color;\n"
-"};\n"
-"vertex OverlayOutput overlay_vertex(OverlayInput in [[stage_in]]) {\n"
-"    OverlayOutput out;\n"
-"    out.position = float4(in.position, 0.0, 1.0);\n"
-"    out.color = in.color;\n"
-"    return out;\n"
-"}\n";
-
-static const char OverlayFragmentShaderMSL[] =
-"#include <metal_stdlib>\n"
-"using namespace metal;\n"
-"struct OverlayOutput {\n"
-"    float4 position [[position]];\n"
-"    float4 color;\n"
-"};\n"
-"fragment float4 overlay_fragment(OverlayOutput in [[stage_in]]) {\n"
-"    return in.color;\n"
-"}\n";
-
 // ============================================================================
 // GPU resource helpers
 // ============================================================================
@@ -1495,7 +1424,7 @@ static bool create_overlay_pipeline(GameApp *app, SDL_GPUShader *vertex_shader, 
 // ============================================================================
 
 static int init_game(GameApp *app) {
-    ensure_heap_initialized();
+    ensure_runtime_heap();
 
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
@@ -1536,9 +1465,10 @@ static int init_game(GameApp *app) {
         return -1;
     }
 
+    string scene_vs_code = load_shader_source(&g_scene_vertex_shader, kSceneVertexShaderPath);
     SDL_GPUShaderCreateInfo shader_info = {
-        .code = (const Uint8 *)SceneVertexShaderMSL,
-        .code_size = (Uint32)(sizeof(SceneVertexShaderMSL) - 1),
+        .code = (const Uint8 *)scene_vs_code.str,
+        .code_size = shader_code_size(scene_vs_code),
         .entrypoint = "main_vertex",
         .format = SDL_GPU_SHADERFORMAT_MSL,
         .stage = SDL_GPU_SHADERSTAGE_VERTEX,
@@ -1554,8 +1484,9 @@ static int init_game(GameApp *app) {
         return -1;
     }
 
-    shader_info.code = (const Uint8 *)SceneFragmentShaderMSL;
-    shader_info.code_size = (Uint32)(sizeof(SceneFragmentShaderMSL) - 1);
+    string scene_fs_code = load_shader_source(&g_scene_fragment_shader, kSceneFragmentShaderPath);
+    shader_info.code = (const Uint8 *)scene_fs_code.str;
+    shader_info.code_size = shader_code_size(scene_fs_code);
     shader_info.entrypoint = "main_fragment";
     shader_info.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
     SDL_GPUShader *scene_fs = SDL_CreateGPUShader(app->device, &shader_info);
@@ -1565,8 +1496,9 @@ static int init_game(GameApp *app) {
         return -1;
     }
 
-    shader_info.code = (const Uint8 *)OverlayVertexShaderMSL;
-    shader_info.code_size = (Uint32)(sizeof(OverlayVertexShaderMSL) - 1);
+    string overlay_vs_code = load_shader_source(&g_overlay_vertex_shader, kOverlayVertexShaderPath);
+    shader_info.code = (const Uint8 *)overlay_vs_code.str;
+    shader_info.code_size = shader_code_size(overlay_vs_code);
     shader_info.entrypoint = "overlay_vertex";
     shader_info.stage = SDL_GPU_SHADERSTAGE_VERTEX;
     shader_info.num_uniform_buffers = 0;
@@ -1578,8 +1510,9 @@ static int init_game(GameApp *app) {
         return -1;
     }
 
-    shader_info.code = (const Uint8 *)OverlayFragmentShaderMSL;
-    shader_info.code_size = (Uint32)(sizeof(OverlayFragmentShaderMSL) - 1);
+    string overlay_fs_code = load_shader_source(&g_overlay_fragment_shader, kOverlayFragmentShaderPath);
+    shader_info.code = (const Uint8 *)overlay_fs_code.str;
+    shader_info.code_size = shader_code_size(overlay_fs_code);
     shader_info.entrypoint = "overlay_fragment";
     shader_info.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
     shader_info.num_uniform_buffers = 0;

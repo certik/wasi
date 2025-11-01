@@ -1,0 +1,36 @@
+#include <metal_stdlib>
+using namespace metal;
+
+struct SceneUniforms {
+    float4x4 mvp;
+    float4 cameraPos;
+    float4 fogColor;
+};
+
+struct VertexInput {
+    float3 position [[attribute(0)]];
+    float surfaceType [[attribute(1)]];
+    float2 uv [[attribute(2)]];
+    float3 normal [[attribute(3)]];
+};
+
+struct VertexOutput {
+    float4 position [[position]];
+    float surfaceType;
+    float2 uv;
+    float3 normal;
+    float3 worldPos;
+};
+
+vertex VertexOutput main_vertex(VertexInput in [[stage_in]],
+                                constant SceneUniforms &uniforms [[buffer(0)]]) {
+    VertexOutput out;
+    float4 world = float4(in.position, 1.0);
+    out.position = uniforms.mvp * world;
+    out.surfaceType = in.surfaceType;
+    out.uv = in.uv;
+    out.normal = in.normal;
+    out.worldPos = in.position;
+    return out;
+}
+
