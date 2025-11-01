@@ -12,50 +12,118 @@
     <canvas id="canvas"></canvas>
     <script type="module">
         // WGSL Shaders (converted from MSL in MouseCircle_standalone.c)
-        const vertexShaderWGSL = `
+        const sceneVertexShaderWGSL = `
+struct SceneUniforms {
+    mvp: mat4x4f,
+    cameraPos: vec4f,
+    fogColor: vec4f,
+};
+
 struct VertexInput {
     @location(0) position: vec3f,
-    @location(1) color: vec3f,
+    @location(1) surfaceType: f32,
+    @location(2) uv: vec2f,
+    @location(3) normal: vec3f,
 };
 
 struct VertexOutput {
     @builtin(position) position: vec4f,
-    @location(0) color: vec3f,
-    @location(1) world_pos: vec3f,
+    @location(0) surfaceType: f32,
+    @location(1) uv: vec2f,
+    @location(2) normal: vec3f,
+    @location(3) worldPos: vec3f,
 };
 
-struct Uniforms {
-    mvp: mat4x4f,
-};
-
-@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+@group(0) @binding(0) var<uniform> uniforms: SceneUniforms;
 
 @vertex
 fn main(input: VertexInput) -> VertexOutput {
     var output: VertexOutput;
-    output.position = uniforms.mvp * vec4f(input.position, 1.0);
-    output.color = input.color;
-    output.world_pos = input.position;
+    let world = vec4f(input.position, 1.0);
+    output.position = uniforms.mvp * world;
+    output.surfaceType = input.surfaceType;
+    output.uv = input.uv;
+    output.normal = input.normal;
+    output.worldPos = input.position;
     return output;
 }
 `;
 
-        const fragmentShaderWGSL = `
+        const sceneFragmentShaderWGSL = `
+struct SceneUniforms {
+    mvp: mat4x4f,
+    cameraPos: vec4f,
+    fogColor: vec4f,
+};
+
 struct VertexOutput {
     @builtin(position) position: vec4f,
-    @location(0) color: vec3f,
-    @location(1) world_pos: vec3f,
+    @location(0) surfaceType: f32,
+    @location(1) uv: vec2f,
+    @location(2) normal: vec3f,
+    @location(3) worldPos: vec3f,
+};
+
+@group(0) @binding(0) var<uniform> uniforms: SceneUniforms;
+
+fn checker(uv: vec2f) -> f32 {
+    let scaled = floor(uv * 4.0);
+    let v = (scaled.x + scaled.y) % 2.0;
+    return select(0.7, 1.0, v < 0.5);
+}
+
+@fragment
+fn main(input: VertexOutput) -> @location(0) vec4f {
+    var baseColor: vec3f;
+    if (input.surfaceType < 0.5) {
+        baseColor = vec3f(0.1, 0.1, 0.9);  // Floor: blue
+    } else if (input.surfaceType < 1.5) {
+        baseColor = vec3f(0.9, 0.2, 0.2);  // Walls: red
+    } else if (input.surfaceType < 2.5) {
+        baseColor = vec3f(0.9, 0.9, 0.2);  // Ceiling: yellow
+    } else {
+        baseColor = vec3f(0.7, 0.5, 0.3);  // Windows: brown
+    }
+
+    let n = normalize(input.normal);
+    let lightDir = normalize(vec3f(0.35, 1.0, 0.45));
+    let diff = max(dot(n, lightDir), 0.15);
+    let fogFactor = exp(-distance(input.worldPos, uniforms.cameraPos.xyz) * 0.08);
+    var color = baseColor * checker(input.uv) * diff;
+    color = mix(uniforms.fogColor.xyz, color, fogFactor);
+    return vec4f(color, 1.0);
+}
+`;
+
+        const overlayVertexShaderWGSL = `
+struct VertexInput {
+    @location(0) position: vec2f,
+    @location(1) color: vec4f,
+};
+
+struct VertexOutput {
+    @builtin(position) position: vec4f,
+    @location(0) color: vec4f,
+};
+
+@vertex
+fn main(input: VertexInput) -> VertexOutput {
+    var output: VertexOutput;
+    output.position = vec4f(input.position, 0.0, 1.0);
+    output.color = input.color;
+    return output;
+}
+`;
+
+        const overlayFragmentShaderWGSL = `
+struct VertexOutput {
+    @builtin(position) position: vec4f,
+    @location(0) color: vec4f,
 };
 
 @fragment
 fn main(input: VertexOutput) -> @location(0) vec4f {
-    // Small checkerboard pattern based on world position
-    let checker_size = 0.25;
-    let scaled = input.world_pos / checker_size;
-    let check = i32(floor(scaled.x) + floor(scaled.y) + floor(scaled.z));
-    let checker = select(1.0, 0.8, (check & 1) != 0);
-
-    return vec4f(input.color * checker, 1.0);
+    return input.color;
 }
 `;
 
@@ -303,12 +371,20 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
                     const format = dv.getUint32(info_ptr + 12, true);
                     const stage = dv.getUint32(info_ptr + 16, true);
 
-                    // For our simple case, we use hardcoded WGSL shaders
+                    // Determine shader type based on creation order
+                    // Scene shaders are created first, overlay shaders second
                     // SDL_GPU_SHADERSTAGE_VERTEX = 0, SDL_GPU_SHADERSTAGE_FRAGMENT = 1
-                    const shaderCode = (stage === 0) ? vertexShaderWGSL : fragmentShaderWGSL;
+                    const numShaders = shaders.size;
+                    let shaderCode;
+                    if (numShaders < 2) {
+                        // Scene pipeline shaders
+                        shaderCode = (stage === 0) ? sceneVertexShaderWGSL : sceneFragmentShaderWGSL;
+                    } else {
+                        // Overlay pipeline shaders
+                        shaderCode = (stage === 0) ? overlayVertexShaderWGSL : overlayFragmentShaderWGSL;
+                    }
 
-                    console.log('[SDL] CreateGPUShader, stage:', stage);
-                    console.log('[SDL] Shader code:', shaderCode);
+                    console.log('[SDL] CreateGPUShader, stage:', stage, 'numShaders:', numShaders);
 
                     try {
                         const shaderModule = device.createShaderModule({ code: shaderCode });
@@ -466,7 +542,7 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
                                 device.createBindGroupLayout({
                                     entries: [{
                                         binding: 0,
-                                        visibility: GPUShaderStage.VERTEX,
+                                        visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
                                         buffer: { type: 'uniform' }
                                     }]
                                 })
