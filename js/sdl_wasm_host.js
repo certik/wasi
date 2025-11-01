@@ -1,11 +1,10 @@
 const fsDecoder = new TextDecoder('utf-8');
 
-export function createWasmSDLHost(device, canvas, shaderSources) {
+export function createWasmSDLHost(device, canvas) {
             let memory = null;
             let nextHandle = 1;
             const decoder = new TextDecoder('utf-8');
             const encoder = new TextEncoder();
-            const { sceneVertex, sceneFragment, overlayVertex, overlayFragment } = shaderSources;
 
             const context = canvas.getContext('webgpu');
             canvas.tabIndex = 0;
@@ -245,20 +244,11 @@ export function createWasmSDLHost(device, canvas, shaderSources) {
                     const format = dv.getUint32(info_ptr + 12, true);
                     const stage = dv.getUint32(info_ptr + 16, true);
 
-                    // Determine shader type based on creation order
-                    // Scene shaders are created first, overlay shaders second
-                    // SDL_GPU_SHADERSTAGE_VERTEX = 0, SDL_GPU_SHADERSTAGE_FRAGMENT = 1
-                    const numShaders = shaders.size;
-                    let shaderCode;
-                    if (numShaders < 2) {
-                        // Scene pipeline shaders
-                        shaderCode = (stage === 0) ? sceneVertex : sceneFragment;
-                    } else {
-                        // Overlay pipeline shaders
-                        shaderCode = (stage === 0) ? overlayVertex : overlayFragment;
-                    }
+                    // Read shader code from WASM memory
+                    const shaderBytes = new Uint8Array(memory.buffer, code_ptr, code_size);
+                    const shaderCode = decoder.decode(shaderBytes);
 
-                    console.log('[SDL] CreateGPUShader, stage:', stage, 'numShaders:', numShaders);
+                    console.log('[SDL] CreateGPUShader, stage:', stage, 'format:', format, 'code length:', code_size);
 
                     try {
                         const shaderModule = device.createShaderModule({ code: shaderCode });

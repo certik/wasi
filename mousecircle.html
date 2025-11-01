@@ -11,19 +11,11 @@
 <body>
     <canvas id="canvas"></canvas>
     <script type="module">
-import { createWasmSDLHost, createVirtualFileSystem } from './js/sdl_wasm_host.js';
+import { createWasmSDLHost } from './js/sdl_wasm_host.js';
+import { createFetchingVirtualFileSystem } from './js/virtual_fs.js';
 
 let wasmMemory = null;
 const stdoutDecoder = new TextDecoder();
-const fileEncoder = new TextEncoder();
-
-async function fetchTextWithBust(path, cacheBust) {
-    const response = await fetch(`${path}?v=${cacheBust}`);
-    if (!response.ok) {
-        throw new Error(`Failed to load ${path}: ${response.status}`);
-    }
-    return await response.text();
-}
 
         async function init() {
             const canvas = document.getElementById('canvas');
@@ -38,45 +30,18 @@ async function fetchTextWithBust(path, cacheBust) {
             const adapter = await navigator.gpu.requestAdapter();
             const device = await adapter.requestDevice();
 
-            const cacheBust = Date.now();
-            const shaderEntries = [
-                ['sceneVertex', 'shaders/WGSL/mousecircle_scene_vertex.wgsl'],
-                ['sceneFragment', 'shaders/WGSL/mousecircle_scene_fragment.wgsl'],
-                ['overlayVertex', 'shaders/WGSL/mousecircle_overlay_vertex.wgsl'],
-                ['overlayFragment', 'shaders/WGSL/mousecircle_overlay_fragment.wgsl'],
-                ['sceneVertexMSL', 'shaders/MSL/mousecircle_scene_vertex.msl'],
-                ['sceneFragmentMSL', 'shaders/MSL/mousecircle_scene_fragment.msl'],
-                ['overlayVertexMSL', 'shaders/MSL/mousecircle_overlay_vertex.msl'],
-                ['overlayFragmentMSL', 'shaders/MSL/mousecircle_overlay_fragment.msl'],
-            ];
-
-            const shaderText = {};
-            await Promise.all(shaderEntries.map(async ([key, path]) => {
-                shaderText[key] = await fetchTextWithBust(path, cacheBust);
-            }));
-
-            const shaderSources = {
-                sceneVertex: shaderText.sceneVertex,
-                sceneFragment: shaderText.sceneFragment,
-                overlayVertex: shaderText.overlayVertex,
-                overlayFragment: shaderText.overlayFragment,
-            };
-
-            const wasiFs = createVirtualFileSystem(new Map([
-                ['shaders/MSL/mousecircle_scene_vertex.msl', fileEncoder.encode(shaderText.sceneVertexMSL)],
-                ['shaders/MSL/mousecircle_scene_fragment.msl', fileEncoder.encode(shaderText.sceneFragmentMSL)],
-                ['shaders/MSL/mousecircle_overlay_vertex.msl', fileEncoder.encode(shaderText.overlayVertexMSL)],
-                ['shaders/MSL/mousecircle_overlay_fragment.msl', fileEncoder.encode(shaderText.overlayFragmentMSL)],
-            ]));
+            // Create generic virtual filesystem - files will be fetched on demand
+            const wasiFs = createFetchingVirtualFileSystem();
 
 
             device.addEventListener('uncapturederror', (event) => {
                 console.error('[WebGPU] Uncaptured error:', event.error);
             });
 
-            const sdlHost = createWasmSDLHost(device, canvas, shaderSources);
+            const sdlHost = createWasmSDLHost(device, canvas);
 
             // Load WASM module
+            const cacheBust = Date.now();
             const wasmResponse = await fetch(`mousecircle.wasm?v=${cacheBust}`);
             const wasmBytes = await wasmResponse.arrayBuffer();
 

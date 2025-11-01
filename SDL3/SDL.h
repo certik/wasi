@@ -270,6 +270,7 @@ SDL_GPUShader* SDL_CreateGPUShader(SDL_GPUDevice* device, const SDL_GPUShaderCre
 void SDL_ReleaseGPUShader(SDL_GPUDevice* device, SDL_GPUShader* shader);
 
 SDL_GPUTextureFormat SDL_GetGPUSwapchainTextureFormat(SDL_GPUDevice* device, SDL_Window* window);
+const char* SDL_GetGPUDeviceDriver(SDL_GPUDevice* device);
 SDL_GPUGraphicsPipeline* SDL_CreateGPUGraphicsPipeline(SDL_GPUDevice* device, const SDL_GPUGraphicsPipelineCreateInfo* info);
 void SDL_ReleaseGPUGraphicsPipeline(SDL_GPUDevice* device, SDL_GPUGraphicsPipeline* pipeline);
 

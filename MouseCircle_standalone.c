@@ -168,11 +168,6 @@ static string g_scene_fragment_shader = {0};
 static string g_overlay_vertex_shader = {0};
 static string g_overlay_fragment_shader = {0};
 
-static const char *kSceneVertexShaderPath = "shaders/MSL/mousecircle_scene_vertex.msl";
-static const char *kSceneFragmentShaderPath = "shaders/MSL/mousecircle_scene_fragment.msl";
-static const char *kOverlayVertexShaderPath = "shaders/MSL/mousecircle_overlay_vertex.msl";
-static const char *kOverlayFragmentShaderPath = "shaders/MSL/mousecircle_overlay_fragment.msl";
-
 static void ensure_runtime_heap(void) {
     if (!g_buddy_initialized) {
         extern void ensure_heap_initialized(void);
@@ -1451,6 +1446,52 @@ static int init_game(GameApp *app) {
         return -1;
     }
 
+    // Detect backend and configure shader paths
+    const char *driver = SDL_GetGPUDeviceDriver(app->device);
+    const char *shader_dir = NULL;
+    SDL_GPUShaderFormat shader_format;
+    const char *shader_ext = NULL;
+
+    if (base_strcmp(driver, "metal") == 0) {
+        shader_dir = "shaders/MSL/";
+        shader_format = SDL_GPU_SHADERFORMAT_MSL;
+        shader_ext = ".msl";
+    } else if (base_strcmp(driver, "vulkan") == 0) {
+        shader_dir = "shaders/SPIRV/";
+        shader_format = SDL_GPU_SHADERFORMAT_SPIRV;
+        shader_ext = ".spv";
+    } else if (base_strcmp(driver, "direct3d12") == 0) {
+        shader_dir = "shaders/HLSL/";
+        shader_format = SDL_GPU_SHADERFORMAT_DXIL;
+        shader_ext = ".hlsl";
+#ifdef __wasi__
+    } else if (base_strcmp(driver, "wgsl") == 0) {
+        shader_dir = "shaders/WGSL/";
+        shader_format = SDL_GPU_SHADERFORMAT_WGSL;
+        shader_ext = ".wgsl";
+#endif
+    } else {
+        SDL_Log("ERROR: Unsupported GPU driver '%s'", driver);
+        return -1;
+    }
+
+    SDL_Log("Using %s backend, loading shaders from %s", driver, shader_dir);
+
+    // Build shader paths dynamically
+    char scene_vertex_path[256];
+    char scene_fragment_path[256];
+    char overlay_vertex_path[256];
+    char overlay_fragment_path[256];
+
+    SDL_snprintf(scene_vertex_path, sizeof(scene_vertex_path),
+                 "%smousecircle_scene_vertex%s", shader_dir, shader_ext);
+    SDL_snprintf(scene_fragment_path, sizeof(scene_fragment_path),
+                 "%smousecircle_scene_fragment%s", shader_dir, shader_ext);
+    SDL_snprintf(overlay_vertex_path, sizeof(overlay_vertex_path),
+                 "%smousecircle_overlay_vertex%s", shader_dir, shader_ext);
+    SDL_snprintf(overlay_fragment_path, sizeof(overlay_fragment_path),
+                 "%smousecircle_overlay_fragment%s", shader_dir, shader_ext);
+
     SDL_GPUTextureCreateInfo depth_info = {
         .usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
         .format = SDL_GPU_TEXTUREFORMAT_D16_UNORM,
@@ -1465,12 +1506,12 @@ static int init_game(GameApp *app) {
         return -1;
     }
 
-    string scene_vs_code = load_shader_source(&g_scene_vertex_shader, kSceneVertexShaderPath);
+    string scene_vs_code = load_shader_source(&g_scene_vertex_shader, scene_vertex_path);
     SDL_GPUShaderCreateInfo shader_info = {
         .code = (const Uint8 *)scene_vs_code.str,
         .code_size = shader_code_size(scene_vs_code),
         .entrypoint = "main_vertex",
-        .format = SDL_GPU_SHADERFORMAT_MSL,
+        .format = shader_format,
         .stage = SDL_GPU_SHADERSTAGE_VERTEX,
         .num_samplers = 0,
         .num_uniform_buffers = 1,
@@ -1484,7 +1525,7 @@ static int init_game(GameApp *app) {
         return -1;
     }
 
-    string scene_fs_code = load_shader_source(&g_scene_fragment_shader, kSceneFragmentShaderPath);
+    string scene_fs_code = load_shader_source(&g_scene_fragment_shader, scene_fragment_path);
     shader_info.code = (const Uint8 *)scene_fs_code.str;
     shader_info.code_size = shader_code_size(scene_fs_code);
     shader_info.entrypoint = "main_fragment";
@@ -1496,7 +1537,7 @@ static int init_game(GameApp *app) {
         return -1;
     }
 
-    string overlay_vs_code = load_shader_source(&g_overlay_vertex_shader, kOverlayVertexShaderPath);
+    string overlay_vs_code = load_shader_source(&g_overlay_vertex_shader, overlay_vertex_path);
     shader_info.code = (const Uint8 *)overlay_vs_code.str;
     shader_info.code_size = shader_code_size(overlay_vs_code);
     shader_info.entrypoint = "overlay_vertex";
@@ -1510,7 +1551,7 @@ static int init_game(GameApp *app) {
         return -1;
     }
 
-    string overlay_fs_code = load_shader_source(&g_overlay_fragment_shader, kOverlayFragmentShaderPath);
+    string overlay_fs_code = load_shader_source(&g_overlay_fragment_shader, overlay_fragment_path);
     shader_info.code = (const Uint8 *)overlay_fs_code.str;
     shader_info.code_size = shader_code_size(overlay_fs_code);
     shader_info.entrypoint = "overlay_fragment";

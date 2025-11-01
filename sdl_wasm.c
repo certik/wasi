@@ -224,6 +224,11 @@ SDL_GPUTextureFormat SDL_GetGPUSwapchainTextureFormat(SDL_GPUDevice* device, SDL
     );
 }
 
+const char* SDL_GetGPUDeviceDriver(SDL_GPUDevice* device) {
+    (void)device;
+    return "wgsl";
+}
+
 SDL_GPUGraphicsPipeline* SDL_CreateGPUGraphicsPipeline(SDL_GPUDevice* device, const SDL_GPUGraphicsPipelineCreateInfo* info) {
     uint32_t handle = sdl_host_create_gpu_graphics_pipeline(
         (uint32_t)(uintptr_t)device,
