@@ -13,6 +13,7 @@
     <script type="module">
 import { createWasmSDLHost } from './js/sdl_wasm_host.js';
 import { createFetchingVirtualFileSystem } from './js/virtual_fs.js';
+import { createPrefetchHost } from './js/prefetch_host.js';
 
 let wasmMemory = null;
 const stdoutDecoder = new TextDecoder();
@@ -30,9 +31,9 @@ const stdoutDecoder = new TextDecoder();
             const adapter = await navigator.gpu.requestAdapter();
             const device = await adapter.requestDevice();
 
-            // Create generic virtual filesystem - files will be fetched on demand
+            // Create virtual filesystem and prefetch manager
             const wasiFs = createFetchingVirtualFileSystem();
-
+            const prefetchHost = createPrefetchHost(wasiFs);
 
             device.addEventListener('uncapturederror', (event) => {
                 console.error('[WebGPU] Uncaptured error:', event.error);
@@ -80,17 +81,20 @@ const stdoutDecoder = new TextDecoder();
             const wasmModule = await WebAssembly.instantiate(wasmBytes, {
                 sdl: sdlHost.imports,
                 wasi_snapshot_preview1: wasiImports,
+                app_host: prefetchHost.imports,
             });
 
             const wasmInstance = wasmModule.instance;
             wasmMemory = wasmInstance.exports.memory;
             sdlHost.setMemory(wasmMemory);
             wasiFs.setMemory(wasmMemory);
+            prefetchHost.setMemory(wasmMemory);
 
             // Call main
             const app_init = wasmInstance.exports.app_init;
             const app_iterate = wasmInstance.exports.app_iterate;
             const app_quit = wasmInstance.exports.app_quit;
+            const app_on_prefetch_ready = wasmInstance.exports.app_on_prefetch_ready;
 
             console.log('app_init()');
             const initResult = app_init();
@@ -98,6 +102,26 @@ const stdoutDecoder = new TextDecoder();
                 console.error('app_init() failed');
                 return;
             }
+
+            if (prefetchHost.hasPendingPrefetch()) {
+                try {
+                    await prefetchHost.waitForPrefetch();
+                } catch (err) {
+                    console.error('[Prefetch] Failed:', err);
+                    app_quit();
+                    return;
+                }
+
+                if (typeof app_on_prefetch_ready === 'function') {
+                    const prefetchResult = app_on_prefetch_ready();
+                    if (prefetchResult < 0) {
+                        console.error('app_on_prefetch_ready() failed');
+                        app_quit();
+                        return;
+                    }
+                }
+            }
+
             if (initResult > 0) {
                 console.log('app_init() completed immediately');
                 app_quit();

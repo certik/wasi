@@ -24,6 +24,14 @@
 
 #include "gm_font_data.h"
 
+#if defined(__wasi__)
+__attribute__((import_module("app_host"), import_name("register_prefetch_path")))
+int wasm_register_prefetch_path(const char *path, size_t path_len);
+
+__attribute__((import_module("app_host"), import_name("commit_prefetches")))
+int wasm_commit_prefetches(void);
+#endif
+
 #ifndef SDL_arraysize
 #define SDL_arraysize(arr) (sizeof(arr) / sizeof((arr)[0]))
 #endif
@@ -158,6 +166,15 @@ typedef struct {
     float frame_time_ms;
 
     bool quit_requested;
+    SDL_GPUShaderFormat shader_format;
+    char scene_vertex_path[256];
+    char scene_fragment_path[256];
+    char overlay_vertex_path[256];
+    char overlay_fragment_path[256];
+    bool resources_ready;
+#if defined(__wasi__)
+    bool prefetch_in_progress;
+#endif
 } GameApp;
 
 static GameApp g_App;
@@ -1414,104 +1431,38 @@ static bool create_overlay_pipeline(GameApp *app, SDL_GPUShader *vertex_shader, 
     return app->overlay_pipeline != NULL;
 }
 
-// ============================================================================
-// Application lifecycle
-// ============================================================================
+static int complete_gpu_setup(GameApp *app) {
+    if (app->resources_ready) {
+        return 0;
+    }
 
-static int init_game(GameApp *app) {
-    ensure_runtime_heap();
-
-    if (!SDL_Init(SDL_INIT_VIDEO)) {
-        SDL_Log("SDL_Init failed: %s", SDL_GetError());
+    if (app->device == NULL || app->window == NULL) {
+        SDL_Log("GPU setup requires valid device and window");
         return -1;
     }
 
-    app->device = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL, true, NULL);
-    if (app->device == NULL) {
-        SDL_Log("SDL_CreateGPUDevice failed: %s", SDL_GetError());
-        return -1;
-    }
-
-    app->window_width = 1280;
-    app->window_height = 720;
-
-    app->window = SDL_CreateWindow("GM SDL", app->window_width, app->window_height, SDL_WINDOW_RESIZABLE);
-    if (app->window == NULL) {
-        SDL_Log("SDL_CreateWindow failed: %s", SDL_GetError());
-        return -1;
-    }
-
-    if (!SDL_ClaimWindowForGPUDevice(app->device, app->window)) {
-        SDL_Log("SDL_ClaimWindowForGPUDevice failed: %s", SDL_GetError());
-        return -1;
-    }
-
-    // Detect backend and configure shader paths
-    const char *driver = SDL_GetGPUDeviceDriver(app->device);
-    const char *shader_dir = NULL;
-    SDL_GPUShaderFormat shader_format;
-    const char *shader_ext = NULL;
-
-    if (base_strcmp(driver, "metal") == 0) {
-        shader_dir = "shaders/MSL/";
-        shader_format = SDL_GPU_SHADERFORMAT_MSL;
-        shader_ext = ".msl";
-    } else if (base_strcmp(driver, "vulkan") == 0) {
-        shader_dir = "shaders/SPIRV/";
-        shader_format = SDL_GPU_SHADERFORMAT_SPIRV;
-        shader_ext = ".spv";
-    } else if (base_strcmp(driver, "direct3d12") == 0) {
-        shader_dir = "shaders/HLSL/";
-        shader_format = SDL_GPU_SHADERFORMAT_DXIL;
-        shader_ext = ".hlsl";
-#ifdef __wasi__
-    } else if (base_strcmp(driver, "wgsl") == 0) {
-        shader_dir = "shaders/WGSL/";
-        shader_format = SDL_GPU_SHADERFORMAT_WGSL;
-        shader_ext = ".wgsl";
-#endif
-    } else {
-        SDL_Log("ERROR: Unsupported GPU driver '%s'", driver);
-        return -1;
-    }
-
-    SDL_Log("Using %s backend, loading shaders from %s", driver, shader_dir);
-
-    // Build shader paths dynamically
-    char scene_vertex_path[256];
-    char scene_fragment_path[256];
-    char overlay_vertex_path[256];
-    char overlay_fragment_path[256];
-
-    SDL_snprintf(scene_vertex_path, sizeof(scene_vertex_path),
-                 "%smousecircle_scene_vertex%s", shader_dir, shader_ext);
-    SDL_snprintf(scene_fragment_path, sizeof(scene_fragment_path),
-                 "%smousecircle_scene_fragment%s", shader_dir, shader_ext);
-    SDL_snprintf(overlay_vertex_path, sizeof(overlay_vertex_path),
-                 "%smousecircle_overlay_vertex%s", shader_dir, shader_ext);
-    SDL_snprintf(overlay_fragment_path, sizeof(overlay_fragment_path),
-                 "%smousecircle_overlay_fragment%s", shader_dir, shader_ext);
-
-    SDL_GPUTextureCreateInfo depth_info = {
-        .usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
-        .format = SDL_GPU_TEXTUREFORMAT_D16_UNORM,
-        .width = (Uint32)app->window_width,
-        .height = (Uint32)app->window_height,
-        .layer_count_or_depth = 1,
-        .num_levels = 1,
-    };
-    app->depth_texture = SDL_CreateGPUTexture(app->device, &depth_info);
     if (app->depth_texture == NULL) {
-        SDL_Log("Failed to create depth texture: %s", SDL_GetError());
-        return -1;
+        SDL_GPUTextureCreateInfo depth_info = {
+            .usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
+            .format = SDL_GPU_TEXTUREFORMAT_D16_UNORM,
+            .width = (Uint32)app->window_width,
+            .height = (Uint32)app->window_height,
+            .layer_count_or_depth = 1,
+            .num_levels = 1,
+        };
+        app->depth_texture = SDL_CreateGPUTexture(app->device, &depth_info);
+        if (app->depth_texture == NULL) {
+            SDL_Log("Failed to create depth texture: %s", SDL_GetError());
+            return -1;
+        }
     }
 
-    string scene_vs_code = load_shader_source(&g_scene_vertex_shader, scene_vertex_path);
+    string scene_vs_code = load_shader_source(&g_scene_vertex_shader, app->scene_vertex_path);
     SDL_GPUShaderCreateInfo shader_info = {
         .code = (const Uint8 *)scene_vs_code.str,
         .code_size = shader_code_size(scene_vs_code),
         .entrypoint = "main_vertex",
-        .format = shader_format,
+        .format = app->shader_format,
         .stage = SDL_GPU_SHADERSTAGE_VERTEX,
         .num_samplers = 0,
         .num_uniform_buffers = 1,
@@ -1525,7 +1476,7 @@ static int init_game(GameApp *app) {
         return -1;
     }
 
-    string scene_fs_code = load_shader_source(&g_scene_fragment_shader, scene_fragment_path);
+    string scene_fs_code = load_shader_source(&g_scene_fragment_shader, app->scene_fragment_path);
     shader_info.code = (const Uint8 *)scene_fs_code.str;
     shader_info.code_size = shader_code_size(scene_fs_code);
     shader_info.entrypoint = "main_fragment";
@@ -1537,7 +1488,7 @@ static int init_game(GameApp *app) {
         return -1;
     }
 
-    string overlay_vs_code = load_shader_source(&g_overlay_vertex_shader, overlay_vertex_path);
+    string overlay_vs_code = load_shader_source(&g_overlay_vertex_shader, app->overlay_vertex_path);
     shader_info.code = (const Uint8 *)overlay_vs_code.str;
     shader_info.code_size = shader_code_size(overlay_vs_code);
     shader_info.entrypoint = "overlay_vertex";
@@ -1551,7 +1502,7 @@ static int init_game(GameApp *app) {
         return -1;
     }
 
-    string overlay_fs_code = load_shader_source(&g_overlay_fragment_shader, overlay_fragment_path);
+    string overlay_fs_code = load_shader_source(&g_overlay_fragment_shader, app->overlay_fragment_path);
     shader_info.code = (const Uint8 *)overlay_fs_code.str;
     shader_info.code_size = shader_code_size(overlay_fs_code);
     shader_info.entrypoint = "overlay_fragment";
@@ -1568,11 +1519,19 @@ static int init_game(GameApp *app) {
 
     if (!create_scene_pipeline(app, scene_vs, scene_fs)) {
         SDL_Log("Failed to create scene pipeline: %s", SDL_GetError());
+        SDL_ReleaseGPUShader(app->device, scene_vs);
+        SDL_ReleaseGPUShader(app->device, scene_fs);
+        SDL_ReleaseGPUShader(app->device, overlay_vs);
+        SDL_ReleaseGPUShader(app->device, overlay_fs);
         return -1;
     }
 
     if (!create_overlay_pipeline(app, overlay_vs, overlay_fs)) {
         SDL_Log("Failed to create overlay pipeline: %s", SDL_GetError());
+        SDL_ReleaseGPUShader(app->device, scene_vs);
+        SDL_ReleaseGPUShader(app->device, scene_fs);
+        SDL_ReleaseGPUShader(app->device, overlay_vs);
+        SDL_ReleaseGPUShader(app->device, overlay_fs);
         return -1;
     }
 
@@ -1681,23 +1640,12 @@ static int init_game(GameApp *app) {
     dst.buffer = app->scene_index_buffer;
     dst.size = index_buffer_info.size;
     SDL_UploadToGPUBuffer(copy_pass, &src, &dst, false);
-
     SDL_EndGPUCopyPass(copy_pass);
     SDL_SubmitGPUCommandBuffer(upload_cmdbuf);
 
-    SDL_GPUBufferCreateInfo overlay_buffer_info = {
-        .usage = SDL_GPU_BUFFERUSAGE_VERTEX,
-        .size = sizeof(OverlayVertex) * MAX_OVERLAY_VERTICES,
-    };
-    app->overlay_vertex_buffer = SDL_CreateGPUBuffer(app->device, &overlay_buffer_info);
-    if (!app->overlay_vertex_buffer) {
-        SDL_Log("Failed to create overlay vertex buffer: %s", SDL_GetError());
-        return -1;
-    }
-
     SDL_GPUTransferBufferCreateInfo overlay_transfer_info = {
         .usage = SDL_GPU_BUFFERUSAGE_VERTEX,
-        .size = overlay_buffer_info.size,
+        .size = sizeof(OverlayVertex) * MAX_OVERLAY_VERTICES,
     };
     app->overlay_transfer_buffer = SDL_CreateGPUTransferBuffer(app->device, &overlay_transfer_info);
     if (!app->overlay_transfer_buffer) {
@@ -1705,16 +1653,132 @@ static int init_game(GameApp *app) {
         return -1;
     }
 
-    gm_init_game_state(&app->state, g_map_data, MAP_WIDTH, MAP_HEIGHT, start_x, start_z, start_yaw);
-    app->overlay_vertex_count = 0;
-    app->overlay_dirty = false;
-    app->has_tick_base = false;
-    app->frame_time_ms = 16.0f;
-    app->quit_requested = false;
+    SDL_GPUBufferCreateInfo overlay_buffer_info = {
+        .usage = SDL_GPU_BUFFERUSAGE_VERTEX,
+        .size = overlay_transfer_info.size,
+    };
+    app->overlay_vertex_buffer = SDL_CreateGPUBuffer(app->device, &overlay_buffer_info);
+    if (!app->overlay_vertex_buffer) {
+        SDL_Log("Failed to create overlay vertex buffer: %s", SDL_GetError());
+        return -1;
+    }
 
-    SDL_SetWindowRelativeMouseMode(app->window, true);
-    SDL_Log("GM scene initialized");
+    GameState *state = &app->state;
+    gm_init_game_state(state, g_map_data, MAP_WIDTH, MAP_HEIGHT, start_x, start_z, start_yaw);
+    app->last_ticks = SDL_GetTicks();
+    app->has_tick_base = false;
+    app->frame_time_ms = 0.0f;
+    app->quit_requested = false;
+    app->overlay_dirty = true;
+    app->resources_ready = true;
+#if defined(__wasi__)
+    app->prefetch_in_progress = false;
+#endif
     return 0;
+}
+// ============================================================================
+// Application lifecycle
+// ============================================================================
+
+static int init_game(GameApp *app) {
+    ensure_runtime_heap();
+
+    app->resources_ready = false;
+#if defined(__wasi__)
+    app->prefetch_in_progress = false;
+#endif
+
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
+        SDL_Log("SDL_Init failed: %s", SDL_GetError());
+        return -1;
+    }
+
+    app->device = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL, true, NULL);
+    if (app->device == NULL) {
+        SDL_Log("SDL_CreateGPUDevice failed: %s", SDL_GetError());
+        return -1;
+    }
+
+    app->window_width = 1280;
+    app->window_height = 720;
+
+    app->window = SDL_CreateWindow("GM SDL", app->window_width, app->window_height, SDL_WINDOW_RESIZABLE);
+    if (app->window == NULL) {
+        SDL_Log("SDL_CreateWindow failed: %s", SDL_GetError());
+        return -1;
+    }
+
+    if (!SDL_ClaimWindowForGPUDevice(app->device, app->window)) {
+        SDL_Log("SDL_ClaimWindowForGPUDevice failed: %s", SDL_GetError());
+        return -1;
+    }
+
+    const char *driver = SDL_GetGPUDeviceDriver(app->device);
+    const char *shader_dir = NULL;
+    const char *shader_ext = NULL;
+
+    if (base_strcmp(driver, "metal") == 0) {
+        shader_dir = "shaders/MSL/";
+        app->shader_format = SDL_GPU_SHADERFORMAT_MSL;
+        shader_ext = ".msl";
+    } else if (base_strcmp(driver, "vulkan") == 0) {
+        shader_dir = "shaders/SPIRV/";
+        app->shader_format = SDL_GPU_SHADERFORMAT_SPIRV;
+        shader_ext = ".spv";
+    } else if (base_strcmp(driver, "direct3d12") == 0) {
+        shader_dir = "shaders/HLSL/";
+        app->shader_format = SDL_GPU_SHADERFORMAT_DXIL;
+        shader_ext = ".hlsl";
+#ifdef __wasi__
+    } else if (base_strcmp(driver, "wgsl") == 0) {
+        shader_dir = "shaders/WGSL/";
+        app->shader_format = SDL_GPU_SHADERFORMAT_WGSL;
+        shader_ext = ".wgsl";
+#endif
+    } else {
+        SDL_Log("ERROR: Unsupported GPU driver '%s'", driver);
+        return -1;
+    }
+
+    SDL_Log("Using %s backend, loading shaders from %s", driver, shader_dir);
+
+    SDL_snprintf(app->scene_vertex_path, sizeof(app->scene_vertex_path),
+                 "%smousecircle_scene_vertex%s", shader_dir, shader_ext);
+    SDL_snprintf(app->scene_fragment_path, sizeof(app->scene_fragment_path),
+                 "%smousecircle_scene_fragment%s", shader_dir, shader_ext);
+    SDL_snprintf(app->overlay_vertex_path, sizeof(app->overlay_vertex_path),
+                 "%smousecircle_overlay_vertex%s", shader_dir, shader_ext);
+    SDL_snprintf(app->overlay_fragment_path, sizeof(app->overlay_fragment_path),
+                 "%smousecircle_overlay_fragment%s", shader_dir, shader_ext);
+
+#if defined(__wasi__)
+    if (app->shader_format == SDL_GPU_SHADERFORMAT_WGSL) {
+        const char *paths[] = {
+            app->scene_vertex_path,
+            app->scene_fragment_path,
+            app->overlay_vertex_path,
+            app->overlay_fragment_path,
+        };
+
+        for (size_t i = 0; i < SDL_arraysize(paths); i++) {
+            size_t len = base_strlen(paths[i]);
+            if (wasm_register_prefetch_path(paths[i], len) != 0) {
+                SDL_Log("Failed to register prefetch for %s", paths[i]);
+                return -1;
+            }
+        }
+
+        if (wasm_commit_prefetches() != 0) {
+            SDL_Log("Failed to commit prefetch requests");
+            return -1;
+        }
+
+        app->prefetch_in_progress = true;
+        return 1;
+    }
+#endif
+
+    return complete_gpu_setup(app);
 }
 
 static void update_game(GameApp *app) {
@@ -1946,14 +2010,30 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     (void)argc;
     (void)argv;
 
-    if (init_game(&g_App) < 0) {
+    int init_status = init_game(&g_App);
+    if (init_status < 0) {
         return SDL_APP_FAILURE;
     }
 
-    build_overlay(&g_App);
+    if (g_App.resources_ready) {
+        build_overlay(&g_App);
+    }
+
     *appstate = &g_App;
     return SDL_APP_CONTINUE;
 }
+
+#if defined(__wasi__)
+__attribute__((export_name("app_on_prefetch_ready")))
+int app_on_prefetch_ready(void) {
+    int result = complete_gpu_setup(&g_App);
+    g_App.prefetch_in_progress = false;
+    if (result == 0) {
+        build_overlay(&g_App);
+    }
+    return result;
+}
+#endif
 
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
     GameApp *app = (GameApp *)appstate;
@@ -1993,6 +2073,10 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
     if (app->quit_requested) {
         return SDL_APP_SUCCESS;
+    }
+
+    if (!app->resources_ready) {
+        return SDL_APP_CONTINUE;
     }
 
     update_game(app);
