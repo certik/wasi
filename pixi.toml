@@ -748,8 +748,10 @@ test_hotel2gltf_windows = { cmd="hotel2gltf_windows.exe", depends-on=["build_hot
 # The cl.exe and link.exe commands should be available in PATH
 
 [tasks]
+build_bundler = "cc -o bundler bundler.c"
+bundle_shaders = { cmd="./bundler shaders_manifest.txt shaders.bundle", depends-on=["build_bundler"] }
 serve = { cmd="python3 server.py", depends-on=["test_gm_wasm"] }
-serve2 = { cmd="python3 server.py", depends-on=["test_mousecircle_wasm"] }
+serve2 = { cmd="python3 server.py", depends-on=["test_mousecircle_wasm", "bundle_shaders"] }
 all = { depends-on=["test_wasm", "test_linux"] }
 all_with_macos = { depends-on=["test_wasm", "test_linux", "test_macos"] }
 all_with_windows = { depends-on=["test_wasm", "test_linux", "test_windows"] }

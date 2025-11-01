@@ -173,6 +173,15 @@ export function createFetchingVirtualFileSystem() {
         return 0; // No arguments
     }
 
+    // Preload files from a bundle map
+    function preloadFromBundle(bundleMap) {
+        for (const [path, content] of bundleMap.entries()) {
+            fileCache.set(path, content);
+            console.log(`[VFS] Preloaded from bundle: ${path} (${content.length} bytes)`);
+        }
+        console.log(`[VFS] Preloaded ${bundleMap.size} files from bundle`);
+    }
+
     return {
         path_open,
         fd_read,
@@ -182,6 +191,7 @@ export function createFetchingVirtualFileSystem() {
         args_sizes_get,
         args_get,
         prefetch,
+        preloadFromBundle,
         setMemory(mem) {
             memory = mem;
             console.log('[VFS] Memory set');

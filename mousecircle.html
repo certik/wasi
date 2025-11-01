@@ -14,6 +14,7 @@
 import { createWasmSDLHost } from './js/sdl_wasm_host.js';
 import { createFetchingVirtualFileSystem } from './js/virtual_fs.js';
 import { createPrefetchHost } from './js/prefetch_host.js';
+import { fetchBundle } from './js/bundle_loader.js';
 
 let wasmMemory = null;
 const stdoutDecoder = new TextDecoder();
@@ -34,6 +35,17 @@ const stdoutDecoder = new TextDecoder();
             // Create virtual filesystem and prefetch manager
             const wasiFs = createFetchingVirtualFileSystem();
             const prefetchHost = createPrefetchHost(wasiFs);
+
+            // Load shader bundle for instant filesystem access
+            try {
+                const cacheBust = Date.now();
+                const bundleMap = await fetchBundle(`shaders.bundle?v=${cacheBust}`);
+                wasiFs.preloadFromBundle(bundleMap);
+            } catch (err) {
+                console.error('[Init] Failed to load shader bundle:', err);
+                alert('Failed to load shaders. Check console for details.');
+                return;
+            }
 
             device.addEventListener('uncapturederror', (event) => {
                 console.error('[WebGPU] Uncaptured error:', event.error);
