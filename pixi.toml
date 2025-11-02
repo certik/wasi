@@ -809,6 +809,7 @@ link \
     /subsystem:console \
     /LIBPATH:"C:/SDL3/lib" \
     SDL3.lib \
+    shell32.lib \
     MouseCircle_standalone.obj \
     base_io.obj \
     buddy.obj \

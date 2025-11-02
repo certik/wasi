@@ -23,7 +23,8 @@ size_t int_to_str(int val, char* buf);
 // precision: number of decimal places (-1 for default of 6)
 size_t double_to_str(double val, char* buf, int precision);
 
-// Simple vsnprintf implementation for base/
+// Simple vsnprintf/snprintf implementations for base/ (only for nostdlib builds)
+#if !defined(WASI_LINUX_SKIP_ENTRY) && !defined(WASI_MACOS_SKIP_ENTRY) && !defined(WASI_WINDOWS_SKIP_ENTRY)
 // Supports: %d, %u, %f, %.Nf, %s
 // Returns number of characters written (not including null terminator)
 int vsnprintf(char *str, size_t size, const char *format, va_list args);
@@ -32,3 +33,7 @@ int vsnprintf(char *str, size_t size, const char *format, va_list args);
 // Supports: %d, %u, %f, %.Nf, %s
 // Returns number of characters written (not including null terminator)
 int snprintf(char *str, size_t size, const char *format, ...);
+#else
+// Use standard library snprintf/vsnprintf when building with SDL
+#include <stdio.h>
+#endif
