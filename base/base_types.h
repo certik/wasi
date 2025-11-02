@@ -2,10 +2,12 @@
 
 // When building with SDL (which uses system headers), use standard headers
 #if defined(WASI_LINUX_SKIP_ENTRY) || defined(WASI_MACOS_SKIP_ENTRY) || defined(WASI_WINDOWS_SKIP_ENTRY)
-// Define __gnuc_va_list for wchar.h (needed on Linux when using conda clang)
+// Define __gnuc_va_list for wchar.h (needed on Linux when using conda clang, not needed for MSVC)
+#if defined(__clang__) || defined(__GNUC__)
 #ifndef __GNUC_VA_LIST
 #define __GNUC_VA_LIST
 typedef __builtin_va_list __gnuc_va_list;
+#endif
 #endif
 #include <stdarg.h>
 #include <stdint.h>
