@@ -345,6 +345,7 @@ test_hotel2gltf_linux = { cmd="./hotel2gltf_linux", depends-on=["build_hotel2glt
 
 build_mousecircle_linux = """
 clang \
+    -isystem $(clang -print-resource-dir)/include \
     -I$CONDA_PREFIX/include \
     -L$CONDA_PREFIX/lib \
     -Wl,-rpath,$CONDA_PREFIX/lib \
