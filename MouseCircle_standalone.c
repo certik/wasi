@@ -1677,7 +1677,17 @@ static int init_game(GameApp *app) {
         return -1;
     }
 
-    app->device = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL, true, NULL);
+    // Select shader format based on platform
+    SDL_GPUShaderFormat shader_format;
+#if defined(_WIN32)
+    shader_format = SDL_GPU_SHADERFORMAT_DXIL;  // D3D12 on Windows
+#elif defined(__APPLE__)
+    shader_format = SDL_GPU_SHADERFORMAT_MSL;   // Metal on macOS
+#else
+    shader_format = SDL_GPU_SHADERFORMAT_SPIRV; // Vulkan on Linux
+#endif
+
+    app->device = SDL_CreateGPUDevice(shader_format, true, NULL);
     if (app->device == NULL) {
         SDL_Log("SDL_CreateGPUDevice failed: %s", SDL_GetError());
         return -1;

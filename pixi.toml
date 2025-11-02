@@ -824,6 +824,9 @@ link \
     wasi_windows.obj \
     SDL3.lib \
     shell32.lib \
+    d3d12.lib \
+    dxgi.lib \
+    dxguid.lib \
     /out:mousecircle_windows.exe
 """
 
