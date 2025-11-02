@@ -353,6 +353,7 @@ clang \
     -I native \
     -I . \
     -lSDL3 \
+    -lm \
     -Wno-macro-redefined \
     -o mousecircle_linux \
     MouseCircle_standalone.c \
@@ -566,6 +567,7 @@ cl \
     stdlib/stdio.c \
     stdlib/stdlib.c \
     stdlib/printf.c \
+    stdlib/string.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
@@ -592,6 +594,7 @@ link \
     stdio.obj \
     stdlib.obj \
     printf.obj \
+    string.obj \
     base_io.obj \
     buddy.obj \
     arena.obj \
