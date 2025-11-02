@@ -2,6 +2,7 @@
 
 // When building with SDL (which uses system headers), use standard headers
 #if defined(WASI_LINUX_SKIP_ENTRY) || defined(WASI_MACOS_SKIP_ENTRY) || defined(WASI_WINDOWS_SKIP_ENTRY)
+#include <stdarg.h>  // Needed for __gnuc_va_list before wchar.h
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>

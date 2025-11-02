@@ -8,6 +8,7 @@
  *   pixi r test_mousecircle_sdl
  */
 
+#include <stdarg.h>  // Must be before SDL to ensure __gnuc_va_list is defined
 #define SDL_MAIN_USE_CALLBACKS 1
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
