@@ -219,8 +219,6 @@ clang \
     native/wasi_wasm.c
 """
 
-test_mousecircle_wasm = { cmd="echo 'WASM build successful: mousecircle.wasm'", depends-on=["build_mousecircle_wasm"] }
-
 [feature.wasm.dependencies]
 clang = ">=20.1.4,<21"
 lld = ">=20.1.4,<21"
@@ -373,7 +371,7 @@ clang \
     native/wasi_linux.c
 """
 
-test_mousecircle_linux = { cmd="echo 'Linux SDL build successful: mousecircle_linux'", depends-on=["build_mousecircle_linux"] }
+test_mousecircle_linux = { cmd="./mousecircle_linux", depends-on=["build_mousecircle_linux"] }
 
 [feature.linux.dependencies]
 clang = ">=20.1.4,<21"
@@ -828,7 +826,7 @@ link \
     /out:mousecircle_windows.exe
 """
 
-test_mousecircle_windows = { cmd="echo 'Windows SDL build successful: mousecircle_windows.exe'", depends-on=["build_mousecircle_windows"] }
+test_mousecircle_windows = { cmd="./mousecircle_windows", depends-on=["build_mousecircle_windows"] }
 
 [feature.windows.dependencies]
 # Note: MSVC is not available through conda-forge, so we rely on system installation
