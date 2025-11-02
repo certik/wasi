@@ -219,6 +219,8 @@ clang \
     native/wasi_wasm.c
 """
 
+test_mousecircle_wasm = { cmd="echo 'WASM build successful: mousecircle.wasm'", depends-on=["build_mousecircle_wasm"] }
+
 [feature.wasm.dependencies]
 clang = ">=20.1.4,<21"
 lld = ">=20.1.4,<21"

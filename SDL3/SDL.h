@@ -66,6 +66,11 @@ typedef enum {
     SDLK_Q = 'q',
     SDLK_LSHIFT = 16,
     SDLK_LCTRL = 17,
+    // Arrow keys (SDL scancode-based keycodes)
+    SDLK_RIGHT = 0x4000004fu,
+    SDLK_LEFT = 0x40000050u,
+    SDLK_DOWN = 0x40000051u,
+    SDLK_UP = 0x40000052u,
 } SDL_Keycode;
 
 // Init flags
