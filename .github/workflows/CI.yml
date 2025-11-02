@@ -33,6 +33,7 @@ jobs:
               pixi run -e windows test_windows a1 b2 c3
               echo test input data | pixi run -e windows arena_windows.exe --test-input
               pixi run -e windows test_wordfreq_windows
+              pixi run -e windows build_mousecircle_windows
           - platform: wasm
             os: ubuntu-latest
             pixi-command: |
