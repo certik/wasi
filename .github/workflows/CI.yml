@@ -18,12 +18,14 @@ jobs:
               pixi run -e linux test_linux a1 b2 c3
               echo "test input data" | pixi run -e linux ./arena_linux --test-input
               pixi run -e linux test_wordfreq_linux
+              pixi run -e linux test_mousecircle_linux
           - platform: macos
             os: macos-latest
             pixi-command: |
               pixi run -e macos test_macos a1 b2 c3
               echo "test input data" | pixi run -e macos ./arena_macos --test-input
               pixi run -e macos test_wordfreq_macos
+              pixi run -e macos test_mousecircle_sdl
           - platform: windows
             os: windows-latest
             pixi-command: |
@@ -31,6 +33,7 @@ jobs:
               pixi run -e windows test_windows a1 b2 c3
               echo test input data | pixi run -e windows arena_windows.exe --test-input
               pixi run -e windows test_wordfreq_windows
+              pixi run -e windows test_mousecircle_windows
           - platform: wasm
             os: ubuntu-latest
             pixi-command: |
@@ -39,6 +42,7 @@ jobs:
               echo "test input data" | wasmtime --dir . arena.wasm --test-input
               echo "test input data" | wasmtime --dir . arena_base.wasm --test-input
               pixi run -e wasm test_wordfreq_wasm
+              pixi run -e wasm test_mousecircle_wasm
 
     runs-on: ${{ matrix.os }}
     name: Test ${{ matrix.platform }}

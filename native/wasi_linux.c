@@ -274,6 +274,7 @@ int wasi_args_get(char** argv, char* argv_buf) {
 //   rsp+8: argv[0]
 //   rsp+16: argv[1]
 //   ...
+#ifndef WASI_LINUX_SKIP_ENTRY
 __attribute__((naked))
 void _start() {
     __asm__ volatile (
@@ -298,3 +299,4 @@ int _start_c(int argc, char** argv) {
     int status = main();
     return status;
 }
+#endif

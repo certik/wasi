@@ -343,8 +343,40 @@ clang \
 
 test_hotel2gltf_linux = { cmd="./hotel2gltf_linux", depends-on=["build_hotel2gltf_linux"] }
 
+build_mousecircle_linux = """
+clang \
+    -I$CONDA_PREFIX/include \
+    -L$CONDA_PREFIX/lib \
+    -Wl,-rpath,$CONDA_PREFIX/lib \
+    -DWASI_LINUX_SKIP_ENTRY \
+    -I base \
+    -I native \
+    -I . \
+    -lSDL3 \
+    -Wno-macro-redefined \
+    -o mousecircle_linux \
+    MouseCircle_standalone.c \
+    base/base_io.c \
+    base/buddy.c \
+    base/arena.c \
+    base/scratch.c \
+    base/format.c \
+    base/io.c \
+    base/base_string.c \
+    base/mem.c \
+    base/numconv.c \
+    base/assert.c \
+    base/exit.c \
+    base/mat4.c \
+    base/base_math.c \
+    native/wasi_linux.c
+"""
+
+test_mousecircle_linux = { cmd="echo 'Linux SDL build successful: mousecircle_linux'", depends-on=["build_mousecircle_linux"] }
+
 [feature.linux.dependencies]
 clang = ">=20.1.4,<21"
+sdl3 = ">=3.2.24,<4"
 
 [feature.macos.tasks]
 build_macos = """
@@ -742,10 +774,63 @@ link \
 
 test_hotel2gltf_windows = { cmd="hotel2gltf_windows.exe", depends-on=["build_hotel2gltf_windows"] }
 
+build_mousecircle_windows = """
+cl \
+    /nologo \
+    /std:c11 \
+    /Zc:preprocessor \
+    /I"%CONDA_PREFIX%/Library/include" \
+    /I"base" \
+    /I"native" \
+    /I"." \
+    /DWASI_WINDOWS_SKIP_ENTRY \
+    /c \
+    MouseCircle_standalone.c \
+    base/base_io.c \
+    base/buddy.c \
+    base/arena.c \
+    base/scratch.c \
+    base/format.c \
+    base/io.c \
+    base/base_string.c \
+    base/mem.c \
+    base/numconv.c \
+    base/assert.c \
+    base/exit.c \
+    base/mat4.c \
+    base/base_math.c \
+    native/wasi_windows.c \
+    && \
+link \
+    /nologo \
+    /subsystem:console \
+    /LIBPATH:"%CONDA_PREFIX%/Library/lib" \
+    SDL3.lib \
+    MouseCircle_standalone.obj \
+    base_io.obj \
+    buddy.obj \
+    arena.obj \
+    scratch.obj \
+    format.obj \
+    io.obj \
+    base_string.obj \
+    mem.obj \
+    numconv.obj \
+    exit.obj \
+    assert.obj \
+    mat4.obj \
+    base_math.obj \
+    wasi_windows.obj \
+    /out:mousecircle_windows.exe
+"""
+
+test_mousecircle_windows = { cmd="echo 'Windows SDL build successful: mousecircle_windows.exe'", depends-on=["build_mousecircle_windows"] }
+
 [feature.windows.dependencies]
 # Note: MSVC is not available through conda-forge, so we rely on system installation
 # Users need to have Visual Studio or Build Tools for Visual Studio installed
 # The cl.exe and link.exe commands should be available in PATH
+sdl3 = ">=3.2.24,<4"
 
 [tasks]
 build_bundler = "cc -o bundler bundler.c"
