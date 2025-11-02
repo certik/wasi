@@ -102,7 +102,11 @@ uint32_t wasi_fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nw
 }
 
 // Initialize the heap by reserving and committing initial memory
+#ifdef WASI_WINDOWS_SKIP_ENTRY
+void ensure_heap_initialized() {
+#else
 static void ensure_heap_initialized() {
+#endif
     if (windows_heap_base == NULL) {
         // Reserve a large virtual address space
         windows_heap_base = (uint8_t*)VirtualAlloc(NULL, RESERVED_SIZE, MEM_RESERVE, PAGE_READWRITE);

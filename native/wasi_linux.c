@@ -75,7 +75,11 @@ void wasi_proc_exit(int status) {
 
 // Initializes the heap using mmap. We reserve large chunk of virtual
 // address space but don't commit any physical memory to it initially.
+#ifdef WASI_LINUX_SKIP_ENTRY
+void ensure_heap_initialized() {
+#else
 static void ensure_heap_initialized() {
+#endif
     if (linux_heap_base == NULL) {
         long mmap_ret = syscall(
             SYS_MMAP,
