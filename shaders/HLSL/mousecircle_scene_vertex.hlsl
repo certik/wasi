@@ -7,10 +7,10 @@ struct SceneUniforms {
 };
 
 struct VertexInput {
-    float3 position : TEXCOORD0;
-    float surfaceType : TEXCOORD1;
-    float2 uv : TEXCOORD2;
-    float3 normal : TEXCOORD3;
+    float3 position : POSITION;
+    float surfaceType : TEXCOORD0;
+    float2 uv : TEXCOORD1;
+    float3 normal : NORMAL;
 };
 
 struct VertexOutput {
