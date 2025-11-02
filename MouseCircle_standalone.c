@@ -8,7 +8,12 @@
  *   pixi r test_mousecircle_sdl
  */
 
-#include <stdarg.h>  // Must be before SDL to ensure __gnuc_va_list is defined
+// Define __gnuc_va_list before SDL headers (needed for wchar.h on Linux)
+#ifndef __GNUC_VA_LIST
+#define __GNUC_VA_LIST
+typedef __builtin_va_list __gnuc_va_list;
+#endif
+
 #define SDL_MAIN_USE_CALLBACKS 1
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
