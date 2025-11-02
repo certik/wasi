@@ -30,6 +30,10 @@ jobs:
             os: windows-latest
             pixi-command: |
               call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+              git clone --depth 1 --branch release-3.2.24 https://github.com/libsdl-org/SDL.git C:\SDL3-source
+              cmake -G Ninja -S C:\SDL3-source -B C:\SDL3-build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=C:\SDL3
+              cmake --build C:\SDL3-build
+              cmake --install C:\SDL3-build
               pixi run -e windows test_windows a1 b2 c3
               echo test input data | pixi run -e windows arena_windows.exe --test-input
               pixi run -e windows test_wordfreq_windows

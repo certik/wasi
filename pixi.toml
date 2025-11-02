@@ -779,7 +779,7 @@ cl \
     /nologo \
     /std:c11 \
     /Zc:preprocessor \
-    /I"%CONDA_PREFIX%/Library/include" \
+    /I"C:/SDL3/include" \
     /I"base" \
     /I"native" \
     /I"." \
@@ -804,7 +804,7 @@ cl \
 link \
     /nologo \
     /subsystem:console \
-    /LIBPATH:"%CONDA_PREFIX%/Library/lib" \
+    /LIBPATH:"C:/SDL3/lib" \
     SDL3.lib \
     MouseCircle_standalone.obj \
     base_io.obj \
@@ -830,7 +830,9 @@ test_mousecircle_windows = { cmd="echo 'Windows SDL build successful: mousecircl
 # Note: MSVC is not available through conda-forge, so we rely on system installation
 # Users need to have Visual Studio or Build Tools for Visual Studio installed
 # The cl.exe and link.exe commands should be available in PATH
-sdl3 = ">=3.2.24,<4"
+# SDL3 is built from source in CI (see .github/workflows/CI.yml)
+cmake = ">=3.20"
+ninja = ">=1.10"
 
 [tasks]
 build_bundler = "cc -o bundler bundler.c"
