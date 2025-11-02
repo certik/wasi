@@ -780,11 +780,12 @@ cl \
     /nologo \
     /std:c11 \
     /Zc:preprocessor \
-    /I"C:/SDL3/include" \
+    /I"$CONDA_PREFIX/include" \
     /I"base" \
     /I"native" \
     /I"." \
     /DWASI_WINDOWS_SKIP_ENTRY \
+    /MD \
     /c \
     MouseCircle_standalone.c \
     base/base_io.c \
@@ -805,9 +806,7 @@ cl \
 link \
     /nologo \
     /subsystem:console \
-    /LIBPATH:"C:/SDL3/lib" \
-    SDL3.lib \
-    shell32.lib \
+    /LIBPATH:"$CONDA_PREFIX/lib" \
     MouseCircle_standalone.obj \
     base_io.obj \
     buddy.obj \
@@ -823,6 +822,8 @@ link \
     mat4.obj \
     base_math.obj \
     wasi_windows.obj \
+    SDL3.lib \
+    shell32.lib \
     /out:mousecircle_windows.exe
 """
 
