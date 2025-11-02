@@ -24,9 +24,8 @@ int memcmp(const void *s1, const void *s2, size_t n) {
     return base_memcmp(s1, s2, n);
 }
 
-void *memset(void *s, int c, size_t n) {
-    return base_memset(s, c, n);
-}
+// Note: memset() is defined in base/mem.c, not here, because the compiler
+// can implicitly insert calls to it even with -fno-builtin.
 
 void *memchr(const void *s, int c, size_t n) {
     return base_memchr(s, c, n);
