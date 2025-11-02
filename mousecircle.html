@@ -126,6 +126,11 @@ const stdoutDecoder = new TextDecoder();
                         console.error('app_iterate() failed');
                     }
                     app_quit();
+
+                    // Clean up on quit
+                    document.exitPointerLock();
+                    canvas.style.display = 'none';
+                    console.log('Game ended. Canvas hidden and pointer released.');
                 }
             }
 
