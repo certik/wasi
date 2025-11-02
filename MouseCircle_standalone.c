@@ -1720,9 +1720,9 @@ static int init_game(GameApp *app) {
         app->shader_format = SDL_GPU_SHADERFORMAT_SPIRV;
         shader_ext = ".spv";
     } else if (base_strcmp(driver, "direct3d12") == 0) {
-        shader_dir = "shaders/HLSL/";
+        shader_dir = "shaders/DXIL/";
         app->shader_format = SDL_GPU_SHADERFORMAT_DXIL;
-        shader_ext = ".hlsl";
+        shader_ext = ".dxil";
 #if defined(__wasi__)
     } else if (base_strcmp(driver, "wgsl") == 0) {
         shader_dir = "shaders/WGSL/";
