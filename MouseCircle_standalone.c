@@ -842,24 +842,21 @@ static void update_camera(GameState *state) {
 
     bool arrow_used = false;
     float arrow_forward = 0.0f;
-    const uint8_t KEY_ARROW_LEFT = 37;
-    const uint8_t KEY_ARROW_UP = 38;
-    const uint8_t KEY_ARROW_RIGHT = 39;
-    const uint8_t KEY_ARROW_DOWN = 40;
 
-    if (state->keys[KEY_ARROW_LEFT]) {
+    // Use SDL key codes directly (lower 8 bits match the array index)
+    if (state->keys[SDLK_LEFT & 0xFF]) {
         state->target_yaw -= state->turn_speed;
         arrow_used = true;
     }
-    if (state->keys[KEY_ARROW_RIGHT]) {
+    if (state->keys[SDLK_RIGHT & 0xFF]) {
         state->target_yaw += state->turn_speed;
         arrow_used = true;
     }
-    if (state->keys[KEY_ARROW_UP]) {
+    if (state->keys[SDLK_UP & 0xFF]) {
         arrow_forward += state->move_speed;
         arrow_used = true;
     }
-    if (state->keys[KEY_ARROW_DOWN]) {
+    if (state->keys[SDLK_DOWN & 0xFF]) {
         arrow_forward -= state->move_speed;
         arrow_used = true;
     }
@@ -2000,31 +1997,22 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
     if (event->type == SDL_EVENT_KEY_DOWN) {
         uint32_t key = event->key.key;
 
-        // Map SDL arrow keys to DOM key codes (37-40) for compatibility with WASM version
-        if (key == SDLK_LEFT) key = 37;
-        else if (key == SDLK_UP) key = 38;
-        else if (key == SDLK_RIGHT) key = 39;
-        else if (key == SDLK_DOWN) key = 40;
+        // Store key state using lower 8 bits as index (works for both ASCII and SDL keycodes)
+        gm_set_key_state(state, (uint8_t)(key & 0xFF), 1);
 
+        // Handle special key presses (only for printable ASCII keys)
         if (key < 256) {
-            gm_set_key_state(state, (uint8_t)key, 1);
             gm_handle_key_press(state, (uint8_t)key);
         }
+
         if (key == SDLK_ESCAPE || key == 'q' || key == 'Q') {
             app->quit_requested = true;
         }
     } else if (event->type == SDL_EVENT_KEY_UP) {
         uint32_t key = event->key.key;
 
-        // Map SDL arrow keys to DOM key codes (37-40) for compatibility with WASM version
-        if (key == SDLK_LEFT) key = 37;
-        else if (key == SDLK_UP) key = 38;
-        else if (key == SDLK_RIGHT) key = 39;
-        else if (key == SDLK_DOWN) key = 40;
-
-        if (key < 256) {
-            gm_set_key_state(state, (uint8_t)key, 0);
-        }
+        // Store key state using lower 8 bits as index
+        gm_set_key_state(state, (uint8_t)(key & 0xFF), 0);
     } else if (event->type == SDL_EVENT_MOUSE_MOTION) {
         gm_add_mouse_delta(state, event->motion.xrel, event->motion.yrel);
     }

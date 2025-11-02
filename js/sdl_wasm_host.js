@@ -120,10 +120,11 @@ export function createWasmSDLHost(device, canvas) {
                         'ShiftLeft': 16,
                         'ControlLeft': 17,
                         'Escape': 0x1B,
-                        'ArrowUp': 38,
-                        'ArrowDown': 40,
-                        'ArrowLeft': 37,
-                        'ArrowRight': 39,
+                        // SDL arrow key codes (not DOM keyCodes)
+                        'ArrowLeft': 0x40000050,  // SDLK_LEFT
+                        'ArrowUp': 0x40000052,    // SDLK_UP
+                        'ArrowRight': 0x4000004f, // SDLK_RIGHT
+                        'ArrowDown': 0x40000051,  // SDLK_DOWN
                     };
                     return keyMap[key] || 0;
                 }
