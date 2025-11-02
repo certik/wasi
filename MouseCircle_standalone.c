@@ -1999,6 +1999,13 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
 
     if (event->type == SDL_EVENT_KEY_DOWN) {
         uint32_t key = event->key.key;
+
+        // Map SDL arrow keys to DOM key codes (37-40) for compatibility with WASM version
+        if (key == SDLK_LEFT) key = 37;
+        else if (key == SDLK_UP) key = 38;
+        else if (key == SDLK_RIGHT) key = 39;
+        else if (key == SDLK_DOWN) key = 40;
+
         if (key < 256) {
             gm_set_key_state(state, (uint8_t)key, 1);
             gm_handle_key_press(state, (uint8_t)key);
@@ -2008,6 +2015,13 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
         }
     } else if (event->type == SDL_EVENT_KEY_UP) {
         uint32_t key = event->key.key;
+
+        // Map SDL arrow keys to DOM key codes (37-40) for compatibility with WASM version
+        if (key == SDLK_LEFT) key = 37;
+        else if (key == SDLK_UP) key = 38;
+        else if (key == SDLK_RIGHT) key = 39;
+        else if (key == SDLK_DOWN) key = 40;
+
         if (key < 256) {
             gm_set_key_state(state, (uint8_t)key, 0);
         }
