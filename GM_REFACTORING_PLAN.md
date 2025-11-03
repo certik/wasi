@@ -157,3 +157,106 @@ The real opportunity is in the game-specific initialization code (~554 lines), w
 4. Improve code organization and readability
 
 Rather than focusing on line count reduction, the goal should be **code quality and maintainability**.
+
+## D3D12 Pipeline Creation Fix (November 2, 2025)
+
+### Problem
+When implementing MouseCircle on Windows with D3D12, the application built successfully but failed at runtime when creating the scene graphics pipeline with error:
+```
+ERROR: Could not create graphics pipeline state! Error Code: The parameter is incorrect. (0x80070057)
+```
+
+The overlay pipeline (2D HUD) created successfully, but the scene pipeline (3D world with depth testing and uniform buffers) consistently failed.
+
+### Investigation Process
+Multiple fixes were attempted without success:
+1. ❌ Correcting shader entry point names (`main_vertex` → `main`)
+2. ❌ Adding fragment shader uniform buffer count
+3. ❌ Changing HLSL semantics (POSITION/TEXCOORD/NORMAL → LOC0-3)
+4. ❌ Disabling depth clip and depth testing
+5. ❌ Adjusting fragment shader uniform buffer configuration
+6. ⚠️ Attempted shader regeneration from WGSL (discovered Naga HLSL backend bug)
+
+### Root Cause
+The issue was **missing register space specification** in D3D12 HLSL shaders. SDL3's D3D12 backend uses explicit descriptor spaces to organize shader resources:
+
+**Incorrect (broken):**
+```hlsl
+ConstantBuffer<SceneUniforms> uniforms : register(b0);
+```
+
+**Correct (working):**
+```hlsl
+cbuffer SceneUniforms : register(b0, space1)  // Vertex shader
+cbuffer SceneUniforms : register(b0, space3)  // Fragment shader
+```
+
+### The Fix
+Four changes were required to match SDL3 GPU examples pattern:
+
+1. **Explicit Backend Name** (best practice):
+```c
+// Before:
+SDL_CreateGPUDevice(shader_format, true, NULL);
+
+// After:
+SDL_CreateGPUDevice(shader_format, true, "direct3d12");
+```
+
+2. **Register Space Specification** (critical fix):
+- Vertex shader uniform buffers: `register(b0, space1)`
+- Fragment shader uniform buffers: `register(b0, space3)`
+- D3D12 requires these to properly organize descriptor tables
+
+3. **HLSL Semantic Names** (compatibility):
+```hlsl
+// Changed from LOC0-3 to standard HLSL semantics:
+float3 position : TEXCOORD0;
+float surfaceType : TEXCOORD1;
+float2 uv : TEXCOORD2;
+float3 normal : TEXCOORD3;
+```
+
+4. **cbuffer Syntax** (D3D12 standard):
+```hlsl
+// From:
+ConstantBuffer<SceneUniforms> uniforms : register(b0);
+// Access: uniforms.mvp
+
+// To:
+cbuffer SceneUniforms : register(b0, space1) {
+    row_major float4x4 mvp;
+    float4 cameraPos;
+    float4 fogColor;
+};
+// Access: mvp directly
+```
+
+### Key Insight
+SDL3's D3D12 backend uses **explicit descriptor space allocation**:
+- **space1** = Vertex shader resources (uniform buffers, textures, samplers)
+- **space3** = Fragment shader resources (uniform buffers, textures, samplers)
+
+This organization is required for D3D12's descriptor table system. Without the correct `space` parameter, pipeline state validation fails with `E_INVALIDARG (0x80070057)`.
+
+### Lessons Learned
+1. Always check working examples in the same framework (SDL_gpu_examples in this case)
+2. D3D12 has stricter requirements than Metal/Vulkan for descriptor binding
+3. Generic error codes can mask specific D3D12 descriptor space issues
+4. Auto-generated HLSL from WGSL may not match framework conventions
+5. When porting shaders between backends, check framework-specific requirements
+
+### Files Modified
+- `MouseCircle_standalone.c`: Added explicit backend name
+- `shaders/HLSL/mousecircle_scene_vertex.hlsl`: Fixed cbuffer with space1, TEXCOORD semantics
+- `shaders/HLSL/mousecircle_scene_fragment.hlsl`: Fixed cbuffer with space3, TEXCOORD semantics
+- `shaders/HLSL/mousecircle_overlay_vertex.hlsl`: Fixed TEXCOORD semantics
+- `shaders/HLSL/mousecircle_overlay_fragment.hlsl`: Fixed TEXCOORD semantics
+- All corresponding `shaders/DXIL/*.dxil` files recompiled
+
+### Result
+✅ D3D12 pipeline creation now succeeds
+✅ Application runs on Windows with Direct3D 12
+✅ Both scene and overlay pipelines create successfully
+
+```
