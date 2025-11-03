@@ -786,7 +786,7 @@ cl \
     /nologo \
     /std:c11 \
     /Zc:preprocessor \
-    /I"$CONDA_PREFIX/include" \
+    /I"$CONDA_PREFIX/Library/include" \
     /I"base" \
     /I"native" \
     /I"." \
@@ -812,7 +812,7 @@ cl \
 link \
     /nologo \
     /subsystem:console \
-    /LIBPATH:"$CONDA_PREFIX/lib" \
+    /LIBPATH:"$CONDA_PREFIX/Library/lib" \
     MouseCircle_standalone.obj \
     base_io.obj \
     buddy.obj \
