@@ -225,9 +225,12 @@ clang \
 
 test_mousecircle_wasm = { cmd="echo 'WASM build successful: mousecircle.wasm'", depends-on=["build_mousecircle_wasm"] }
 
+serve2 = { cmd="python server.py", depends-on=["test_mousecircle_wasm", "bundle_shaders"] }
+
 [feature.wasm.dependencies]
 clang = ">=20.1.4,<21"
 lld = ">=20.1.4,<21"
+python = ">=3.10"
 
 [feature.linux.tasks]
 build_linux = """
@@ -848,10 +851,9 @@ ninja = ">=1.10"
 sdl3 = ">=3.2.24,<4"
 
 [tasks]
-build_bundler = "cc -o bundler bundler.c"
+build_bundler = "clang -o bundler bundler.c"
 bundle_shaders = { cmd="./bundler shaders_manifest.txt shaders.bundle", depends-on=["build_bundler"] }
 serve = { cmd="python3 server.py", depends-on=["test_gm_wasm"] }
-serve2 = { cmd="python3 server.py", depends-on=["test_mousecircle_wasm", "bundle_shaders"] }
 all = { depends-on=["test_wasm", "test_linux"] }
 all_with_macos = { depends-on=["test_wasm", "test_linux", "test_macos"] }
 all_with_windows = { depends-on=["test_wasm", "test_linux", "test_windows"] }
