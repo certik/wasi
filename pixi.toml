@@ -842,9 +842,10 @@ test_mousecircle_windows = { cmd="./mousecircle_windows", depends-on=["build_mou
 # Note: MSVC is not available through conda-forge, so we rely on system installation
 # Users need to have Visual Studio or Build Tools for Visual Studio installed
 # The cl.exe and link.exe commands should be available in PATH
-# SDL3 is built from source in CI (see .github/workflows/CI.yml)
+# SDL3 is included from prefix.dev as priority
 cmake = ">=3.20"
 ninja = ">=1.10"
+sdl3 = ">=3.2.24,<4"
 
 [tasks]
 build_bundler = "cc -o bundler bundler.c"
