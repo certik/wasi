@@ -1,6 +1,9 @@
 [workspace]
 authors = ["Ondřej Čertík <ondrej@certik.us>"]
-channels = ["conda-forge"]
+channels = [
+    "https://prefix.dev/sdl",  # Prioritize our SDL3 packages
+    "conda-forge"              # Fallback
+]
 name = "wasi"
 platforms = ["osx-arm64", "linux-64", "win-64"]
 version = "0.1.0"
