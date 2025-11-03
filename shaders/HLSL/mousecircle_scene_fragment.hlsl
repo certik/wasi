@@ -1,6 +1,7 @@
 // Scene fragment shader for mousecircle (D3D12/DXIL)
 
-struct SceneUniforms {
+cbuffer SceneUniforms : register(b0, space3)
+{
     row_major float4x4 mvp;
     float4 cameraPos;
     float4 fogColor;
@@ -13,8 +14,6 @@ struct VertexOutput {
     float3 normal : TEXCOORD2;
     float3 worldPos : TEXCOORD3;
 };
-
-ConstantBuffer<SceneUniforms> uniforms : register(b0);
 
 float checker(float2 uv) {
     float2 scaled = floor(uv * 4.0);
@@ -38,8 +37,8 @@ float4 main(VertexOutput input) : SV_Target0
     float3 n = normalize(input.normal);
     float3 lightDir = normalize(float3(0.35, 1.0, 0.45));
     float diff = max(dot(n, lightDir), 0.15);
-    float fogFactor = exp(-distance(input.worldPos, uniforms.cameraPos.xyz) * 0.08);
+    float fogFactor = exp(-distance(input.worldPos, cameraPos.xyz) * 0.08);
     float3 color = baseColor * checker(input.uv) * diff;
-    color = lerp(uniforms.fogColor.xyz, color, fogFactor);
+    color = lerp(fogColor.xyz, color, fogFactor);
     return float4(color, 1.0);
 }
