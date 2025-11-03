@@ -1353,26 +1353,42 @@ static bool create_scene_pipeline(GameApp *app, SDL_GPUShader *vertex_shader, SD
         .num_vertex_attributes = SDL_arraysize(attributes),
     };
 
-    SDL_GPUDepthStencilState depth_state = {
-        .enable_depth_test = true,
-        .enable_depth_write = true,
-        .compare_op = SDL_GPU_COMPAREOP_LESS,
-    };
+    SDL_GPUDepthStencilState depth_state = {0};
+    depth_state.enable_depth_test = true;
+    depth_state.enable_depth_write = true;
+    depth_state.compare_op = SDL_GPU_COMPAREOP_LESS;
+
+    SDL_GPURasterizerState rasterizer_state = {0};
+    rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+    rasterizer_state.cull_mode = SDL_GPU_CULLMODE_BACK;
+    rasterizer_state.front_face = SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE;
+    rasterizer_state.enable_depth_clip = true;
+
+    SDL_GPUMultisampleState multisample_state = {0};
+    multisample_state.sample_count = SDL_GPU_SAMPLECOUNT_1;
+
+    SDL_GPUColorTargetBlendState blend_state = {0};
+    blend_state.enable_blend = false;
+    
+    SDL_GPUColorTargetDescription color_target = {0};
+    color_target.format = SDL_GetGPUSwapchainTextureFormat(app->device, app->window);
+    color_target.blend_state = blend_state;
 
     SDL_GPUGraphicsPipelineCreateInfo info = {
         .vertex_shader = vertex_shader,
         .fragment_shader = fragment_shader,
         .vertex_input_state = vertex_state,
+        .primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
+        .rasterizer_state = rasterizer_state,
+        .multisample_state = multisample_state,
         .depth_stencil_state = depth_state,
         .target_info = {
             .num_color_targets = 1,
-            .color_target_descriptions = (SDL_GPUColorTargetDescription[]){
-                {.format = SDL_GetGPUSwapchainTextureFormat(app->device, app->window)}
-            },
+            .color_target_descriptions = &color_target,
             .depth_stencil_format = SDL_GPU_TEXTUREFORMAT_D16_UNORM,
             .has_depth_stencil_target = true,
         },
-        .primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
+        .props = 0,
     };
 
     app->scene_pipeline = SDL_CreateGPUGraphicsPipeline(app->device, &info);
@@ -1398,26 +1414,48 @@ static bool create_overlay_pipeline(GameApp *app, SDL_GPUShader *vertex_shader, 
         .num_vertex_attributes = SDL_arraysize(attributes),
     };
 
-    SDL_GPUDepthStencilState depth_state = {
-        .enable_depth_test = false,
-        .enable_depth_write = false,
-        .compare_op = SDL_GPU_COMPAREOP_LESS,
-    };
+    SDL_GPUDepthStencilState depth_state = {0};
+    depth_state.enable_depth_test = false;
+    depth_state.enable_depth_write = false;
+    depth_state.compare_op = SDL_GPU_COMPAREOP_LESS;
+
+    SDL_GPURasterizerState rasterizer_state = {0};
+    rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+    rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
+    rasterizer_state.front_face = SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE;
+    rasterizer_state.enable_depth_clip = false;
+
+    SDL_GPUMultisampleState multisample_state = {0};
+    multisample_state.sample_count = SDL_GPU_SAMPLECOUNT_1;
+
+    SDL_GPUColorTargetBlendState blend_state = {0};
+    blend_state.enable_blend = true;
+    blend_state.src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
+    blend_state.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    blend_state.color_blend_op = SDL_GPU_BLENDOP_ADD;
+    blend_state.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+    blend_state.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ZERO;
+    blend_state.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
+    
+    SDL_GPUColorTargetDescription color_target = {0};
+    color_target.format = SDL_GetGPUSwapchainTextureFormat(app->device, app->window);
+    color_target.blend_state = blend_state;
 
     SDL_GPUGraphicsPipelineCreateInfo info = {
         .vertex_shader = vertex_shader,
         .fragment_shader = fragment_shader,
         .vertex_input_state = vertex_state,
+        .primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
+        .rasterizer_state = rasterizer_state,
+        .multisample_state = multisample_state,
         .depth_stencil_state = depth_state,
         .target_info = {
             .num_color_targets = 1,
-            .color_target_descriptions = (SDL_GPUColorTargetDescription[]){
-                {.format = SDL_GetGPUSwapchainTextureFormat(app->device, app->window)}
-            },
+            .color_target_descriptions = &color_target,
             .depth_stencil_format = SDL_GPU_TEXTUREFORMAT_D16_UNORM,
             .has_depth_stencil_target = true,
         },
-        .primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
+        .props = 0,
     };
 
     app->overlay_pipeline = SDL_CreateGPUGraphicsPipeline(app->device, &info);
@@ -1450,7 +1488,7 @@ static int complete_gpu_setup(GameApp *app) {
     SDL_GPUShaderCreateInfo shader_info = {
         .code = (const Uint8 *)scene_vs_code.str,
         .code_size = shader_code_size(scene_vs_code),
-        .entrypoint = "main_vertex",
+        .entrypoint = "main",
         .format = app->shader_format,
         .stage = SDL_GPU_SHADERSTAGE_VERTEX,
         .num_samplers = 0,
@@ -1468,8 +1506,9 @@ static int complete_gpu_setup(GameApp *app) {
     string scene_fs_code = load_shader_source(&g_scene_fragment_shader, app->scene_fragment_path);
     shader_info.code = (const Uint8 *)scene_fs_code.str;
     shader_info.code_size = shader_code_size(scene_fs_code);
-    shader_info.entrypoint = "main_fragment";
+    shader_info.entrypoint = "main";
     shader_info.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
+    shader_info.num_uniform_buffers = 1;
     SDL_GPUShader *scene_fs = SDL_CreateGPUShader(app->device, &shader_info);
     if (!scene_fs) {
         SDL_Log("Failed to create scene fragment shader: %s", SDL_GetError());
@@ -1480,7 +1519,7 @@ static int complete_gpu_setup(GameApp *app) {
     string overlay_vs_code = load_shader_source(&g_overlay_vertex_shader, app->overlay_vertex_path);
     shader_info.code = (const Uint8 *)overlay_vs_code.str;
     shader_info.code_size = shader_code_size(overlay_vs_code);
-    shader_info.entrypoint = "overlay_vertex";
+    shader_info.entrypoint = "main";
     shader_info.stage = SDL_GPU_SHADERSTAGE_VERTEX;
     shader_info.num_uniform_buffers = 0;
     SDL_GPUShader *overlay_vs = SDL_CreateGPUShader(app->device, &shader_info);
@@ -1494,7 +1533,7 @@ static int complete_gpu_setup(GameApp *app) {
     string overlay_fs_code = load_shader_source(&g_overlay_fragment_shader, app->overlay_fragment_path);
     shader_info.code = (const Uint8 *)overlay_fs_code.str;
     shader_info.code_size = shader_code_size(overlay_fs_code);
-    shader_info.entrypoint = "overlay_fragment";
+    shader_info.entrypoint = "main";
     shader_info.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
     shader_info.num_uniform_buffers = 0;
     SDL_GPUShader *overlay_fs = SDL_CreateGPUShader(app->device, &shader_info);

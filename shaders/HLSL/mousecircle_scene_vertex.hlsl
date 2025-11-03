@@ -1,4 +1,4 @@
-// Scene vertex shader for mousecircle (D3D12/DXIL)
+// Manually fixed scene vertex shader for mousecircle (D3D12/DXIL)
 
 struct SceneUniforms {
     row_major float4x4 mvp;
@@ -7,18 +7,18 @@ struct SceneUniforms {
 };
 
 struct VertexInput {
-    float3 position : POSITION;
-    float surfaceType : TEXCOORD0;
-    float2 uv : TEXCOORD1;
-    float3 normal : NORMAL;
+    float3 position : LOC0;
+    float surfaceType : LOC1;
+    float2 uv : LOC2;
+    float3 normal : LOC3;
 };
 
 struct VertexOutput {
+    float surfaceType : LOC0;
+    float2 uv : LOC1;
+    float3 normal : LOC2;
+    float3 worldPos : LOC3;
     float4 position : SV_Position;
-    float surfaceType : TEXCOORD0;
-    float2 uv : TEXCOORD1;
-    float3 normal : TEXCOORD2;
-    float3 worldPos : TEXCOORD3;
 };
 
 ConstantBuffer<SceneUniforms> uniforms : register(b0);
@@ -34,3 +34,4 @@ VertexOutput main(VertexInput input)
     output.worldPos = input.position;
     return output;
 }
+
