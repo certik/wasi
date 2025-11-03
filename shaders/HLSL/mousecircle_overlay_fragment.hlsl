@@ -3,17 +3,11 @@
 // DO NOT EDIT - Modify the source WGSL file instead
 
 struct VertexOutput {
-    float4 position : SV_Position;
-    float4 color : LOC0;
-};
-
-struct FragmentInput_main {
-    float4 color : LOC0;
+    float4 color : TEXCOORD0;
     float4 position : SV_Position;
 };
 
-float4 main(FragmentInput_main fragmentinput_main) : SV_Target0
+float4 main(VertexOutput input) : SV_Target0
 {
-    VertexOutput input = { fragmentinput_main.position, fragmentinput_main.color };
     return input.color;
 }

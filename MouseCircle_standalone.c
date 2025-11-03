@@ -1713,17 +1713,21 @@ static int init_game(GameApp *app) {
         return -1;
     }
 
-    // Select shader format based on platform
+    // Select shader format and backend based on platform (following SDL_gpu_examples pattern)
     SDL_GPUShaderFormat shader_format;
+    const char* backend_name;
 #if defined(_WIN32)
     shader_format = SDL_GPU_SHADERFORMAT_DXIL;  // D3D12 on Windows
+    backend_name = "direct3d12";
 #elif defined(__APPLE__)
     shader_format = SDL_GPU_SHADERFORMAT_MSL;   // Metal on macOS
+    backend_name = "metal";
 #else
     shader_format = SDL_GPU_SHADERFORMAT_SPIRV; // Vulkan on Linux
+    backend_name = "vulkan";
 #endif
 
-    app->device = SDL_CreateGPUDevice(shader_format, true, NULL);
+    app->device = SDL_CreateGPUDevice(shader_format, true, backend_name);
     if (app->device == NULL) {
         SDL_Log("SDL_CreateGPUDevice failed: %s", SDL_GetError());
         return -1;
