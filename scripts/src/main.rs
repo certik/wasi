@@ -187,10 +187,51 @@ fn generate_hlsl(
     output_path: &Path,
     header_comment: &str,
 ) -> Result<(), String> {
-    // Configure HLSL options
+    // Build binding map for D3D12 descriptor spaces
+    // SDL3 uses: space1 for vertex shader resources, space3 for fragment shader resources
+    let mut binding_map = BTreeMap::new();
+    
+    for (ep_index, entry_point) in module.entry_points.iter().enumerate() {
+        let ep_info = module_info.get_entry_point(ep_index);
+        
+        // Determine space based on shader stage
+        // SDL3 uses: space1 for vertex, space3 for fragment
+        let space = match entry_point.stage {
+            naga::ShaderStage::Vertex => 1,
+            naga::ShaderStage::Fragment => 3,
+            naga::ShaderStage::Compute => 2,
+            naga::ShaderStage::Task => 4,
+            naga::ShaderStage::Mesh => 5,
+        };
+        
+        // Map all resources used by this entry point to the appropriate space
+        for (handle, global_var) in module.global_variables.iter() {
+            if !ep_info[handle].is_empty() {
+                if let Some(ref binding) = global_var.binding {
+                    let resource_binding = ResourceBinding {
+                        group: binding.group,
+                        binding: binding.binding,
+                    };
+                    
+                    // Map to D3D12 register and space
+                    let bind_target = hlsl::BindTarget {
+                        space,
+                        register: binding.binding,
+                        binding_array_size: None,
+                        dynamic_storage_buffer_offsets_index: None,
+                        restrict_indexing: true,
+                    };
+                    
+                    binding_map.insert(resource_binding, bind_target);
+                }
+            }
+        }
+    }
+
+    // Configure HLSL options for D3D12 (Shader Model 6.0)
     let options = hlsl::Options {
-        shader_model: hlsl::ShaderModel::V5_0,
-        binding_map: Default::default(),
+        shader_model: hlsl::ShaderModel::V6_0,
+        binding_map,
         fake_missing_bindings: false,
         special_constants_binding: None,
         push_constants_target: None,
@@ -213,14 +254,133 @@ fn generate_hlsl(
         .write(module, module_info, None)
         .map_err(|e| format!("HLSL generation error: {:?}", e))?;
 
+    // Post-process HLSL for SDL3 D3D12 compatibility
+    let hlsl_fixed = fix_hlsl_for_sdl3(&hlsl_source);
+
     // Add header comment (each line prefixed with //)
     let header_lines: Vec<_> = header_comment.lines().map(|line| format!("// {}", line)).collect();
-    let output = format!("{}\n\n{}", header_lines.join("\n"), hlsl_source);
+    let output = format!("{}\n\n{}", header_lines.join("\n"), hlsl_fixed);
 
     fs::write(output_path, output)
         .map_err(|e| format!("Failed to write {}: {}", output_path.display(), e))?;
 
     Ok(())
+}
+
+fn fix_hlsl_for_sdl3(hlsl_source: &str) -> String {
+    let mut result = hlsl_source.to_string();
+    
+    // 1. Replace LOC0-9 semantics with TEXCOORD0-9 (SDL3 expects TEXCOORD)
+    for i in 0..10 {
+        result = result.replace(&format!(" : LOC{}", i), &format!(" : TEXCOORD{}", i));
+    }
+    
+    // 2. Fix cbuffer syntax from Naga's nested form to flattened form
+    // Pattern: cbuffer uniforms : register(...) { StructName uniforms; }
+    // Target: cbuffer StructName : register(...) { struct fields }
+    result = fix_cbuffer_syntax(&result);
+    
+    // 3. Remove "uniforms." prefix since cbuffer fields are now directly accessible
+    result = result.replace("uniforms.mvp", "mvp");
+    result = result.replace("uniforms.cameraPos", "cameraPos");
+    result = result.replace("uniforms.fogColor", "fogColor");
+    
+    // 4. Remove unnecessary wrapper structs and simplify main function
+    // Naga generates VertexOutput_main wrapper structs that aren't needed for SDL3
+    result = simplify_stage_io(&result);
+    
+    result
+}
+
+fn fix_cbuffer_syntax(hlsl: &str) -> String {
+    let mut result = hlsl.to_string();
+    
+    // Find all struct definitions first to extract their fields
+    let mut struct_fields = std::collections::HashMap::new();
+    
+    for line in hlsl.lines() {
+        let trimmed = line.trim();
+        // Look for struct definitions
+        if trimmed.starts_with("struct ") && trimmed.ends_with(" {") {
+            let struct_name = trimmed
+                .strip_prefix("struct ")
+                .and_then(|s| s.strip_suffix(" {"))
+                .unwrap_or("");
+            
+            // Collect fields for this struct
+            let mut in_struct = false;
+            let mut fields = Vec::new();
+            let mut brace_count = 0;
+            
+            for scan_line in hlsl.lines() {
+                let scan_trimmed = scan_line.trim();
+                if scan_trimmed == format!("struct {} {{", struct_name) {
+                    in_struct = true;
+                    brace_count = 1;
+                    continue;
+                }
+                if in_struct {
+                    if scan_trimmed.contains('{') {
+                        brace_count += scan_trimmed.matches('{').count();
+                    }
+                    if scan_trimmed.contains('}') {
+                        brace_count -= scan_trimmed.matches('}').count();
+                        if brace_count == 0 {
+                            break;
+                        }
+                    }
+                    if brace_count == 1 && !scan_trimmed.is_empty() && scan_trimmed != "}" {
+                        fields.push(scan_line.to_string());
+                    }
+                }
+            }
+            
+            if !fields.is_empty() {
+                struct_fields.insert(struct_name.to_string(), fields);
+            }
+        }
+    }
+    
+    // Now fix cbuffer declarations
+    // Pattern: "cbuffer uniforms : register(b0, spaceN) { StructName uniforms; }"
+    for (struct_name, fields) in &struct_fields {
+        let old_pattern = format!("cbuffer uniforms : register(b0, space");
+        if let Some(start_pos) = result.find(&old_pattern) {
+            // Find the end of this cbuffer declaration
+            if let Some(end_pos) = result[start_pos..].find('}') {
+                let cbuffer_section = &result[start_pos..start_pos + end_pos + 1];
+                
+                // Extract the register clause
+                if let Some(reg_start) = cbuffer_section.find("register(") {
+                    if let Some(reg_end) = cbuffer_section[reg_start..].find(')') {
+                        let register_clause = &cbuffer_section[reg_start..reg_start + reg_end + 1];
+                        
+                        // Check if this cbuffer uses our struct
+                        if cbuffer_section.contains(struct_name) {
+                            // Build the replacement
+                            let mut replacement = format!("cbuffer {} : {} {{\n", struct_name, register_clause);
+                            for field in fields {
+                                replacement.push_str(field);
+                                replacement.push('\n');
+                            }
+                            replacement.push_str("}");
+                            
+                            result = result.replace(cbuffer_section, &replacement);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    result
+}
+
+fn simplify_stage_io(hlsl: &str) -> String {
+    // For now, keep the wrapper structs as Naga generates them
+    // They should still work with SDL3, even if not ideal
+    // Future enhancement: detect and simplify these patterns
+    hlsl.to_string()
 }
 
 fn generate_spirv(
