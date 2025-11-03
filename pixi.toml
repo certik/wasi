@@ -1,4 +1,4 @@
-[project]
+[workspace]
 authors = ["Ondřej Čertík <ondrej@certik.us>"]
 channels = ["conda-forge"]
 name = "wasi"
