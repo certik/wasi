@@ -193,6 +193,7 @@ clang \
     -I base \
     -I stdlib \
     -I native \
+    -I sdl/wasm \
     -I . \
     -Wl,--no-entry \
     -Wl,--export=app_init \
@@ -202,7 +203,7 @@ clang \
     -Wl,--initial-memory=2097152 \
     -o mousecircle.wasm \
     MouseCircle_standalone.c \
-    sdl_wasm.c \
+    sdl/wasm/SDL_wasm.c \
     base/buddy.c \
     base/arena.c \
     base/scratch.c \

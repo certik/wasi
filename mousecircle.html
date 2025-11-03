@@ -11,9 +11,9 @@
 <body>
     <canvas id="canvas"></canvas>
     <script type="module">
-import { createWasmSDLHost } from './js/sdl_wasm_host.js';
-import { createFetchingVirtualFileSystem } from './js/virtual_fs.js';
-import { fetchBundle } from './js/bundle_loader.js';
+import { createWasmSDLHost } from './sdl/wasm/SDL_wasm_host.js';
+import { createFetchingVirtualFileSystem } from './sdl/wasm/SDL_wasm_vfs.js';
+import { fetchBundle } from './sdl/wasm/SDL_wasm_bundle.js';
 
 let wasmMemory = null;
 const stdoutDecoder = new TextDecoder();
