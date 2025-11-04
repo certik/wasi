@@ -1131,12 +1131,7 @@ static uint32_t append_glyph(OverlayVertex *verts, uint32_t offset, uint32_t max
                 float x1 = to_clip_x(px1, canvas_w);
                 float y1 = to_clip_y(py1, canvas_h);
 
-                uint32_t new_offset = append_quad(verts, offset, max, x0, y0, x1, y1, color);
-                // If append_quad failed (buffer full), stop trying to add more pixels
-                if (new_offset == offset) {
-                    return offset;
-                }
-                offset = new_offset;
+                offset = append_quad(verts, offset, max, x0, y0, x1, y1, color);
             }
         }
     }
