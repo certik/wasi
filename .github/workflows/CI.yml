@@ -19,6 +19,7 @@ jobs:
               echo "test input data" | pixi run -e linux ./arena_linux --test-input
               pixi run -e linux test_wordfreq_linux
               # TODO: `test_game_linux` doesn't work yet:
+              #pixi run -e linux test_game_linux --test-frames 5
               pixi run -e linux build_game_linux
           - platform: macos
             os: macos-latest
@@ -26,7 +27,7 @@ jobs:
               pixi run -e macos test_macos a1 b2 c3
               echo "test input data" | pixi run -e macos ./arena_macos --test-input
               pixi run -e macos test_wordfreq_macos
-              pixi run -e macos test_game_macos
+              pixi run -e macos test_game_macos --test-frames 5
           - platform: windows
             os: windows-latest
             pixi-command: |
@@ -34,7 +35,7 @@ jobs:
               pixi run -e windows test_windows a1 b2 c3 || exit /b 1
               echo test input data | pixi run -e windows arena_windows.exe --test-input || exit /b 1
               pixi run -e windows test_wordfreq_windows || exit /b 1
-              pixi run -e windows test_game_windows || exit /b 1
+              pixi run -e windows test_game_windows --test-frames 5 || exit /b 1
           - platform: wasm
             os: ubuntu-latest
             pixi-command: |
