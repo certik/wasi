@@ -53,7 +53,7 @@ const stdoutDecoder = new TextDecoder();
 
             // Load WASM module
             const cacheBust = Date.now();
-            const wasmResponse = await fetch(`mousecircle.wasm?v=${cacheBust}`);
+            const wasmResponse = await fetch(`game.wasm?v=${cacheBust}`);
             const wasmBytes = await wasmResponse.arrayBuffer();
 
             const wasiImports = {
