@@ -189,7 +189,7 @@ clang \
 
 test_mousecircle_wasm = { cmd="echo 'WASM build successful: mousecircle.wasm'", depends-on=["build_mousecircle_wasm"] }
 
-serve2 = { cmd="python server.py", depends-on=["test_mousecircle_wasm", "bundle_shaders"] }
+serve = { cmd="python server.py", depends-on=["test_mousecircle_wasm", "bundle_shaders"] }
 
 [feature.wasm.dependencies]
 clang = ">=20.1.4,<21"
@@ -416,7 +416,7 @@ clang \
 
 test_hotel2gltf_macos = { cmd="./hotel2gltf_macos", depends-on=["build_hotel2gltf_macos"] }
 
-build_mousecircle_sdl = """
+build_mousecircle_macos = """
 clang \
     -I$CONDA_PREFIX/include \
     -L$CONDA_PREFIX/lib \
@@ -429,7 +429,7 @@ clang \
     -lSystem \
     -framework Metal -framework CoreGraphics -framework AppKit \
     -Wno-macro-redefined \
-    -o mousecircle_sdl \
+    -o mousecircle_macos \
     MouseCircle_standalone.c \
     base/base_io.c \
     base/buddy.c \
@@ -447,7 +447,7 @@ clang \
     native/wasi_macos.c
 """
 
-test_mousecircle_sdl = { cmd="./mousecircle_sdl", depends-on=["build_mousecircle_sdl"] }
+test_mousecircle_macos = { cmd="./mousecircle_macos", depends-on=["build_mousecircle_macos"] }
 
 [feature.macos.dependencies]
 # Use the system Clang on macOS
