@@ -448,6 +448,9 @@ clang \
 
 test_game_macos = { cmd="./game_macos", depends-on=["build_game_macos"] }
 
+[target.osx-arm64.dependencies]
+python = ">=3.12"
+
 [feature.macos.target.osx-arm64.dependencies]
 # Use the system Clang on macOS
 #clang = ">=20.1.4,<21"
@@ -682,6 +685,9 @@ link \
 """
 
 test_game_windows = { cmd="./game_windows", depends-on=["build_game_windows"] }
+
+[target.win-64.dependencies]
+python = ">=3.12"
 
 [feature.windows.target.win-64.dependencies]
 # Note: MSVC is not available through conda-forge, so we rely on system installation
