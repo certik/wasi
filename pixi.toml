@@ -2,6 +2,7 @@
 authors = ["Ondřej Čertík <ondrej@certik.us>"]
 channels = [
     "https://prefix.dev/sdl",  # Prioritize our SDL3 packages
+    "https://prefix.dev/certik-forge",  # Prioritize our packages
     "conda-forge"              # Fallback
 ]
 name = "wasi"
@@ -192,6 +193,9 @@ serve = { cmd="python server.py", depends-on=["test_game_wasm", "bundle_shaders"
 clang = ">=20.1.4,<21"
 lld = ">=20.1.4,<21"
 python = ">=3.10"
+
+[feature.wasm.target.win-64.dependencies]
+wasmtime = ">=38.0.3,<39"
 
 [feature.linux.tasks]
 build_linux = """
