@@ -34,6 +34,7 @@ export function createWasmSDLHost(device, canvas) {
             let pendingPointerLockRequest = false;
             let fatalError = false;
             let fatalErrorReason = null;
+            let fatalQuitDelivered = false;
 
             function tryRequestPointerLock() {
                 if (document.pointerLockElement === canvas) {
@@ -77,6 +78,7 @@ export function createWasmSDLHost(device, canvas) {
                 // Drop queued events and force the app to quit so logs stop after the error.
                 eventQueue.length = 0;
                 eventQueue.push({ type: 'quit' });
+                fatalQuitDelivered = false;
             }
 
             function setError(msg) {
@@ -1398,12 +1400,15 @@ export function createWasmSDLHost(device, canvas) {
                 },
 
                 poll_event(event_ptr) {
-                    if (fatalError && eventQueue.length === 0) {
+                    if (fatalError && !fatalQuitDelivered && eventQueue.length === 0) {
                         eventQueue.push({ type: 'quit' });
                     }
                     if (eventQueue.length === 0) return 0;
 
                     const event = eventQueue.shift();
+                    if (fatalError && event?.type === 'quit') {
+                        fatalQuitDelivered = true;
+                    }
 
                     if (memory && event_ptr) {
                         const dv = new DataView(memory.buffer);
