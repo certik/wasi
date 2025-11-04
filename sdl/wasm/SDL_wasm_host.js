@@ -170,6 +170,7 @@ export function createWasmSDLHost(device, canvas) {
                     // Pipeline has bind group 0, but do we have a uniform buffer?
                     if (layout0) {
                         if (cmdbuf.uniformBuffer) {
+                            console.log('[SDL Debug] Creating uniform bind group for pipeline', cmdbuf.currentPipeline);
                             cmdbuf.uniformBindGroup = device.createBindGroup({
                                 layout: layout0,
                                 entries: [{
@@ -179,6 +180,7 @@ export function createWasmSDLHost(device, canvas) {
                             });
                             cmdbuf.uniformBindGroupPipeline = cmdbuf.currentPipeline;
                         } else {
+                            console.log('[SDL Debug] No uniform buffer present for pipeline', cmdbuf.currentPipeline);
                             cmdbuf.uniformBindGroup = null;
                             cmdbuf.uniformBindGroupPipeline = null;
                         }
@@ -206,6 +208,7 @@ export function createWasmSDLHost(device, canvas) {
 
                     // Pipeline has bind group 1, but do we have texture + sampler?
                     if (cmdbuf.boundTextureView && cmdbuf.boundSampler) {
+                        console.log('[SDL Debug] Creating texture bind group for pipeline', cmdbuf.currentPipeline);
                         cmdbuf.textureBindGroup = device.createBindGroup({
                             layout: layout1,
                             entries: [
@@ -1197,6 +1200,7 @@ export function createWasmSDLHost(device, canvas) {
                             if (cmdbuf.uniformBindGroup && cmdbuf.uniformBindGroupPipeline === cmdbuf.currentPipeline) {
                                 try {
                                     if (cmdbuf.currentPipelineHasBindGroup0) {
+                                        console.log('[SDL] Setting bind group 0 (indexed draw)', cmdbuf.currentPipeline);
                                         passEntry.pass.setBindGroup(0, cmdbuf.uniformBindGroup);
                                     }
                                 } catch (e) {
@@ -1353,6 +1357,7 @@ export function createWasmSDLHost(device, canvas) {
                             if (cmdbuf.uniformBindGroup && cmdbuf.uniformBindGroupPipeline === cmdbuf.currentPipeline) {
                                 try {
                                     if (cmdbuf.currentPipelineHasBindGroup0) {
+                                        console.log('[SDL] Setting bind group 0 (non-indexed draw)', cmdbuf.currentPipeline);
                                         passEntry.pass.setBindGroup(0, cmdbuf.uniformBindGroup);
                                     }
                                 } catch (e) {
