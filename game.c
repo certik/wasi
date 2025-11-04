@@ -1019,14 +1019,6 @@ static uint32_t append_quad(OverlayVertex *verts, uint32_t offset, uint32_t max,
         return offset;
     }
 
-    // Sanity check coordinates - overlay quads should be small (text pixels or minimap cells)
-    // A quad larger than 0.5 in clip space is suspicious (that's 1/4 of the screen)
-    float quad_width = (x1 > x0 ? x1 - x0 : x0 - x1);
-    float quad_height = (y1 > y0 ? y1 - y0 : y0 - y1);
-    if (quad_width > 0.5f || quad_height > 0.5f) {
-        SDL_Log("WARNING: Large quad at offset %u: (%.2f,%.2f) to (%.2f,%.2f), size %.2fx%.2f",
-                offset, x0, y0, x1, y1, quad_width, quad_height);
-    }
 
     verts[offset + 0] = (OverlayVertex){ {x0, y0}, {color[0], color[1], color[2], color[3]} };
     verts[offset + 1] = (OverlayVertex){ {x1, y0}, {color[0], color[1], color[2], color[3]} };
@@ -1043,22 +1035,6 @@ static uint32_t append_convex_quad(OverlayVertex *verts, uint32_t offset, uint32
         return offset;
     }
 
-    // Check for excessively large quads
-    float minX = points[0][0], maxX = points[0][0];
-    float minY = points[0][1], maxY = points[0][1];
-    for (int i = 1; i < 4; i++) {
-        if (points[i][0] < minX) minX = points[i][0];
-        if (points[i][0] > maxX) maxX = points[i][0];
-        if (points[i][1] < minY) minY = points[i][1];
-        if (points[i][1] > maxY) maxY = points[i][1];
-    }
-    float width = maxX - minX;
-    float height = maxY - minY;
-
-    if (width > 0.5f || height > 0.5f) {
-        SDL_Log("WARNING: Large convex_quad at offset %u: bounds (%.2f,%.2f) to (%.2f,%.2f), size %.2fx%.2f",
-                offset, minX, minY, maxX, maxY, width, height);
-    }
 
     static const int order[6] = {0, 1, 2, 0, 2, 3};
     for (int i = 0; i < 6; i++) {
@@ -1077,30 +1053,6 @@ static uint32_t append_triangle(OverlayVertex *verts, uint32_t offset, uint32_t 
         return offset;
     }
 
-    // Check for excessively large triangles
-    float minX = points[0][0], maxX = points[0][0];
-    float minY = points[0][1], maxY = points[0][1];
-    for (int i = 1; i < 3; i++) {
-        if (points[i][0] < minX) minX = points[i][0];
-        if (points[i][0] > maxX) maxX = points[i][0];
-        if (points[i][1] < minY) minY = points[i][1];
-        if (points[i][1] > maxY) maxY = points[i][1];
-    }
-    float width = maxX - minX;
-    float height = maxY - minY;
-
-    // Log if we're near the problematic offset
-    if (offset >= 7920 && offset <= 7940) {
-        SDL_Log("append_triangle at offset %u: v1=(%.2f,%.2f) v2=(%.2f,%.2f) v3=(%.2f,%.2f)",
-                offset, points[0][0], points[0][1], points[1][0], points[1][1], points[2][0], points[2][1]);
-    }
-
-    if (width > 0.5f || height > 0.5f) {
-        SDL_Log("WARNING: Large triangle at offset %u: bounds (%.2f,%.2f) to (%.2f,%.2f), size %.2fx%.2f",
-                offset, minX, minY, maxX, maxY, width, height);
-        SDL_Log("  v1=(%.2f,%.2f) v2=(%.2f,%.2f) v3=(%.2f,%.2f)",
-                points[0][0], points[0][1], points[1][0], points[1][1], points[2][0], points[2][1]);
-    }
 
     for (int i = 0; i < 3; i++) {
         verts[offset + i] = (OverlayVertex){
@@ -1117,13 +1069,6 @@ static uint32_t append_glyph(OverlayVertex *verts, uint32_t offset, uint32_t max
                              const float color[4]) {
     const uint32_t *glyph = GM_FONT_GLYPHS[ch];
 
-    // Log if we're near the problematic offset (triangle 2644 = vertex 7932)
-    static bool logged_once = false;
-    if (!logged_once && offset >= 7920 && offset <= 7940) {
-        SDL_Log("append_glyph at offset %u: char='%c' origin=(%.1f,%.1f) canvas=%.0fx%.0f",
-                offset, (ch >= 32 && ch < 127) ? ch : '?', origin_x, origin_y, canvas_w, canvas_h);
-        logged_once = true;
-    }
 
     for (int row = 0; row < GLYPH_HEIGHT; row++) {
         uint32_t row_bits = glyph[row];
@@ -1592,7 +1537,7 @@ static int complete_gpu_setup(GameApp *app) {
         SDL_Log("Failed to map vertex transfer buffer: %s", SDL_GetError());
         return -1;
     }
-    base_memmove(mapped_vertices, cpu_vertices, vertex_buffer_info.size);
+    base_memcpy(mapped_vertices, cpu_vertices, vertex_buffer_info.size);
     SDL_UnmapGPUTransferBuffer(app->device, app->scene_vertex_transfer_buffer);
 
     uint16_t *mapped_indices = (uint16_t *)SDL_MapGPUTransferBuffer(app->device, app->scene_index_transfer_buffer, false);
@@ -1600,7 +1545,7 @@ static int complete_gpu_setup(GameApp *app) {
         SDL_Log("Failed to map index transfer buffer: %s", SDL_GetError());
         return -1;
     }
-    base_memmove(mapped_indices, mesh->indices, index_buffer_info.size);
+    base_memcpy(mapped_indices, mesh->indices, index_buffer_info.size);
     SDL_UnmapGPUTransferBuffer(app->device, app->scene_index_transfer_buffer);
 
     SDL_GPUCommandBuffer *upload_cmdbuf = SDL_AcquireGPUCommandBuffer(app->device);
@@ -1796,7 +1741,7 @@ static void update_game(GameApp *app) {
     if (app->overlay_vertex_count > 0) {
         OverlayVertex *mapped = (OverlayVertex *)SDL_MapGPUTransferBuffer(app->device, app->overlay_transfer_buffer, false);
         if (mapped) {
-            base_memmove(mapped, app->overlay_cpu_vertices, sizeof(OverlayVertex) * app->overlay_vertex_count);
+            base_memcpy(mapped, app->overlay_cpu_vertices, sizeof(OverlayVertex) * app->overlay_vertex_count);
             SDL_UnmapGPUTransferBuffer(app->device, app->overlay_transfer_buffer);
         }
     }
