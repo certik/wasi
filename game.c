@@ -545,19 +545,19 @@ static MeshData* generate_mesh(int *map, int width, int height) {
     push_triangle_id(&ctx, (float)ctx.triangle_counter);
 
     push_position(&ctx, (float)width, 0.0f, 0.0f);
-    push_uv(&ctx, (float)width * CHECKER_SIZE, 0.0f);
+    push_uv(&ctx, (float)width * CHECKER_SIZE / 4.0f, 0.0f);
     push_normal(&ctx, 0.0f, 1.0f, 0.0f);
     push_surface_type(&ctx, 0.0f);
     push_triangle_id(&ctx, (float)(ctx.triangle_counter + 1));
 
     push_position(&ctx, 0.0f, 0.0f, (float)height);
-    push_uv(&ctx, 0.0f, (float)height * CHECKER_SIZE);
+    push_uv(&ctx, 0.0f, (float)height * CHECKER_SIZE / 4.0f);
     push_normal(&ctx, 0.0f, 1.0f, 0.0f);
     push_surface_type(&ctx, 0.0f);
     push_triangle_id(&ctx, 0.0f);
 
     push_position(&ctx, (float)width, 0.0f, (float)height);
-    push_uv(&ctx, (float)width * CHECKER_SIZE, (float)height * CHECKER_SIZE);
+    push_uv(&ctx, (float)width * CHECKER_SIZE / 4.0f, (float)height * CHECKER_SIZE / 4.0f);
     push_normal(&ctx, 0.0f, 1.0f, 0.0f);
     push_surface_type(&ctx, 0.0f);
     push_triangle_id(&ctx, 0.0f);
