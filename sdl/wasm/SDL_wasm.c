@@ -728,6 +728,22 @@ SDL_IOStream* SDL_IOFromConstMem(const void* mem, size_t size) {
     return stream;
 }
 
+SDL_IOStream* SDL_IOFromFile(const char* file, const char* mode) {
+    extern void* buddy_alloc(size_t size);
+    (void)mode; // Ignored for WASM
+
+    SDL_IOStream* stream = (SDL_IOStream*)buddy_alloc(sizeof(SDL_IOStream));
+    if (!stream) {
+        return NULL;
+    }
+
+    stream->mem = NULL;
+    stream->size = 0;
+    stream->path = file;  // Store the file path for WASM
+
+    return stream;
+}
+
 // SDL_Image implementation for WASM
 #include <SDL3_image/SDL_image.h>
 

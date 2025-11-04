@@ -1668,12 +1668,12 @@ static int complete_gpu_setup(GameApp *app) {
     // Load floor texture using SDL3_Image
     SDL_Log("Loading floor texture from %s", FLOOR_TEXTURE_PATH);
 
-    // Create IOStream from the file path
-    // Note: For WASM, we pass the path string as the memory pointer
-    // For native platforms, IMG_Load_IO from SDL3_Image will decode the image
-    SDL_IOStream *io = SDL_IOFromConstMem((const void*)FLOOR_TEXTURE_PATH, SDL_strlen(FLOOR_TEXTURE_PATH) + 1);
+    // Create IOStream from file
+    // On native platforms: SDL_IOFromFile reads the actual file
+    // On WASM: Our implementation stores the path for asset lookup
+    SDL_IOStream *io = SDL_IOFromFile(FLOOR_TEXTURE_PATH, "rb");
     if (!io) {
-        SDL_Log("Failed to create IOStream for %s", FLOOR_TEXTURE_PATH);
+        SDL_Log("Failed to open IOStream for %s", FLOOR_TEXTURE_PATH);
         return -1;
     }
 

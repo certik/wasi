@@ -400,6 +400,7 @@ Uint32 SDL_GetTicks(void);
 
 // IOStream API for loading images
 SDL_IOStream* SDL_IOFromConstMem(const void* mem, size_t size);
+SDL_IOStream* SDL_IOFromFile(const char* file, const char* mode);
 void SDL_DestroySurface(SDL_Surface* surface);
 
 // Managed main callback prototypes (implemented by the app when using SDL_MAIN_USE_CALLBACKS)
