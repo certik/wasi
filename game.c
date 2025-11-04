@@ -1592,7 +1592,7 @@ static int complete_gpu_setup(GameApp *app) {
         SDL_Log("Failed to map vertex transfer buffer: %s", SDL_GetError());
         return -1;
     }
-    base_memmove(mapped_vertices, cpu_vertices, vertex_buffer_info.size);
+    base_memcpy(mapped_vertices, cpu_vertices, vertex_buffer_info.size);
     SDL_UnmapGPUTransferBuffer(app->device, app->scene_vertex_transfer_buffer);
 
     uint16_t *mapped_indices = (uint16_t *)SDL_MapGPUTransferBuffer(app->device, app->scene_index_transfer_buffer, false);
@@ -1600,7 +1600,7 @@ static int complete_gpu_setup(GameApp *app) {
         SDL_Log("Failed to map index transfer buffer: %s", SDL_GetError());
         return -1;
     }
-    base_memmove(mapped_indices, mesh->indices, index_buffer_info.size);
+    base_memcpy(mapped_indices, mesh->indices, index_buffer_info.size);
     SDL_UnmapGPUTransferBuffer(app->device, app->scene_index_transfer_buffer);
 
     SDL_GPUCommandBuffer *upload_cmdbuf = SDL_AcquireGPUCommandBuffer(app->device);
@@ -1796,7 +1796,7 @@ static void update_game(GameApp *app) {
     if (app->overlay_vertex_count > 0) {
         OverlayVertex *mapped = (OverlayVertex *)SDL_MapGPUTransferBuffer(app->device, app->overlay_transfer_buffer, false);
         if (mapped) {
-            base_memmove(mapped, app->overlay_cpu_vertices, sizeof(OverlayVertex) * app->overlay_vertex_count);
+            base_memcpy(mapped, app->overlay_cpu_vertices, sizeof(OverlayVertex) * app->overlay_vertex_count);
             SDL_UnmapGPUTransferBuffer(app->device, app->overlay_transfer_buffer);
         }
     }
