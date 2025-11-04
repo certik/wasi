@@ -21,6 +21,7 @@ typedef __builtin_va_list __gnuc_va_list;
 #include <SDL3/SDL_main.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
 
 #include <base/arena.h>
 #include <base/buddy.h>
@@ -122,8 +123,20 @@ typedef struct {
 
 typedef struct {
     float position[2];
+    float pad[2];
     float color[4];
 } OverlayVertex;
+
+static inline OverlayVertex overlay_vertex_make(float x, float y, const float color[4]) {
+    return (OverlayVertex){
+        {x, y},
+        {0.0f, 0.0f},
+        {color[0], color[1], color[2], color[3]},
+    };
+}
+
+_Static_assert(offsetof(OverlayVertex, color) == sizeof(float) * 4, "OverlayVertex color must be 16b aligned");
+_Static_assert(sizeof(OverlayVertex) == sizeof(float) * 8, "OverlayVertex unexpected size");
 
 typedef struct {
     mat4 mvp;
@@ -1028,12 +1041,12 @@ static uint32_t append_quad(OverlayVertex *verts, uint32_t offset, uint32_t max,
                 offset, x0, y0, x1, y1, quad_width, quad_height);
     }
 
-    verts[offset + 0] = (OverlayVertex){ {x0, y0}, {color[0], color[1], color[2], color[3]} };
-    verts[offset + 1] = (OverlayVertex){ {x1, y0}, {color[0], color[1], color[2], color[3]} };
-    verts[offset + 2] = (OverlayVertex){ {x0, y1}, {color[0], color[1], color[2], color[3]} };
-    verts[offset + 3] = (OverlayVertex){ {x1, y0}, {color[0], color[1], color[2], color[3]} };
-    verts[offset + 4] = (OverlayVertex){ {x1, y1}, {color[0], color[1], color[2], color[3]} };
-    verts[offset + 5] = (OverlayVertex){ {x0, y1}, {color[0], color[1], color[2], color[3]} };
+    verts[offset + 0] = overlay_vertex_make(x0, y0, color);
+    verts[offset + 1] = overlay_vertex_make(x1, y0, color);
+    verts[offset + 2] = overlay_vertex_make(x0, y1, color);
+    verts[offset + 3] = overlay_vertex_make(x1, y0, color);
+    verts[offset + 4] = overlay_vertex_make(x1, y1, color);
+    verts[offset + 5] = overlay_vertex_make(x0, y1, color);
     return offset + 6;
 }
 
@@ -1063,10 +1076,7 @@ static uint32_t append_convex_quad(OverlayVertex *verts, uint32_t offset, uint32
     static const int order[6] = {0, 1, 2, 0, 2, 3};
     for (int i = 0; i < 6; i++) {
         int idx = order[i];
-        verts[offset + i] = (OverlayVertex){
-            {points[idx][0], points[idx][1]},
-            {color[0], color[1], color[2], color[3]}
-        };
+        verts[offset + i] = overlay_vertex_make(points[idx][0], points[idx][1], color);
     }
     return offset + 6;
 }
@@ -1103,10 +1113,7 @@ static uint32_t append_triangle(OverlayVertex *verts, uint32_t offset, uint32_t 
     }
 
     for (int i = 0; i < 3; i++) {
-        verts[offset + i] = (OverlayVertex){
-            {points[i][0], points[i][1]},
-            {color[0], color[1], color[2], color[3]}
-        };
+        verts[offset + i] = overlay_vertex_make(points[i][0], points[i][1], color);
     }
     return offset + 3;
 }
@@ -1199,10 +1206,6 @@ static void build_overlay(GameApp *app) {
                  state->map_visible ? "ON" : "OFF",
                  state->hud_visible ? "ON" : "OFF");
     SDL_snprintf(lines[4], sizeof(lines[4]), "TOGGLE M/R/H/T/I/B/F");
-
-    // Clear only the vertex buffer we'll use to prevent rendering stale data
-    // TODO: Investigate why stale data beyond overlay_vertex_count gets rendered
-    base_memset(app->overlay_cpu_vertices, 0, sizeof(OverlayVertex) * 20000);
 
     uint32_t offset = 0;
     for (int i = 0; i < 5; i++) {
@@ -1369,8 +1372,8 @@ static bool create_scene_pipeline(GameApp *app, SDL_GPUShader *vertex_shader, SD
 
 static bool create_overlay_pipeline(GameApp *app, SDL_GPUShader *vertex_shader, SDL_GPUShader *fragment_shader) {
     SDL_GPUVertexAttribute attributes[] = {
-        {.location = 0, .buffer_slot = 0, .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, .offset = 0},
-        {.location = 1, .buffer_slot = 0, .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, .offset = sizeof(float) * 2},
+        {.location = 0, .buffer_slot = 0, .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, .offset = offsetof(OverlayVertex, position)},
+        {.location = 1, .buffer_slot = 0, .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, .offset = offsetof(OverlayVertex, color)},
     };
 
     SDL_GPUVertexBufferDescription buffer_desc = {
