@@ -873,3 +873,8 @@ wasm = ["wasm"]
 linux = { features = ["linux"], solve-group = "linux" }
 macos = { features = ["macos"], solve-group = "macos" }
 windows = { features = ["windows"], solve-group = "windows" }
+
+# Platform-specific task overrides
+# On macOS, use system clang to avoid LTO library issues with conda clang
+[target.osx-arm64.tasks]
+build_bundler = "/usr/bin/clang -o bundler bundler.c"
