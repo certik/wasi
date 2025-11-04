@@ -1974,6 +1974,28 @@ static void shutdown_game(GameApp *app) {
 }
 
 // ============================================================================
+// Helper functions
+// ============================================================================
+
+// Simple atoi implementation for argument parsing
+static int simple_atoi(const char *str) {
+    int result = 0;
+    int sign = 1;
+
+    if (*str == '-') {
+        sign = -1;
+        str++;
+    }
+
+    while (*str >= '0' && *str <= '9') {
+        result = result * 10 + (*str - '0');
+        str++;
+    }
+
+    return sign * result;
+}
+
+// ============================================================================
 // SDL callbacks
 // ============================================================================
 
@@ -1983,8 +2005,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     g_App.test_frames_count = 0;
 
     for (int i = 1; i < argc; i++) {
-        if (SDL_strcmp(argv[i], "--test-frames") == 0 && i + 1 < argc) {
-            g_App.test_frames_max = SDL_atoi(argv[i + 1]);
+        if (base_strcmp(argv[i], "--test-frames") == 0 && i + 1 < argc) {
+            g_App.test_frames_max = simple_atoi(argv[i + 1]);
             i++;  // Skip the next argument since we consumed it
         }
     }
