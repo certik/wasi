@@ -1182,6 +1182,9 @@ static void build_overlay(GameApp *app) {
         return;
     }
 
+    // Clear the overlay buffer to avoid rendering stale data
+    base_memset(app->overlay_cpu_vertices, 0, sizeof(app->overlay_cpu_vertices));
+
     float canvas_w = (float)app->window_width;
     float canvas_h = (float)app->window_height;
     float scale = TEXT_SCALE;
@@ -1793,7 +1796,8 @@ static void update_game(GameApp *app) {
         SDL_Log("=== UPDATE_GAME Frame %u: overlay_vertex_count=%u ===", frame_count, app->overlay_vertex_count);
     }
 
-    if (app->overlay_vertex_count > 0) {
+    // Only copy to transfer buffer if overlay changed (dirty flag is set by build_overlay)
+    if (app->overlay_dirty && app->overlay_vertex_count > 0) {
         OverlayVertex *mapped = (OverlayVertex *)SDL_MapGPUTransferBuffer(app->device, app->overlay_transfer_buffer, false);
         if (mapped) {
             base_memmove(mapped, app->overlay_cpu_vertices, sizeof(OverlayVertex) * app->overlay_vertex_count);
