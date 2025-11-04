@@ -212,6 +212,16 @@ static string g_scene_fragment_shader = {0};
 static string g_overlay_vertex_shader = {0};
 static string g_overlay_fragment_shader = {0};
 
+static const char *select_shader_entrypoint(SDL_GPUShaderFormat format, SDL_GPUShaderStage stage, bool overlay) {
+    if (format == SDL_GPU_SHADERFORMAT_MSL || format == SDL_GPU_SHADERFORMAT_METALLIB) {
+        if (overlay) {
+            return (stage == SDL_GPU_SHADERSTAGE_VERTEX) ? "overlay_vertex" : "overlay_fragment";
+        }
+        return (stage == SDL_GPU_SHADERSTAGE_VERTEX) ? "main_vertex" : "main_fragment";
+    }
+    return "main";
+}
+
 static void ensure_runtime_heap(void) {
     if (!g_buddy_initialized) {
         extern void ensure_heap_initialized(void);
@@ -1456,10 +1466,10 @@ static int complete_gpu_setup(GameApp *app) {
     SDL_GPUShaderCreateInfo shader_info = {
         .code = (const Uint8 *)scene_vs_code.str,
         .code_size = shader_code_size(scene_vs_code),
-        .entrypoint = "main",
+        .entrypoint = select_shader_entrypoint(app->shader_format, SDL_GPU_SHADERSTAGE_VERTEX, false),
         .format = app->shader_format,
         .stage = SDL_GPU_SHADERSTAGE_VERTEX,
-        .num_samplers = 1,
+        .num_samplers = 0,
         .num_uniform_buffers = 1,
         .num_storage_buffers = 0,
         .num_storage_textures = 0,
@@ -1474,7 +1484,7 @@ static int complete_gpu_setup(GameApp *app) {
     string scene_fs_code = load_shader_source(&g_scene_fragment_shader, app->scene_fragment_path);
     shader_info.code = (const Uint8 *)scene_fs_code.str;
     shader_info.code_size = shader_code_size(scene_fs_code);
-    shader_info.entrypoint = "main";
+    shader_info.entrypoint = select_shader_entrypoint(app->shader_format, SDL_GPU_SHADERSTAGE_FRAGMENT, false);
     shader_info.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
     shader_info.num_samplers = 1;
     shader_info.num_uniform_buffers = 1;
@@ -1490,8 +1500,9 @@ static int complete_gpu_setup(GameApp *app) {
     string overlay_vs_code = load_shader_source(&g_overlay_vertex_shader, app->overlay_vertex_path);
     shader_info.code = (const Uint8 *)overlay_vs_code.str;
     shader_info.code_size = shader_code_size(overlay_vs_code);
-    shader_info.entrypoint = "main";
+    shader_info.entrypoint = select_shader_entrypoint(app->shader_format, SDL_GPU_SHADERSTAGE_VERTEX, true);
     shader_info.stage = SDL_GPU_SHADERSTAGE_VERTEX;
+    shader_info.num_samplers = 0;
     shader_info.num_uniform_buffers = 0;
     SDL_GPUShader *overlay_vs = SDL_CreateGPUShader(app->device, &shader_info);
     if (!overlay_vs) {
@@ -1504,8 +1515,9 @@ static int complete_gpu_setup(GameApp *app) {
     string overlay_fs_code = load_shader_source(&g_overlay_fragment_shader, app->overlay_fragment_path);
     shader_info.code = (const Uint8 *)overlay_fs_code.str;
     shader_info.code_size = shader_code_size(overlay_fs_code);
-    shader_info.entrypoint = "main";
+    shader_info.entrypoint = select_shader_entrypoint(app->shader_format, SDL_GPU_SHADERSTAGE_FRAGMENT, true);
     shader_info.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
+    shader_info.num_samplers = 0;
     shader_info.num_uniform_buffers = 0;
     SDL_GPUShader *overlay_fs = SDL_CreateGPUShader(app->device, &shader_info);
     if (!overlay_fs) {
@@ -2016,7 +2028,6 @@ static int render_game(GameApp *app) {
         .texture = app->floor_texture,
         .sampler = app->floor_sampler,
     };
-    SDL_BindGPUVertexSamplers(render_pass, 0, &texture_binding, 1);
     SDL_BindGPUFragmentSamplers(render_pass, 0, &texture_binding, 1);
 
     SDL_GPUBufferBinding vertex_binding = {

@@ -100,6 +100,9 @@ fn generate_msl(
     for (ep_index, entry_point) in module.entry_points.iter().enumerate() {
         let mut resources = BTreeMap::new();
         let ep_info = module_info.get_entry_point(ep_index);
+        let mut buffer_slot: u8 = 0;
+        let mut texture_slot: u8 = 0;
+        let mut sampler_slot: u8 = 0;
 
         // For each global variable in the module
         for (handle, global_var) in module.global_variables.iter() {
@@ -116,10 +119,12 @@ fn generate_msl(
 
                     match global_var.space {
                         AddressSpace::Uniform => {
-                            bind_target.buffer = Some(binding.binding as u8);
+                            bind_target.buffer = Some(buffer_slot);
+                            buffer_slot = buffer_slot.saturating_add(1);
                         }
                         AddressSpace::Storage { access } => {
-                            bind_target.buffer = Some(binding.binding as u8);
+                            bind_target.buffer = Some(buffer_slot);
+                            buffer_slot = buffer_slot.saturating_add(1);
                             bind_target.mutable = access.contains(StorageAccess::STORE);
                         }
                         AddressSpace::Handle => {
@@ -127,11 +132,13 @@ fn generate_msl(
                             match ty.inner {
                                 TypeInner::Sampler { .. } => {
                                     bind_target.sampler = Some(msl::BindSamplerTarget::Resource(
-                                        binding.binding as u8,
+                                        sampler_slot,
                                     ));
+                                    sampler_slot = sampler_slot.saturating_add(1);
                                 }
                                 TypeInner::Image { .. } => {
-                                    bind_target.texture = Some(binding.binding as u8);
+                                    bind_target.texture = Some(texture_slot);
+                                    texture_slot = texture_slot.saturating_add(1);
                                 }
                                 _ => continue,
                             }
@@ -251,7 +258,7 @@ fn generate_hlsl(
     let options = hlsl::Options {
         shader_model: hlsl::ShaderModel::V6_0,
         binding_map,
-        fake_missing_bindings: false,
+        fake_missing_bindings: true,
         special_constants_binding: None,
         push_constants_target: None,
         zero_initialize_workgroup_memory: true,
