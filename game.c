@@ -1688,15 +1688,13 @@ static int complete_gpu_setup(GameApp *app) {
             surface->w, surface->h, surface->format, surface->pitch);
 
     // Ensure surface is in RGBA32 format
-    // On WASM, our implementation already returns RGBA32
-    // On native platforms, we may need to convert
-#if !defined(__wasm__) && !defined(__wasi__)
-    SDL_Surface *converted_surface = NULL;
+    // On WASM, our implementation already returns RGBA32 so no conversion needed
+    // On native platforms, we may need to convert from RGB24 or other formats
     if (surface->format != SDL_PIXELFORMAT_RGBA32 &&
         surface->format != SDL_PIXELFORMAT_ABGR32) {
         // Convert to RGBA32
         SDL_Log("Converting surface from format 0x%08x to RGBA32", surface->format);
-        converted_surface = SDL_ConvertSurface(surface, SDL_PIXELFORMAT_RGBA32);
+        SDL_Surface *converted_surface = SDL_ConvertSurface(surface, SDL_PIXELFORMAT_RGBA32);
         SDL_DestroySurface(surface);
         if (!converted_surface) {
             SDL_Log("Failed to convert surface: %s", SDL_GetError());
@@ -1706,7 +1704,6 @@ static int complete_gpu_setup(GameApp *app) {
         SDL_Log("Converted texture: %dx%d, format=0x%08x, pitch=%d",
                 surface->w, surface->h, surface->format, surface->pitch);
     }
-#endif
 
     int tex_width = surface->w;
     int tex_height = surface->h;

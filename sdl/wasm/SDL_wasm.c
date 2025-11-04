@@ -827,3 +827,11 @@ void SDL_DestroySurface(SDL_Surface* surface) {
 
     buddy_free(surface);
 }
+
+SDL_Surface* SDL_ConvertSurface(SDL_Surface* surface, SDL_PixelFormat format) {
+    // Not implemented for WASM - should never be called since WASM always returns RGBA32
+    (void)surface;
+    (void)format;
+    SDL_Log("SDL_ConvertSurface: Not implemented for WASM");
+    return NULL;
+}
