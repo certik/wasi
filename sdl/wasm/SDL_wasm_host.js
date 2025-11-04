@@ -26,6 +26,7 @@ export function createWasmSDLHost(device, canvas) {
             const buffers = new Map();
             const transferBuffers = new Map();
             const textureViews = new Map();
+            const emptyBindGroupCache = new Map();
 
             // Mouse state
             let mouseX = 0;
@@ -191,6 +192,7 @@ export function createWasmSDLHost(device, canvas) {
                 if (!cmdbuf.currentPipelineHasBindGroup1) {
                     cmdbuf.textureBindGroup = null;
                     cmdbuf.textureBindGroupPipeline = null;
+                    cmdbuf.textureBindGroupIsFallback = false;
                     cmdbuf.textureBindGroupDirty = false;
                 } else if (cmdbuf.textureBindGroupDirty) {
                     // Try to get bind group layout 1
@@ -217,9 +219,32 @@ export function createWasmSDLHost(device, canvas) {
                             ]
                         });
                         cmdbuf.textureBindGroupPipeline = cmdbuf.currentPipeline;
+                        cmdbuf.textureBindGroupIsFallback = false;
                     } else {
-                        cmdbuf.textureBindGroup = null;
-                        cmdbuf.textureBindGroupPipeline = null;
+                        // Create or reuse an empty bind group if the layout allows it.
+                        let fallback = emptyBindGroupCache.get(layout1);
+                        if (!fallback) {
+                            try {
+                                fallback = device.createBindGroup({
+                                    layout: layout1,
+                                    entries: []
+                                });
+                                emptyBindGroupCache.set(layout1, fallback);
+                            } catch (e) {
+                                console.warn('[SDL] Unable to create fallback texture bind group for pipeline', cmdbuf.currentPipeline, e);
+                                fallback = null;
+                            }
+                        }
+
+                        if (fallback) {
+                            cmdbuf.textureBindGroup = fallback;
+                            cmdbuf.textureBindGroupPipeline = cmdbuf.currentPipeline;
+                            cmdbuf.textureBindGroupIsFallback = true;
+                        } else {
+                            cmdbuf.textureBindGroup = null;
+                            cmdbuf.textureBindGroupPipeline = null;
+                            cmdbuf.textureBindGroupIsFallback = false;
+                        }
                     }
                     cmdbuf.textureBindGroupDirty = false;
                 }
@@ -289,6 +314,7 @@ export function createWasmSDLHost(device, canvas) {
                 cmdbuf.boundTextureView = view;
                 cmdbuf.boundSampler = sampler;
                 cmdbuf.textureBindGroupDirty = true;
+                cmdbuf.textureBindGroupIsFallback = false;
                 ensureBindGroups(cmdbuf);
             }
 
@@ -687,6 +713,7 @@ export function createWasmSDLHost(device, canvas) {
                         uniformBindGroupPipeline: null,
                         textureBindGroup: null,
                         textureBindGroupPipeline: null,
+                        textureBindGroupIsFallback: false,
                         boundTextureHandle: null,
                         boundTextureView: null,
                         boundSampler: null,
@@ -836,10 +863,12 @@ export function createWasmSDLHost(device, canvas) {
                             if (hasBindGroup1) {
                                 cmdbuf.textureBindGroup = null;
                                 cmdbuf.textureBindGroupDirty = true;
+                                cmdbuf.textureBindGroupIsFallback = false;
                             } else {
                                 cmdbuf.textureBindGroup = null;
                                 cmdbuf.textureBindGroupPipeline = null;
                                 cmdbuf.textureBindGroupDirty = false;
+                                cmdbuf.textureBindGroupIsFallback = false;
                             }
 
                             ensureBindGroups(cmdbuf);
@@ -1212,7 +1241,7 @@ export function createWasmSDLHost(device, canvas) {
                             if (cmdbuf.textureBindGroup && cmdbuf.textureBindGroupPipeline === cmdbuf.currentPipeline) {
                                 try {
                                     if (cmdbuf.currentPipelineHasBindGroup1) {
-                                        console.log('[SDL] Setting bind group 1 (indexed draw)', cmdbuf.currentPipeline);
+                                        console.log('[SDL] Setting bind group 1 (indexed draw)', cmdbuf.currentPipeline, 'fallback:', cmdbuf.textureBindGroupIsFallback);
                                         passEntry.pass.setBindGroup(1, cmdbuf.textureBindGroup);
                                     }
                                 } catch (e) {
@@ -1369,7 +1398,7 @@ export function createWasmSDLHost(device, canvas) {
                             if (cmdbuf.textureBindGroup && cmdbuf.textureBindGroupPipeline === cmdbuf.currentPipeline) {
                                 try {
                                     if (cmdbuf.currentPipelineHasBindGroup1) {
-                                        console.log('[SDL] Setting bind group 1 (non-indexed draw)', cmdbuf.currentPipeline);
+                                        console.log('[SDL] Setting bind group 1 (non-indexed draw)', cmdbuf.currentPipeline, 'fallback:', cmdbuf.textureBindGroupIsFallback);
                                         passEntry.pass.setBindGroup(1, cmdbuf.textureBindGroup);
                                     }
                                 } catch (e) {
