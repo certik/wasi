@@ -56,7 +56,6 @@ clang \
     -nostdinc \
     -fno-builtin \
     -I base \
-    -I stdlib \
     -I native \
     -I . \
     -Wl,--no-entry \
@@ -66,8 +65,6 @@ clang \
     -o arena_base.wasm \
     test_base_only.c \
     test_base.c \
-    stdlib/stdio.c \
-    stdlib/stdlib.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
