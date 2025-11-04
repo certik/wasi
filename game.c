@@ -1182,9 +1182,6 @@ static void build_overlay(GameApp *app) {
         return;
     }
 
-    // Clear the overlay buffer to avoid rendering stale data
-    base_memset(app->overlay_cpu_vertices, 0, sizeof(app->overlay_cpu_vertices));
-
     float canvas_w = (float)app->window_width;
     float canvas_h = (float)app->window_height;
     float scale = TEXT_SCALE;
@@ -1210,6 +1207,11 @@ static void build_overlay(GameApp *app) {
                  state->map_visible ? "ON" : "OFF",
                  state->hud_visible ? "ON" : "OFF");
     SDL_snprintf(lines[4], sizeof(lines[4]), "TOGGLE M/R/H/T/I/B/F");
+
+    // Clear only the vertex buffer we'll use (much cheaper than clearing all 1.1MB)
+    // This prevents stale data from appearing as artifacts when append functions
+    // fail partway through writing a glyph due to buffer limits
+    base_memset(app->overlay_cpu_vertices, 0, sizeof(OverlayVertex) * 20000); // ~480KB, covers typical usage
 
     uint32_t offset = 0;
     for (int i = 0; i < 5; i++) {
