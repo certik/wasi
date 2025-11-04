@@ -359,6 +359,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/readline-8.2-h1d1bf99_2.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/tk-8.6.13-h892fb3f_2.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/tzdata-2025b-h78e105d_0.conda
+      - conda: https://prefix.dev/certik-forge/osx-arm64/wasmtime-38.0.3-hbf21a9e_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/zstd-1.5.7-h6491c7d_2.conda
       win-64:
       - conda: https://conda.anaconda.org/conda-forge/win-64/bzip2-1.0.8-h0ad9c76_8.conda
@@ -2300,6 +2301,13 @@ packages:
   license_family: Proprietary
   size: 114846
   timestamp: 1760418593847
+- conda: https://prefix.dev/certik-forge/osx-arm64/wasmtime-38.0.3-hbf21a9e_0.conda
+  sha256: b1268f8e1bd018f6eea8754d0e1e4fb91d37a07c0251936c69b0d94b36b5595a
+  constrains:
+  - __osx >=11.0
+  license: Apache-2.0 WITH LLVM-exception
+  size: 13449794
+  timestamp: 1762221103821
 - conda: https://prefix.dev/certik-forge/win-64/wasmtime-38.0.3-hbf21a9e_0.conda
   sha256: ca21b6ba2ee60b24df0d563cb4547de46733b55959e15c38992f6e1d98bf8596
   license: Apache-2.0 WITH LLVM-exception
