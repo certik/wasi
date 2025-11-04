@@ -705,3 +705,109 @@ int SDL_snprintf(char *str, size_t size, const char *format, ...) {
 Uint32 SDL_GetTicks(void) {
     return sdl_host_get_ticks();
 }
+
+// IOStream implementation
+struct SDL_IOStream {
+    const void* mem;
+    size_t size;
+    const char* path;  // For WASM, stores the file path to look up pre-decoded images
+};
+
+SDL_IOStream* SDL_IOFromConstMem(const void* mem, size_t size) {
+    extern void* buddy_alloc(size_t size);
+
+    SDL_IOStream* stream = (SDL_IOStream*)buddy_alloc(sizeof(SDL_IOStream));
+    if (!stream) {
+        return NULL;
+    }
+
+    stream->mem = mem;
+    stream->size = size;
+    stream->path = NULL;
+
+    return stream;
+}
+
+// SDL_Image implementation for WASM
+#include <SDL3_image/SDL_image.h>
+
+SDL_Surface* IMG_Load_IO(SDL_IOStream* src, bool closeio) {
+    extern void* buddy_alloc(size_t size);
+    extern void buddy_free(void* ptr);
+
+    if (!src) {
+        return NULL;
+    }
+
+    // For WASM, we expect src->path to contain the file path
+    // This allows us to look up pre-decoded images from the asset cache
+    const char* path = src->path;
+    if (!path && src->mem) {
+        // Fallback: treat mem as path string if path is not set
+        path = (const char*)src->mem;
+    }
+
+    if (!path) {
+        SDL_Log("IMG_Load_IO: no path provided in IOStream");
+        return NULL;
+    }
+
+    // Get image dimensions
+    uint32_t width = 0;
+    uint32_t height = 0;
+    if (!SDL_JSGetImageInfo(path, &width, &height)) {
+        SDL_Log("IMG_Load_IO: failed to get image info for %s", path);
+        return NULL;
+    }
+
+    // Create surface
+    SDL_Surface* surface = (SDL_Surface*)buddy_alloc(sizeof(SDL_Surface));
+    if (!surface) {
+        SDL_Log("IMG_Load_IO: failed to allocate surface");
+        return NULL;
+    }
+
+    // Allocate pixel buffer
+    uint32_t pixel_size = width * height * 4;
+    surface->pixels = buddy_alloc(pixel_size);
+    if (!surface->pixels) {
+        SDL_Log("IMG_Load_IO: failed to allocate pixel buffer");
+        buddy_free(surface);
+        return NULL;
+    }
+
+    // Load pixel data
+    if (!SDL_JSGetImagePixelsRGBA(path, surface->pixels, pixel_size)) {
+        SDL_Log("IMG_Load_IO: failed to load pixels for %s", path);
+        buddy_free(surface->pixels);
+        buddy_free(surface);
+        return NULL;
+    }
+
+    // Fill in surface metadata
+    surface->w = (int)width;
+    surface->h = (int)height;
+    surface->format = SDL_PIXELFORMAT_RGBA32;
+    surface->pitch = (int)(width * 4);
+
+    // Close IOStream if requested
+    if (closeio && src) {
+        buddy_free(src);
+    }
+
+    return surface;
+}
+
+void SDL_DestroySurface(SDL_Surface* surface) {
+    extern void buddy_free(void* ptr);
+
+    if (!surface) {
+        return;
+    }
+
+    if (surface->pixels) {
+        buddy_free(surface->pixels);
+    }
+
+    buddy_free(surface);
+}

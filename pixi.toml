@@ -293,6 +293,7 @@ clang \
     -I native \
     -I . \
     -lSDL3 \
+    -lSDL3_image \
     -lm \
     -Wno-macro-redefined \
     -o game_linux \
@@ -425,6 +426,7 @@ clang \
     -I native \
     -I . \
     -lSDL3 \
+    -lSDL3_image \
     -lSystem \
     -framework Metal -framework CoreGraphics -framework AppKit \
     -Wno-macro-redefined \
@@ -677,6 +679,7 @@ link \
     base_math.obj \
     wasi_windows.obj \
     SDL3.lib \
+    SDL3_image.lib \
     shell32.lib \
     d3d12.lib \
     dxgi.lib \

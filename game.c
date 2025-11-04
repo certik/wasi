@@ -19,12 +19,7 @@ typedef __builtin_va_list __gnuc_va_list;
 #define SDL_MAIN_USE_CALLBACKS 1
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
-
-#if !(defined(__wasm__) || defined(__wasi__))
-// STB image for texture loading (native platforms only)
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
-#endif
+#include <SDL3_image/SDL_image.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
@@ -203,10 +198,6 @@ static Arena *g_shader_arena = NULL;
 
 #define FLOOR_TEXTURE_PATH "assets/WoodFloor007_1K-JPG_Color.jpg"
 
-#if defined(__wasm__)
-bool SDL_JSGetImageInfo(const char *path, uint32_t *out_width, uint32_t *out_height);
-bool SDL_JSGetImagePixelsRGBA(const char *path, void *dest, uint32_t dest_len);
-#endif
 static string g_scene_vertex_shader = {0};
 static string g_scene_fragment_shader = {0};
 static string g_overlay_vertex_shader = {0};
@@ -1674,45 +1665,30 @@ static int complete_gpu_setup(GameApp *app) {
         return -1;
     }
 
-    // Load floor texture
+    // Load floor texture using SDL3_Image
     SDL_Log("Loading floor texture from %s", FLOOR_TEXTURE_PATH);
-    int tex_width = 0;
-    int tex_height = 0;
-    Uint32 tex_channels = 4;
-    unsigned char *tex_data = NULL;
-    Uint32 tex_data_size = 0;
 
-#if defined(__wasm__)
-    uint32_t wasm_width = 0;
-    uint32_t wasm_height = 0;
-    if (!SDL_JSGetImageInfo(FLOOR_TEXTURE_PATH, &wasm_width, &wasm_height)) {
-        SDL_Log("Failed to query floor texture dimensions from host");
+    // Create IOStream from the file path
+    // Note: For WASM, we pass the path string as the memory pointer
+    // For native platforms, IMG_Load_IO from SDL3_Image will decode the image
+    SDL_IOStream *io = SDL_IOFromConstMem((const void*)FLOOR_TEXTURE_PATH, SDL_strlen(FLOOR_TEXTURE_PATH) + 1);
+    if (!io) {
+        SDL_Log("Failed to create IOStream for %s", FLOOR_TEXTURE_PATH);
         return -1;
     }
-    tex_width = (int)wasm_width;
-    tex_height = (int)wasm_height;
-    tex_data_size = wasm_width * wasm_height * 4u;
-    tex_data = (unsigned char *)buddy_alloc(tex_data_size);
-    if (!tex_data) {
-        SDL_Log("Failed to allocate floor texture buffer (%ux%u)", wasm_width, wasm_height);
+
+    SDL_Surface *surface = IMG_Load_IO(io, true);
+    if (!surface) {
+        SDL_Log("Failed to load floor texture: %s", SDL_GetError());
         return -1;
     }
-    if (!SDL_JSGetImagePixelsRGBA(FLOOR_TEXTURE_PATH, tex_data, tex_data_size)) {
-        SDL_Log("Failed to load floor texture pixels from host");
-        buddy_free(tex_data);
-        return -1;
-    }
-#else
-    int tex_channels_found = 0;
-    tex_data = stbi_load(FLOOR_TEXTURE_PATH, &tex_width, &tex_height, &tex_channels_found, 4);
-    if (!tex_data) {
-        SDL_Log("Failed to load floor texture: %s", stbi_failure_reason());
-        return -1;
-    }
-    tex_channels = (Uint32)tex_channels_found;
-    tex_data_size = (Uint32)(tex_width * tex_height * 4);
-#endif
-    SDL_Log("Loaded texture: %dx%d, %u channels", tex_width, tex_height, tex_channels);
+
+    int tex_width = surface->w;
+    int tex_height = surface->h;
+    unsigned char *tex_data = (unsigned char *)surface->pixels;
+    Uint32 tex_data_size = (Uint32)(tex_width * tex_height * 4);
+
+    SDL_Log("Loaded texture: %dx%d", tex_width, tex_height);
 
     // Create GPU texture
     SDL_GPUTextureCreateInfo tex_info = {
@@ -1726,11 +1702,7 @@ static int complete_gpu_setup(GameApp *app) {
     app->floor_texture = SDL_CreateGPUTexture(app->device, &tex_info);
     if (!app->floor_texture) {
         SDL_Log("Failed to create floor texture: %s", SDL_GetError());
-#if defined(__wasm__)
-        buddy_free(tex_data);
-#else
-        stbi_image_free(tex_data);
-#endif
+        SDL_DestroySurface(surface);
         return -1;
     }
 
@@ -1742,11 +1714,7 @@ static int complete_gpu_setup(GameApp *app) {
     SDL_GPUTransferBuffer *tex_transfer_buffer = SDL_CreateGPUTransferBuffer(app->device, &tex_transfer_info);
     if (!tex_transfer_buffer) {
         SDL_Log("Failed to create texture transfer buffer: %s", SDL_GetError());
-#if defined(__wasm__)
-        buddy_free(tex_data);
-#else
-        stbi_image_free(tex_data);
-#endif
+        SDL_DestroySurface(surface);
         return -1;
     }
 
@@ -1755,20 +1723,14 @@ static int complete_gpu_setup(GameApp *app) {
     if (!mapped_tex) {
         SDL_Log("Failed to map texture transfer buffer: %s", SDL_GetError());
         SDL_ReleaseGPUTransferBuffer(app->device, tex_transfer_buffer);
-#if defined(__wasm__)
-        buddy_free(tex_data);
-#else
-        stbi_image_free(tex_data);
-#endif
+        SDL_DestroySurface(surface);
         return -1;
     }
     SDL_memcpy(mapped_tex, tex_data, tex_data_size);
     SDL_UnmapGPUTransferBuffer(app->device, tex_transfer_buffer);
-#if defined(__wasm__)
-    buddy_free(tex_data);
-#else
-    stbi_image_free(tex_data);
-#endif
+
+    // Surface is no longer needed after copying to GPU
+    SDL_DestroySurface(surface);
 
     // Upload texture data to GPU
     SDL_GPUCommandBuffer *tex_cmdbuf = SDL_AcquireGPUCommandBuffer(app->device);
