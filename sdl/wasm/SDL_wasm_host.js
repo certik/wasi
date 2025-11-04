@@ -1,6 +1,6 @@
 const fsDecoder = new TextDecoder('utf-8');
 
-export function createWasmSDLHost(device, canvas, assetImages = null) {
+export function createWasmSDLHost(device, canvas) {
             let memory = null;
             let wasmBuddyAlloc = null;
             let wasmBuddyFree = null;
@@ -27,10 +27,6 @@ export function createWasmSDLHost(device, canvas, assetImages = null) {
             const buffers = new Map();
             const transferBuffers = new Map();
             const textureViews = new Map();
-            const imageAssets = assetImages ?? (globalThis.__SDL_IMAGE_ASSETS || (globalThis.__SDL_IMAGE_ASSETS = new Map()));
-            if (assetImages) {
-                globalThis.__SDL_IMAGE_ASSETS = imageAssets;
-            }
 
             // Mouse state
             let mouseX = 0;
@@ -115,15 +111,6 @@ export function createWasmSDLHost(device, canvas, assetImages = null) {
                 const dst = new Uint8Array(memory.buffer, ptr, maxLen);
                 dst.set(bytes.subarray(0, len));
                 dst[len] = 0; // null terminator
-            }
-
-            function getAssetImage(path) {
-                const asset = imageAssets.get(path);
-                if (!asset) {
-                    setError(`Asset not preloaded: ${path}`);
-                    return null;
-                }
-                return asset;
             }
 
             function mapFilter(value) {
@@ -1525,40 +1512,11 @@ export function createWasmSDLHost(device, canvas, assetImages = null) {
                     }
                 },
 
-                get_asset_image_info(path_ptr, path_len, width_ptr, height_ptr) {
-                    if (!memory) {
-                        setError('Memory not set before image info request');
-                        return 0;
-                    }
-                    const path = readString(path_ptr, path_len);
-                    const asset = getAssetImage(path);
-                    if (!asset) {
-                        return 0;
-                    }
-                    const dv = new DataView(memory.buffer);
-                    if (width_ptr) dv.setUint32(width_ptr, asset.width, true);
-                    if (height_ptr) dv.setUint32(height_ptr, asset.height, true);
-                    return 1;
-                },
-
-                copy_asset_image_rgba(path_ptr, path_len, dest_ptr, dest_len) {
-                    if (!memory) {
-                        setError('Memory not set before image copy request');
-                        return 0;
-                    }
-                    const path = readString(path_ptr, path_len);
-                    const asset = getAssetImage(path);
-                    if (!asset) {
-                        return 0;
-                    }
-                    const required = asset.width * asset.height * 4;
-                    if (dest_len < required) {
-                        setError(`Destination buffer too small for ${path}: need ${required}, have ${dest_len}`);
-                        return 0;
-                    }
-                    const dest = new Uint8Array(memory.buffer, dest_ptr, required);
-                    dest.set(asset.pixels);
-                    return 1;
+                decode_image_from_memory(data_ptr, data_len, width_out_ptr, height_out_ptr, pixels_out_ptr) {
+                    console.error('[SDL] decode_image_from_memory: Not implemented - requires Asyncify support');
+                    console.error('[SDL] Image decoding in JavaScript is async (createImageBitmap), but WASM imports must be sync');
+                    console.error('[SDL] Possible solutions: 1) Use Asyncify, 2) Pre-decode images at startup, 3) Use sync decoder');
+                    return 0;
                 },
 
                 get_ticks() {
