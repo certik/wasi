@@ -48,20 +48,14 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     name: Test ${{ matrix.platform }}
-    
+
     steps:
       - uses: actions/checkout@v4
 
-      - uses: prefix-dev/setup-pixi@v0.8.11
+      - uses: prefix-dev/setup-pixi@v0.9.3
         with:
-          pixi-version: v0.49.0
+          pixi-version: v0.59.0
           cache: true
-
-      - name: Setup wasmtime
-        if: matrix.platform == 'wasm'
-        uses: bytecodealliance/actions/wasmtime/setup@v1
-        with:
-          version: "32.0.0"
 
       - name: Build and test ${{ matrix.platform }}
         if: matrix.platform != 'windows'
