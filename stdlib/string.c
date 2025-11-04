@@ -20,6 +20,10 @@ void *memcpy(void *dest, const void *src, size_t n) {
     return base_memcpy(dest, src, n);
 }
 
+void *memmove(void *dest, const void *src, size_t n) {
+    return base_memmove(dest, src, n);
+}
+
 int memcmp(const void *s1, const void *s2, size_t n) {
     return base_memcmp(s1, s2, n);
 }

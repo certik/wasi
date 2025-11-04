@@ -27,6 +27,7 @@ static inline float fabsf(float x) {
     return x < 0 ? -x : x;
 }
 
+// Simple round implementation. Note: Overflows for values outside [INT64_MIN, INT64_MAX].
 static inline double round(double x) {
     return (x >= 0.0) ? (double)(int64_t)(x + 0.5) : (double)(int64_t)(x - 0.5);
 }

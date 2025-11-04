@@ -52,7 +52,12 @@ typedef signed long long int64_t;
 #else
 // For SDL builds, ensure we have ssize_t if not provided by system
 #if !defined(_SSIZE_T_DEFINED) && !defined(_SSIZE_T_) && !defined(__ssize_t_defined)
-typedef long ssize_t;
+#if defined(_WIN64)
+    // 64-bit Windows: long is 4 bytes, but ssize_t should be 8 bytes (pointer-sized)
+    typedef long long ssize_t;
+#else
+    typedef long ssize_t;
+#endif
 #endif
 #endif
 
