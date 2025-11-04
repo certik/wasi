@@ -1055,12 +1055,6 @@ static uint32_t append_convex_quad(OverlayVertex *verts, uint32_t offset, uint32
     float width = maxX - minX;
     float height = maxY - minY;
 
-    // Log if we're near the problematic offset
-    if (offset >= 7920 && offset <= 7940) {
-        SDL_Log("append_convex_quad at offset %u: bounds (%.2f,%.2f)-(%.2f,%.2f), size %.2fx%.2f",
-                offset, minX, minY, maxX, maxY, width, height);
-    }
-
     if (width > 0.5f || height > 0.5f) {
         SDL_Log("WARNING: Large convex_quad at offset %u: bounds (%.2f,%.2f) to (%.2f,%.2f), size %.2fx%.2f",
                 offset, minX, minY, maxX, maxY, width, height);
@@ -1144,11 +1138,6 @@ static uint32_t append_glyph(OverlayVertex *verts, uint32_t offset, uint32_t max
                 float y0 = to_clip_y(py0, canvas_h);
                 float x1 = to_clip_x(px1, canvas_w);
                 float y1 = to_clip_y(py1, canvas_h);
-
-                if (offset >= 7920 && offset <= 7940) {
-                    SDL_Log("  quad at %u: pixel (%.1f,%.1f)-(%.1f,%.1f) -> clip (%.2f,%.2f)-(%.2f,%.2f)",
-                            offset, px0, py0, px1, py1, x0, y0, x1, y1);
-                }
 
                 offset = append_quad(verts, offset, max, x0, y0, x1, y1, color);
             }
@@ -1804,42 +1793,10 @@ static void update_game(GameApp *app) {
         SDL_Log("=== UPDATE_GAME Frame %u: overlay_vertex_count=%u ===", frame_count, app->overlay_vertex_count);
     }
 
-    if (frame_count < 5 || (app->overlay_vertex_count > 7937 && frame_count < 10)) {
-        SDL_Log("Frame %u: overlay_vertex_count=%u", frame_count, app->overlay_vertex_count);
-
-        if (app->overlay_vertex_count > 7937) {
-            SDL_Log("  Vertex buffer dump at offset 7932-7937:");
-            for (uint32_t i = 7932; i <= 7937 && i < app->overlay_vertex_count; i++) {
-                OverlayVertex *v = &app->overlay_cpu_vertices[i];
-                SDL_Log("  v[%u]: pos=(%.2f,%.2f) color=(%.2f,%.2f,%.2f,%.2f)",
-                        i, v->position[0], v->position[1], v->color[0], v->color[1], v->color[2], v->color[3]);
-            }
-        }
-    }
-
     if (app->overlay_vertex_count > 0) {
-        // Debug: Check source buffer before memcpy
-        if (frame_count < 5 && app->overlay_vertex_count > 7925) {
-            SDL_Log("  Source buffer (app->overlay_cpu_vertices) at 7920-7925:");
-            for (uint32_t i = 7920; i <= 7925; i++) {
-                OverlayVertex *v = &app->overlay_cpu_vertices[i];
-                SDL_Log("    v[%u]: pos=(%.2f,%.2f)", i, v->position[0], v->position[1]);
-            }
-        }
-
         OverlayVertex *mapped = (OverlayVertex *)SDL_MapGPUTransferBuffer(app->device, app->overlay_transfer_buffer, false);
         if (mapped) {
             base_memmove(mapped, app->overlay_cpu_vertices, sizeof(OverlayVertex) * app->overlay_vertex_count);
-
-            // Debug: Check destination buffer after memcpy
-            if (frame_count < 5 && app->overlay_vertex_count > 7925) {
-                SDL_Log("  Dest buffer (mapped transfer) at 7920-7925:");
-                for (uint32_t i = 7920; i <= 7925; i++) {
-                    OverlayVertex *v = &mapped[i];
-                    SDL_Log("    v[%u]: pos=(%.2f,%.2f)", i, v->position[0], v->position[1]);
-                }
-            }
-
             SDL_UnmapGPUTransferBuffer(app->device, app->overlay_transfer_buffer);
         }
     }
