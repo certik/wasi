@@ -19,6 +19,10 @@ typedef __builtin_va_list __gnuc_va_list;
 #define SDL_MAIN_USE_CALLBACKS 1
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
+
+// STB image for texture loading
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
@@ -159,6 +163,8 @@ typedef struct {
     SDL_GPUTransferBuffer *overlay_transfer_buffer;
 
     SDL_GPUTexture *depth_texture;
+    SDL_GPUTexture *floor_texture;
+    SDL_GPUSampler *floor_sampler;
 
     uint32_t scene_vertex_count;
     uint32_t scene_index_count;
@@ -1444,7 +1450,7 @@ static int complete_gpu_setup(GameApp *app) {
         .entrypoint = "main_vertex",
         .format = app->shader_format,
         .stage = SDL_GPU_SHADERSTAGE_VERTEX,
-        .num_samplers = 0,
+        .num_samplers = 1,
         .num_uniform_buffers = 1,
         .num_storage_buffers = 0,
         .num_storage_textures = 0,
@@ -1461,6 +1467,10 @@ static int complete_gpu_setup(GameApp *app) {
     shader_info.code_size = shader_code_size(scene_fs_code);
     shader_info.entrypoint = "main_fragment";
     shader_info.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
+    shader_info.num_samplers = 1;
+    shader_info.num_uniform_buffers = 1;
+    shader_info.num_storage_buffers = 0;
+    shader_info.num_storage_textures = 0;
     SDL_GPUShader *scene_fs = SDL_CreateGPUShader(app->device, &shader_info);
     if (!scene_fs) {
         SDL_Log("Failed to create scene fragment shader: %s", SDL_GetError());
@@ -1642,6 +1652,101 @@ static int complete_gpu_setup(GameApp *app) {
         SDL_Log("Failed to create overlay vertex buffer: %s", SDL_GetError());
         return -1;
     }
+
+    // Load floor texture
+    SDL_Log("Loading floor texture from assets/WoodFloor007_1K-JPG_Color.jpg");
+    int tex_width, tex_height, tex_channels;
+    unsigned char *tex_data = stbi_load("assets/WoodFloor007_1K-JPG_Color.jpg", &tex_width, &tex_height, &tex_channels, 4);
+    if (!tex_data) {
+        SDL_Log("Failed to load floor texture: %s", stbi_failure_reason());
+        return -1;
+    }
+    SDL_Log("Loaded texture: %dx%d, %d channels", tex_width, tex_height, tex_channels);
+
+    // Create GPU texture
+    SDL_GPUTextureCreateInfo tex_info = {
+        .usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
+        .format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+        .width = (Uint32)tex_width,
+        .height = (Uint32)tex_height,
+        .layer_count_or_depth = 1,
+        .num_levels = 1,
+    };
+    app->floor_texture = SDL_CreateGPUTexture(app->device, &tex_info);
+    if (!app->floor_texture) {
+        SDL_Log("Failed to create floor texture: %s", SDL_GetError());
+        stbi_image_free(tex_data);
+        return -1;
+    }
+
+    // Create transfer buffer for texture upload
+    Uint32 tex_data_size = (Uint32)(tex_width * tex_height * 4);
+    SDL_GPUTransferBufferCreateInfo tex_transfer_info = {
+        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+        .size = tex_data_size,
+    };
+    SDL_GPUTransferBuffer *tex_transfer_buffer = SDL_CreateGPUTransferBuffer(app->device, &tex_transfer_info);
+    if (!tex_transfer_buffer) {
+        SDL_Log("Failed to create texture transfer buffer: %s", SDL_GetError());
+        stbi_image_free(tex_data);
+        return -1;
+    }
+
+    // Map and copy texture data
+    unsigned char *mapped_tex = (unsigned char *)SDL_MapGPUTransferBuffer(app->device, tex_transfer_buffer, false);
+    if (!mapped_tex) {
+        SDL_Log("Failed to map texture transfer buffer: %s", SDL_GetError());
+        SDL_ReleaseGPUTransferBuffer(app->device, tex_transfer_buffer);
+        stbi_image_free(tex_data);
+        return -1;
+    }
+    SDL_memcpy(mapped_tex, tex_data, tex_data_size);
+    SDL_UnmapGPUTransferBuffer(app->device, tex_transfer_buffer);
+    stbi_image_free(tex_data);
+
+    // Upload texture data to GPU
+    SDL_GPUCommandBuffer *tex_cmdbuf = SDL_AcquireGPUCommandBuffer(app->device);
+    SDL_GPUCopyPass *tex_copy_pass = SDL_BeginGPUCopyPass(tex_cmdbuf);
+    
+    SDL_GPUTextureTransferInfo tex_transfer_src = {
+        .transfer_buffer = tex_transfer_buffer,
+        .offset = 0,
+        .pixels_per_row = (Uint32)tex_width,
+        .rows_per_layer = (Uint32)tex_height,
+    };
+    
+    SDL_GPUTextureRegion tex_region = {
+        .texture = app->floor_texture,
+        .mip_level = 0,
+        .layer = 0,
+        .x = 0,
+        .y = 0,
+        .z = 0,
+        .w = (Uint32)tex_width,
+        .h = (Uint32)tex_height,
+        .d = 1,
+    };
+    
+    SDL_UploadToGPUTexture(tex_copy_pass, &tex_transfer_src, &tex_region, false);
+    SDL_EndGPUCopyPass(tex_copy_pass);
+    SDL_SubmitGPUCommandBuffer(tex_cmdbuf);
+    SDL_ReleaseGPUTransferBuffer(app->device, tex_transfer_buffer);
+
+    // Create sampler
+    SDL_GPUSamplerCreateInfo sampler_info = {
+        .min_filter = SDL_GPU_FILTER_LINEAR,
+        .mag_filter = SDL_GPU_FILTER_LINEAR,
+        .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR,
+        .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
+        .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
+        .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
+    };
+    app->floor_sampler = SDL_CreateGPUSampler(app->device, &sampler_info);
+    if (!app->floor_sampler) {
+        SDL_Log("Failed to create floor sampler: %s", SDL_GetError());
+        return -1;
+    }
+    SDL_Log("Floor texture and sampler created successfully");
 
     GameState *state = &app->state;
     gm_init_game_state(state, g_map_data, MAP_WIDTH, MAP_HEIGHT, start_x, start_z, start_yaw);
@@ -1850,6 +1955,15 @@ static int render_game(GameApp *app) {
 
     SDL_BindGPUGraphicsPipeline(render_pass, app->scene_pipeline);
     SDL_PushGPUVertexUniformData(cmdbuf, 0, &app->scene_uniforms, sizeof(SceneUniforms));
+    SDL_PushGPUFragmentUniformData(cmdbuf, 0, &app->scene_uniforms, sizeof(SceneUniforms));
+
+    // Bind floor texture and sampler (for both vertex and fragment stages)
+    SDL_GPUTextureSamplerBinding texture_binding = {
+        .texture = app->floor_texture,
+        .sampler = app->floor_sampler,
+    };
+    SDL_BindGPUVertexSamplers(render_pass, 0, &texture_binding, 1);
+    SDL_BindGPUFragmentSamplers(render_pass, 0, &texture_binding, 1);
 
     SDL_GPUBufferBinding vertex_binding = {
         .buffer = app->scene_vertex_buffer,
@@ -1916,6 +2030,14 @@ static void shutdown_game(GameApp *app) {
     if (app->depth_texture) {
         SDL_ReleaseGPUTexture(app->device, app->depth_texture);
         app->depth_texture = NULL;
+    }
+    if (app->floor_texture) {
+        SDL_ReleaseGPUTexture(app->device, app->floor_texture);
+        app->floor_texture = NULL;
+    }
+    if (app->floor_sampler) {
+        SDL_ReleaseGPUSampler(app->device, app->floor_sampler);
+        app->floor_sampler = NULL;
     }
     if (app->device && app->window) {
         SDL_ReleaseWindowFromGPUDevice(app->device, app->window);

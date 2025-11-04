@@ -13,6 +13,8 @@ struct VertexOutput {
 };
 
 @group(0) @binding(0) var<uniform> uniforms: SceneUniforms;
+@group(1) @binding(0) var floorTexture: texture_2d<f32>;
+@group(1) @binding(1) var floorSampler: sampler;
 
 fn checker(uv: vec2f) -> f32 {
     let scaled = floor(uv * 4.0);
@@ -24,20 +26,22 @@ fn checker(uv: vec2f) -> f32 {
 fn main(input: VertexOutput) -> @location(0) vec4f {
     var baseColor: vec3f;
     if (input.surfaceType < 0.5) {
-        baseColor = vec3f(0.1, 0.1, 0.9);
+        // Floor: sample from texture
+        let texColor = textureSample(floorTexture, floorSampler, input.uv);
+        baseColor = texColor.rgb;
     } else if (input.surfaceType < 1.5) {
-        baseColor = vec3f(0.9, 0.2, 0.2);
+        baseColor = vec3f(0.9, 0.2, 0.2) * checker(input.uv);
     } else if (input.surfaceType < 2.5) {
-        baseColor = vec3f(0.9, 0.9, 0.2);
+        baseColor = vec3f(0.9, 0.9, 0.2) * checker(input.uv);
     } else {
-        baseColor = vec3f(0.7, 0.5, 0.3);
+        baseColor = vec3f(0.7, 0.5, 0.3) * checker(input.uv);
     }
 
     let n = normalize(input.normal);
     let lightDir = normalize(vec3f(0.35, 1.0, 0.45));
     let diff = max(dot(n, lightDir), 0.15);
     let fogFactor = exp(-distance(input.worldPos, uniforms.cameraPos.xyz) * 0.08);
-    var color = baseColor * checker(input.uv) * diff;
+    var color = baseColor * diff;
     color = mix(uniforms.fogColor.xyz, color, fogFactor);
     return vec4f(color, 1.0);
 }

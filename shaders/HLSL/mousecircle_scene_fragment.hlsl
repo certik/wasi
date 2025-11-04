@@ -22,6 +22,9 @@ cbuffer SceneUniforms : register(b0, space3) {
     float4 fogColor;
 }
 
+Texture2D floorTexture : register(t0, space2);
+SamplerState floorSampler : register(s0, space2);
+
 struct FragmentInput_main {
     float surfaceType : TEXCOORD0;
     float2 uv_1 : TEXCOORD1;
@@ -48,15 +51,17 @@ float4 main(FragmentInput_main fragmentinput_main) : SV_Target0
     float3 color = (float3)0;
 
     if ((input.surfaceType < 0.5)) {
-        baseColor = float3(0.1, 0.1, 0.9);
+        // Floor: sample from texture
+        float4 texColor = floorTexture.Sample(floorSampler, input.uv);
+        baseColor = texColor.rgb;
     } else {
         if ((input.surfaceType < 1.5)) {
-            baseColor = float3(0.9, 0.2, 0.2);
+            baseColor = float3(0.9, 0.2, 0.2) * checker(input.uv);
         } else {
             if ((input.surfaceType < 2.5)) {
-                baseColor = float3(0.9, 0.9, 0.2);
+                baseColor = float3(0.9, 0.9, 0.2) * checker(input.uv);
             } else {
-                baseColor = float3(0.7, 0.5, 0.3);
+                baseColor = float3(0.7, 0.5, 0.3) * checker(input.uv);
             }
         }
     }
@@ -65,9 +70,7 @@ float4 main(FragmentInput_main fragmentinput_main) : SV_Target0
     float diff = max(dot(n, lightDir), 0.15);
     float4 _e40 = cameraPos;
     float fogFactor = exp((-(distance(input.worldPos, _e40.xyz)) * 0.08));
-    float3 _e47 = baseColor;
-    const float _e49 = checker(input.uv);
-    color = ((_e47 * _e49) * diff);
+    color = baseColor * diff;
     float4 _e55 = fogColor;
     float3 _e57 = color;
     color = lerp(_e55.xyz, _e57, fogFactor);
