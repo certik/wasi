@@ -6,7 +6,7 @@ use std::process;
 
 use naga::back::{hlsl, msl, spv};
 use naga::valid::{Capabilities, ValidationFlags, Validator};
-use naga::{AddressSpace, ResourceBinding};
+use naga::{AddressSpace, ResourceBinding, StorageAccess, TypeInner};
 
 const NAGA_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -112,21 +112,40 @@ fn generate_msl(
                         binding: binding.binding,
                     };
 
-                    // Map to Metal buffer slot
-                    let bind_target = match global_var.space {
-                        AddressSpace::Uniform | AddressSpace::Storage { .. } => {
-                            msl::BindTarget {
-                                buffer: Some(binding.binding as u8),
-                                texture: None,
-                                sampler: None,
-                                mutable: matches!(
-                                    global_var.space,
-                                    AddressSpace::Storage { access } if access.contains(naga::StorageAccess::STORE)
-                                ),
+                    let mut bind_target = msl::BindTarget::default();
+
+                    match global_var.space {
+                        AddressSpace::Uniform => {
+                            bind_target.buffer = Some(binding.binding as u8);
+                        }
+                        AddressSpace::Storage { access } => {
+                            bind_target.buffer = Some(binding.binding as u8);
+                            bind_target.mutable = access.contains(StorageAccess::STORE);
+                        }
+                        AddressSpace::Handle => {
+                            let ty = &module.types[global_var.ty];
+                            match ty.inner {
+                                TypeInner::Sampler { .. } => {
+                                    bind_target.sampler = Some(msl::BindSamplerTarget::Resource(
+                                        binding.binding as u8,
+                                    ));
+                                }
+                                TypeInner::Image { .. } => {
+                                    bind_target.texture = Some(binding.binding as u8);
+                                }
+                                _ => continue,
                             }
                         }
                         _ => continue,
-                    };
+                    }
+
+                    // Skip targets that didn't map to any resource slot
+                    if bind_target.buffer.is_none()
+                        && bind_target.texture.is_none()
+                        && bind_target.sampler.is_none()
+                    {
+                        continue;
+                    }
 
                     resources.insert(resource_binding, bind_target);
                 }
