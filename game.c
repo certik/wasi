@@ -1683,12 +1683,35 @@ static int complete_gpu_setup(GameApp *app) {
         return -1;
     }
 
+    // Log the loaded surface format for debugging
+    SDL_Log("Loaded texture: %dx%d, format=0x%08x, pitch=%d",
+            surface->w, surface->h, surface->format, surface->pitch);
+
+    // Ensure surface is in RGBA32 format
+    // On WASM, our implementation already returns RGBA32
+    // On native platforms, we may need to convert
+#if !defined(__wasm__) && !defined(__wasi__)
+    SDL_Surface *converted_surface = NULL;
+    if (surface->format != SDL_PIXELFORMAT_RGBA32 &&
+        surface->format != SDL_PIXELFORMAT_ABGR32) {
+        // Convert to RGBA32
+        SDL_Log("Converting surface from format 0x%08x to RGBA32", surface->format);
+        converted_surface = SDL_ConvertSurface(surface, SDL_PIXELFORMAT_RGBA32);
+        SDL_DestroySurface(surface);
+        if (!converted_surface) {
+            SDL_Log("Failed to convert surface: %s", SDL_GetError());
+            return -1;
+        }
+        surface = converted_surface;
+        SDL_Log("Converted texture: %dx%d, format=0x%08x, pitch=%d",
+                surface->w, surface->h, surface->format, surface->pitch);
+    }
+#endif
+
     int tex_width = surface->w;
     int tex_height = surface->h;
     unsigned char *tex_data = (unsigned char *)surface->pixels;
     Uint32 tex_data_size = (Uint32)(tex_width * tex_height * 4);
-
-    SDL_Log("Loaded texture: %dx%d", tex_width, tex_height);
 
     // Create GPU texture
     SDL_GPUTextureCreateInfo tex_info = {
