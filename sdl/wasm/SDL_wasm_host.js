@@ -2,6 +2,8 @@ const fsDecoder = new TextDecoder('utf-8');
 
 export function createWasmSDLHost(device, canvas) {
             let memory = null;
+            let wasmBuddyAlloc = null;
+            let wasmBuddyFree = null;
             let nextHandle = 1;
             const decoder = new TextDecoder('utf-8');
             const encoder = new TextEncoder();
@@ -671,19 +673,26 @@ export function createWasmSDLHost(device, canvas) {
                 },
 
                 map_gpu_transfer_buffer(deviceHandle, bufferHandle, cycle) {
-                    if (!memory) return 0;
+                    if (!memory || !wasmBuddyAlloc) return 0;
                     const transferBuf = transferBuffers.get(bufferHandle);
                     if (!transferBuf) return 0;
 
-                    // Allocate space in WASM memory by growing if needed
-                    // For simplicity, use a fixed region at the end of heap
-                    const heapBase = 65536; // Start after first 64KB
-                    const ptr = heapBase + bufferHandle * 8192; // Give each buffer 8KB offset
+                    // If already mapped, return existing pointer
+                    if (transferBuf.mappedPtr) {
+                        return transferBuf.mappedPtr;
+                    }
 
-                    // Store the pointer so we can read from it later
+                    // Use buddy allocator to allocate memory for this buffer
+                    const ptr = wasmBuddyAlloc(transferBuf.size);
+                    if (!ptr) {
+                        console.error('[SDL] MapGPUTransferBuffer: buddy_alloc failed for size', transferBuf.size);
+                        return 0;
+                    }
+
+                    // Store the pointer so we can read from it later and free it on unmap
                     transferBuf.mappedPtr = ptr;
 
-                    console.log('[SDL] MapGPUTransferBuffer, handle:', bufferHandle, 'ptr:', ptr);
+                    console.log('[SDL] MapGPUTransferBuffer, handle:', bufferHandle, 'size:', transferBuf.size, 'ptr:', ptr);
                     return ptr;
                 },
 
@@ -692,7 +701,7 @@ export function createWasmSDLHost(device, canvas) {
                     if (!transferBuf || !transferBuf.mappedPtr) return;
 
                     // Read the data from WASM memory into our transfer buffer
-                    if (memory) {
+                    if (memory && transferBuf.mappedPtr) {
                         const data = new Uint8Array(memory.buffer, transferBuf.mappedPtr, transferBuf.size);
                         transferBuf.mappedData = data.slice(); // Copy the data
 
@@ -737,6 +746,12 @@ export function createWasmSDLHost(device, canvas) {
                         } else {
                             console.log('[SDL] UnmapGPUTransferBuffer, size:', transferBuf.size);
                         }
+                    }
+
+                    // Free the allocated memory using buddy_free
+                    if (wasmBuddyFree && transferBuf.mappedPtr) {
+                        wasmBuddyFree(transferBuf.mappedPtr);
+                        transferBuf.mappedPtr = null;
                     }
                 },
 
@@ -1040,6 +1055,11 @@ export function createWasmSDLHost(device, canvas) {
                 imports,
                 setMemory(mem) {
                     memory = mem;
+                },
+                setBuddyAllocFunctions(allocFn, freeFn) {
+                    wasmBuddyAlloc = allocFn;
+                    wasmBuddyFree = freeFn;
+                    console.log('[SDL] Buddy allocator functions registered');
                 },
             };
         }

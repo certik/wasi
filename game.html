@@ -98,6 +98,17 @@ const stdoutDecoder = new TextDecoder();
             sdlHost.setMemory(wasmMemory);
             wasiFs.setMemory(wasmMemory);
 
+            // Pass buddy allocator functions to SDL host for GPU buffer allocation
+            if (wasmInstance.exports.wasm_buddy_alloc && wasmInstance.exports.wasm_buddy_free) {
+                sdlHost.setBuddyAllocFunctions(
+                    wasmInstance.exports.wasm_buddy_alloc,
+                    wasmInstance.exports.wasm_buddy_free
+                );
+                console.log('[Init] Buddy allocator functions bound');
+            } else {
+                console.error('[Init] Missing buddy allocator exports!');
+            }
+
             // Call main
             const app_init = wasmInstance.exports.app_init;
             const app_iterate = wasmInstance.exports.app_iterate;
