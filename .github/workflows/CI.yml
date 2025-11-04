@@ -33,7 +33,7 @@ jobs:
             pixi-command: |
               call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" || exit /b 1
               pixi run -e windows test_windows a1 b2 c3 || exit /b 1
-              echo test input data | pixi run -e windows arena_windows.exe --test-input || exit /b 1
+              echo test input data | pixi run -e windows ./arena_windows.exe --test-input || exit /b 1
               pixi run -e windows test_wordfreq_windows || exit /b 1
               pixi run -e windows test_game_windows --test-frames 5 || exit /b 1
           - platform: wasm
@@ -48,13 +48,13 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     name: Test ${{ matrix.platform }}
-    
+
     steps:
       - uses: actions/checkout@v4
 
-      - uses: prefix-dev/setup-pixi@v0.8.11
+      - uses: prefix-dev/setup-pixi@v0.9.3
         with:
-          pixi-version: v0.49.0
+          pixi-version: v0.59.0
           cache: true
 
       - name: Setup wasmtime
