@@ -21,6 +21,7 @@ typedef __builtin_va_list __gnuc_va_list;
 #include <SDL3/SDL_main.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
 
 #include <base/arena.h>
 #include <base/buddy.h>
@@ -122,8 +123,20 @@ typedef struct {
 
 typedef struct {
     float position[2];
+    float pad[2];
     float color[4];
 } OverlayVertex;
+
+static inline OverlayVertex overlay_vertex_make(float x, float y, const float color[4]) {
+    return (OverlayVertex){
+        {x, y},
+        {0.0f, 0.0f},
+        {color[0], color[1], color[2], color[3]},
+    };
+}
+
+_Static_assert(offsetof(OverlayVertex, color) == sizeof(float) * 4, "OverlayVertex color must be 16b aligned");
+_Static_assert(sizeof(OverlayVertex) == sizeof(float) * 8, "OverlayVertex unexpected size");
 
 typedef struct {
     mat4 mvp;
@@ -1028,12 +1041,12 @@ static uint32_t append_quad(OverlayVertex *verts, uint32_t offset, uint32_t max,
                 offset, x0, y0, x1, y1, quad_width, quad_height);
     }
 
-    verts[offset + 0] = (OverlayVertex){ {x0, y0}, {color[0], color[1], color[2], color[3]} };
-    verts[offset + 1] = (OverlayVertex){ {x1, y0}, {color[0], color[1], color[2], color[3]} };
-    verts[offset + 2] = (OverlayVertex){ {x0, y1}, {color[0], color[1], color[2], color[3]} };
-    verts[offset + 3] = (OverlayVertex){ {x1, y0}, {color[0], color[1], color[2], color[3]} };
-    verts[offset + 4] = (OverlayVertex){ {x1, y1}, {color[0], color[1], color[2], color[3]} };
-    verts[offset + 5] = (OverlayVertex){ {x0, y1}, {color[0], color[1], color[2], color[3]} };
+    verts[offset + 0] = overlay_vertex_make(x0, y0, color);
+    verts[offset + 1] = overlay_vertex_make(x1, y0, color);
+    verts[offset + 2] = overlay_vertex_make(x0, y1, color);
+    verts[offset + 3] = overlay_vertex_make(x1, y0, color);
+    verts[offset + 4] = overlay_vertex_make(x1, y1, color);
+    verts[offset + 5] = overlay_vertex_make(x0, y1, color);
     return offset + 6;
 }
 
@@ -1063,10 +1076,7 @@ static uint32_t append_convex_quad(OverlayVertex *verts, uint32_t offset, uint32
     static const int order[6] = {0, 1, 2, 0, 2, 3};
     for (int i = 0; i < 6; i++) {
         int idx = order[i];
-        verts[offset + i] = (OverlayVertex){
-            {points[idx][0], points[idx][1]},
-            {color[0], color[1], color[2], color[3]}
-        };
+        verts[offset + i] = overlay_vertex_make(points[idx][0], points[idx][1], color);
     }
     return offset + 6;
 }
@@ -1103,10 +1113,7 @@ static uint32_t append_triangle(OverlayVertex *verts, uint32_t offset, uint32_t 
     }
 
     for (int i = 0; i < 3; i++) {
-        verts[offset + i] = (OverlayVertex){
-            {points[i][0], points[i][1]},
-            {color[0], color[1], color[2], color[3]}
-        };
+        verts[offset + i] = overlay_vertex_make(points[i][0], points[i][1], color);
     }
     return offset + 3;
 }
@@ -1116,14 +1123,6 @@ static uint32_t append_glyph(OverlayVertex *verts, uint32_t offset, uint32_t max
                              float canvas_w, float canvas_h, unsigned char ch,
                              const float color[4]) {
     const uint32_t *glyph = GM_FONT_GLYPHS[ch];
-
-    // Log if we're near the problematic offset (triangle 2644 = vertex 7932)
-    static bool logged_once = false;
-    if (!logged_once && offset >= 7920 && offset <= 7940) {
-        SDL_Log("append_glyph at offset %u: char='%c' origin=(%.1f,%.1f) canvas=%.0fx%.0f",
-                offset, (ch >= 32 && ch < 127) ? ch : '?', origin_x, origin_y, canvas_w, canvas_h);
-        logged_once = true;
-    }
 
     for (int row = 0; row < GLYPH_HEIGHT; row++) {
         uint32_t row_bits = glyph[row];
@@ -1373,8 +1372,8 @@ static bool create_scene_pipeline(GameApp *app, SDL_GPUShader *vertex_shader, SD
 
 static bool create_overlay_pipeline(GameApp *app, SDL_GPUShader *vertex_shader, SDL_GPUShader *fragment_shader) {
     SDL_GPUVertexAttribute attributes[] = {
-        {.location = 0, .buffer_slot = 0, .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, .offset = 0},
-        {.location = 1, .buffer_slot = 0, .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, .offset = sizeof(float) * 2},
+        {.location = 0, .buffer_slot = 0, .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, .offset = offsetof(OverlayVertex, position)},
+        {.location = 1, .buffer_slot = 0, .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, .offset = offsetof(OverlayVertex, color)},
     };
 
     SDL_GPUVertexBufferDescription buffer_desc = {
@@ -1793,8 +1792,9 @@ static void update_game(GameApp *app) {
         SDL_Log("=== UPDATE_GAME Frame %u: overlay_vertex_count=%u ===", frame_count, app->overlay_vertex_count);
     }
 
-    if (app->overlay_vertex_count > 0) {
-        OverlayVertex *mapped = (OverlayVertex *)SDL_MapGPUTransferBuffer(app->device, app->overlay_transfer_buffer, false);
+    // Only copy to transfer buffer if overlay changed (dirty flag is set by build_overlay)
+    if (app->overlay_dirty && app->overlay_vertex_count > 0) {
+        OverlayVertex *mapped = (OverlayVertex *)SDL_MapGPUTransferBuffer(app->device, app->overlay_transfer_buffer, true);
         if (mapped) {
             base_memcpy(mapped, app->overlay_cpu_vertices, sizeof(OverlayVertex) * app->overlay_vertex_count);
             SDL_UnmapGPUTransferBuffer(app->device, app->overlay_transfer_buffer);
@@ -1815,7 +1815,8 @@ static int render_game(GameApp *app) {
         return -1;
     }
 
-    if (app->overlay_dirty && app->overlay_vertex_count > 0) {
+    // Always upload if dirty, even if vertex_count is 0 (to clear stale data)
+    if (app->overlay_dirty) {
         SDL_GPUCopyPass *copy_pass = SDL_BeginGPUCopyPass(cmdbuf);
         SDL_GPUTransferBufferLocation src = {
             .transfer_buffer = app->overlay_transfer_buffer,
@@ -1824,9 +1825,9 @@ static int render_game(GameApp *app) {
         SDL_GPUBufferRegion dst = {
             .buffer = app->overlay_vertex_buffer,
             .offset = 0,
-            .size = sizeof(OverlayVertex) * app->overlay_vertex_count,
+            .size = app->overlay_vertex_count > 0 ? sizeof(OverlayVertex) * app->overlay_vertex_count : sizeof(OverlayVertex),
         };
-        SDL_UploadToGPUBuffer(copy_pass, &src, &dst, false);
+        SDL_UploadToGPUBuffer(copy_pass, &src, &dst, true);
         SDL_EndGPUCopyPass(copy_pass);
         app->overlay_dirty = false;
     }
