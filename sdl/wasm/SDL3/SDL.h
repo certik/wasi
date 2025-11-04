@@ -125,6 +125,10 @@ typedef enum {
 } SDL_GPUBufferUsageFlags;
 
 typedef enum {
+    SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD = 1 << 0,
+} SDL_GPUTransferBufferUsageFlags;
+
+typedef enum {
     SDL_GPU_FILTER_NEAREST,
     SDL_GPU_FILTER_LINEAR,
 } SDL_GPUFilter;
@@ -251,7 +255,7 @@ typedef struct SDL_GPUBufferCreateInfo {
 } SDL_GPUBufferCreateInfo;
 
 typedef struct SDL_GPUTransferBufferCreateInfo {
-    SDL_GPUBufferUsageFlags usage;
+    SDL_GPUTransferBufferUsageFlags usage;
     Uint32 size;
 } SDL_GPUTransferBufferCreateInfo;
 
@@ -375,6 +379,7 @@ Uint32 SDL_GetMouseState(float* x, float* y);
 bool SDL_SetWindowRelativeMouseMode(SDL_Window* window, bool enabled);
 
 size_t SDL_strlen(const char* str);
+void* SDL_memcpy(void* dst, const void* src, size_t len);
 int SDL_snprintf(char *str, size_t size, const char *format, ...);
 Uint32 SDL_GetTicks(void);
 

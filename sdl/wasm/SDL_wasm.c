@@ -6,6 +6,7 @@
 #include <stddef.h>
 #include <base/stdarg.h>
 #include <base/numconv.h>
+#include <base/mem.h>
 
 #define WASM_IMPORT(module, name) __attribute__((import_module(module), import_name(name)))
 
@@ -379,6 +380,10 @@ void SDL_Log(const char* fmt, ...) {
 
 size_t SDL_strlen(const char* str) {
     return wasm_strlen(str);
+}
+
+void* SDL_memcpy(void* dst, const void* src, size_t len) {
+    return base_memcpy(dst, src, len);
 }
 
 // Managed main bridging for WASM builds
