@@ -117,42 +117,6 @@ clang \
 
 test_wordfreq_wasm = { cmd="wasmtime --dir . wordfreq.wasm test_wordfreq.txt", depends-on=["build_wordfreq_wasm"] }
 
-build_gm_wasm = """
-clang \
-    --target=wasm32-wasi \
-    -Os \
-    -nostdlib \
-    -nostdinc \
-    -fno-builtin \
-    -I base \
-    -I stdlib \
-    -I native \
-    -I . \
-    -Wl,--no-entry \
-    -Wl,--export=find_start_position \
-    -Wl,--export=generate_mesh \
-    -Wl,--export=gm_frame \
-    -Wl,--export=__heap_base \
-    -Wl,--initial-memory=1048576 \
-    -o gm.wasm \
-    gm.c \
-    base/buddy.c \
-    base/arena.c \
-    base/scratch.c \
-    base/format.c \
-    base/base_string.c \
-    base/numconv.c \
-    base/mem.c \
-    base/io.c \
-    base/base_io.c \
-    base/assert.c \
-    base/exit.c \
-    native/wasi_wasm.c \
-    webgpu/webgpu_wasm.c
-"""
-
-test_gm_wasm = { cmd="echo 'WASM build successful: gm.wasm'", depends-on=["build_gm_wasm"] }
-
 build_hotel2gltf_wasm = """
 clang \
     --target=wasm32-wasi \
@@ -293,36 +257,6 @@ clang \
 
 test_wordfreq_linux = { cmd="./wordfreq_linux test_wordfreq.txt", depends-on=["build_wordfreq_linux"] }
 
-build_gm_linux = """
-clang \
-    -nostdlib \
-    -nostdinc \
-    -fno-builtin \
-    -I base \
-    -I stdlib \
-    -I native \
-    -I . \
-    -o gm_linux \
-    gm.c \
-    gm_test.c \
-    webgpu/webgpu_mock.c \
-    platform_mock.c \
-    base/base_io.c \
-    base/buddy.c \
-    base/arena.c \
-    base/scratch.c \
-    base/format.c \
-    base/io.c \
-    base/base_string.c \
-    base/mem.c \
-    base/numconv.c \
-    base/assert.c \
-    base/exit.c \
-    native/wasi_linux.c
-"""
-
-test_gm_linux = { cmd="./gm_linux", depends-on=["build_gm_linux"] }
-
 build_hotel2gltf_linux = """
 clang \
     -nostdlib \
@@ -451,39 +385,6 @@ clang \
 """
 
 test_wordfreq_macos = { cmd="./wordfreq_macos test_wordfreq.txt", depends-on=["build_wordfreq_macos"] }
-
-build_gm_macos = """
-clang \
-    -g \
-    -nostdlib \
-    -nostdinc \
-    -fno-builtin \
-    -I base \
-    -I stdlib \
-    -I native \
-    -I . \
-    -o gm_macos \
-    gm.c \
-    gm_test.c \
-    webgpu/webgpu_mock.c \
-    platform_mock.c \
-    base/base_io.c \
-    base/buddy.c \
-    base/arena.c \
-    base/scratch.c \
-    base/format.c \
-    base/io.c \
-    base/base_string.c \
-    base/mem.c \
-    base/numconv.c \
-    base/assert.c \
-    base/exit.c \
-    native/wasi_macos.c \
-    -lSystem \
-    -Wl,-e,__start
-"""
-
-test_gm_macos = { cmd="./gm_macos", depends-on=["build_gm_macos"] }
 
 build_hotel2gltf_macos = """
 clang \
@@ -672,65 +573,6 @@ link \
 
 test_wordfreq_windows = { cmd="wordfreq_windows.exe test_wordfreq.txt", depends-on=["build_wordfreq_windows"] }
 
-build_gm_windows = """
-cl \
-    /nologo \
-    /X \
-    /std:c11 \
-    /Zc:preprocessor \
-    /I"base" \
-    /I"stdlib" \
-    /I"native" \
-    /I"." \
-    /GS- \
-    /Gs0 \
-    /kernel \
-    /c \
-    gm.c \
-    gm_test.c \
-    webgpu/webgpu_mock.c \
-    platform_mock.c \
-    base/base_io.c \
-    base/buddy.c \
-    base/arena.c \
-    base/scratch.c \
-    base/format.c \
-    base/io.c \
-    base/base_string.c \
-    base/mem.c \
-    base/numconv.c \
-    base/assert.c \
-    base/exit.c \
-    native/wasi_windows.c \
-    && \
-link \
-    /nologo \
-    /subsystem:console \
-    /nodefaultlib \
-    /entry:_start \
-    kernel32.lib \
-    shell32.lib \
-    gm.obj \
-    gm_test.obj \
-    webgpu_mock.obj \
-    platform_mock.obj \
-    base_io.obj \
-    buddy.obj \
-    arena.obj \
-    scratch.obj \
-    format.obj \
-    io.obj \
-    base_string.obj \
-    mem.obj \
-    numconv.obj \
-    exit.obj \
-    assert.obj \
-    wasi_windows.obj \
-    /out:gm_windows.exe
-"""
-
-test_gm_windows = { cmd="gm_windows.exe", depends-on=["build_gm_windows"] }
-
 build_hotel2gltf_windows = """
 cl \
     /nologo \
@@ -853,7 +695,6 @@ sdl3 = ">=3.2.24,<4"
 [tasks]
 build_bundler = "clang -o bundler bundler.c"
 bundle_shaders = { cmd="./bundler shaders_manifest.txt shaders.bundle", depends-on=["build_bundler"] }
-serve = { cmd="python3 server.py", depends-on=["test_gm_wasm"] }
 all = { depends-on=["test_wasm", "test_linux"] }
 all_with_macos = { depends-on=["test_wasm", "test_linux", "test_macos"] }
 all_with_windows = { depends-on=["test_wasm", "test_linux", "test_windows"] }
