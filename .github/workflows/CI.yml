@@ -41,8 +41,8 @@ jobs:
             pixi-command: |
               pixi run -e wasm test_wasm a1 b2 c3
               pixi run -e wasm test_base_wasm a1 b2 c3
-              echo "test input data" | wasmtime --dir . arena.wasm --test-input
-              echo "test input data" | wasmtime --dir . arena_base.wasm --test-input
+              echo "test input data" | pixi run -e wasm wasmtime --dir . arena.wasm --test-input
+              echo "test input data" | pixi run -e wasm wasmtime --dir . arena_base.wasm --test-input
               pixi run -e wasm test_wordfreq_wasm
               pixi run -e wasm build_game_wasm
 
@@ -56,12 +56,6 @@ jobs:
         with:
           pixi-version: v0.59.0
           cache: true
-
-      - name: Setup wasmtime
-        if: matrix.platform == 'wasm'
-        uses: bytecodealliance/actions/wasmtime/setup@v1
-        with:
-          version: "32.0.0"
 
       - name: Build and test ${{ matrix.platform }}
         if: matrix.platform != 'windows'
