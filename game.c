@@ -1794,7 +1794,7 @@ static void update_game(GameApp *app) {
 
     // Only copy to transfer buffer if overlay changed (dirty flag is set by build_overlay)
     if (app->overlay_dirty && app->overlay_vertex_count > 0) {
-        OverlayVertex *mapped = (OverlayVertex *)SDL_MapGPUTransferBuffer(app->device, app->overlay_transfer_buffer, false);
+        OverlayVertex *mapped = (OverlayVertex *)SDL_MapGPUTransferBuffer(app->device, app->overlay_transfer_buffer, true);
         if (mapped) {
             base_memmove(mapped, app->overlay_cpu_vertices, sizeof(OverlayVertex) * app->overlay_vertex_count);
             SDL_UnmapGPUTransferBuffer(app->device, app->overlay_transfer_buffer);
@@ -1827,7 +1827,7 @@ static int render_game(GameApp *app) {
             .offset = 0,
             .size = app->overlay_vertex_count > 0 ? sizeof(OverlayVertex) * app->overlay_vertex_count : sizeof(OverlayVertex),
         };
-        SDL_UploadToGPUBuffer(copy_pass, &src, &dst, false);
+        SDL_UploadToGPUBuffer(copy_pass, &src, &dst, true);
         SDL_EndGPUCopyPass(copy_pass);
         app->overlay_dirty = false;
     }
