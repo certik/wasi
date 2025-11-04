@@ -315,7 +315,7 @@ clang \
 
 test_game_linux = { cmd="./game_linux", depends-on=["build_game_linux"] }
 
-[feature.linux.dependencies]
+[feature.linux.target.linux-64.dependencies]
 clang = ">=20.1.4,<21"
 sdl3 = ">=3.2.24,<4"
 
@@ -448,10 +448,11 @@ clang \
 
 test_game_macos = { cmd="./game_macos", depends-on=["build_game_macos"] }
 
-[feature.macos.dependencies]
+[feature.macos.target.osx-arm64.dependencies]
 # Use the system Clang on macOS
 #clang = ">=20.1.4,<21"
-sdl3 = ">=3.2.24,<4"
+sdl3 = "==3.3.3"
+sdl3_image = "==3.3.0"
 
 [feature.windows.tasks]
 build_windows = """
@@ -682,14 +683,15 @@ link \
 
 test_game_windows = { cmd="./game_windows", depends-on=["build_game_windows"] }
 
-[feature.windows.dependencies]
+[feature.windows.target.win-64.dependencies]
 # Note: MSVC is not available through conda-forge, so we rely on system installation
 # Users need to have Visual Studio or Build Tools for Visual Studio installed
 # The cl.exe and link.exe commands should be available in PATH
 # SDL3 is included from prefix.dev as priority
 cmake = ">=3.20"
 ninja = ">=1.10"
-sdl3 = ">=3.2.24,<4"
+sdl3 = "==3.3.3"
+sdl3_image = "==3.3.0"
 
 [tasks]
 build_bundler = "clang -o bundler bundler.c"
