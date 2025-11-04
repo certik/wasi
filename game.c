@@ -1819,7 +1819,8 @@ static int render_game(GameApp *app) {
         return -1;
     }
 
-    if (app->overlay_dirty && app->overlay_vertex_count > 0) {
+    // Always upload if dirty, even if vertex_count is 0 (to clear stale data)
+    if (app->overlay_dirty) {
         SDL_GPUCopyPass *copy_pass = SDL_BeginGPUCopyPass(cmdbuf);
         SDL_GPUTransferBufferLocation src = {
             .transfer_buffer = app->overlay_transfer_buffer,
@@ -1828,7 +1829,7 @@ static int render_game(GameApp *app) {
         SDL_GPUBufferRegion dst = {
             .buffer = app->overlay_vertex_buffer,
             .offset = 0,
-            .size = sizeof(OverlayVertex) * app->overlay_vertex_count,
+            .size = app->overlay_vertex_count > 0 ? sizeof(OverlayVertex) * app->overlay_vertex_count : sizeof(OverlayVertex),
         };
         SDL_UploadToGPUBuffer(copy_pass, &src, &dst, false);
         SDL_EndGPUCopyPass(copy_pass);
