@@ -18,20 +18,23 @@ All builds use pixi with platform-specific environments:
 
 **WebAssembly:**
 ```bash
-pixi run -e wasm build_wasm
-pixi run -e wasm test_wasm     # requires wasmtime
+pixi r build_wasm
+pixi r build_game_wasm
+pixi r test_wasm       # requires wasmtime
+pixi r test_base_wasm  # requires wasmtime
 ```
 
 **Linux:**
 ```bash
-pixi run -e linux build_linux
-pixi run -e linux test_linux
+pixi r build_linux
+pixi r test_linux
 ```
 
 **macOS:**
 ```bash
-pixi run -e macos build_macos  # macOS only
-pixi run -e macos test_macos
+pixi r build_macos  # macOS only
+pixi r test_macos
+pixi r test_game_macos
 ```
 
 **Windows:**

@@ -1,0 +1,4 @@
+shaders/WGSL/mousecircle_scene_vertex.wgsl
+shaders/WGSL/mousecircle_scene_fragment.wgsl
+shaders/WGSL/mousecircle_overlay_vertex.wgsl
+shaders/WGSL/mousecircle_overlay_fragment.wgsl

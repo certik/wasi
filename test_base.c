@@ -26,7 +26,7 @@ DEFINE_VECTOR_FOR_TYPE(int*, VecIntP)
 
 // Simple print function for base tests
 static void print(const char *str) {
-    ciovec_t iov = {str, strlen(str)};
+    ciovec_t iov = {str, base_strlen(str)};
     write_all(WASI_STDOUT_FD, &iov, 1);
 }
 
@@ -41,7 +41,7 @@ static char* test_nested_scratch_inner(Arena *outer_arena, bool avoid_conflict) 
 
     // Fill result using outer_arena AFTER inner scratch begins
     char *result = arena_alloc(outer_arena, 50);
-    strcpy(result, "ABC");
+    base_strcpy(result, "ABC");
     print("  ARENAS: inner=");
     // Simple pointer printing - just show it's set
     print(inner.arena ? "set" : "null");
@@ -50,7 +50,7 @@ static char* test_nested_scratch_inner(Arena *outer_arena, bool avoid_conflict) 
     print("\n");
 
     char *inner_temp = arena_alloc(inner.arena, 50);
-    strcpy(inner_temp, "Inner temp");
+    base_strcpy(inner_temp, "Inner temp");
     print("  In inner scratch: ");
     print(inner_temp);
     print("\n");
@@ -70,7 +70,7 @@ static void test_nested_scratch_outer(bool avoid_conflict) {
     Scratch outer = scratch_begin();
     char *outer_temp = test_nested_scratch_inner(outer.arena, avoid_conflict);
     char *outer_temp2 = arena_alloc(outer.arena, 50);
-    strcpy(outer_temp2, "XXX");
+    base_strcpy(outer_temp2, "XXX");
 
     if (avoid_conflict) {
         print("  In outer scratch after inner: ");
@@ -182,16 +182,16 @@ void test_arena(void) {
 
     print("Allocating three strings in the arena...\n");
     char s1[] = "Hello from the Arena!\n";
-    char *p_s1 = arena_alloc(main_arena, strlen(s1) + 1);
-    strcpy(p_s1, s1);
+    char *p_s1 = arena_alloc(main_arena, base_strlen(s1) + 1);
+    base_strcpy(p_s1, s1);
 
     char s2[] = "This is a standalone C program. ";
-    char *p_s2 = arena_alloc(main_arena, strlen(s2) + 1);
-    strcpy(p_s2, s2);
+    char *p_s2 = arena_alloc(main_arena, base_strlen(s2) + 1);
+    base_strcpy(p_s2, s2);
 
     char s3[] = "It works on WASM, Linux, macOS, and Windows.\n";
-    char *p_s3 = arena_alloc(main_arena, strlen(s3) + 1);
-    strcpy(p_s3, s3);
+    char *p_s3 = arena_alloc(main_arena, base_strlen(s3) + 1);
+    base_strcpy(p_s3, s3);
 
     print("Strings allocated. Printing from the arena:\n");
     print(p_s1);
@@ -202,8 +202,8 @@ void test_arena(void) {
     arena_pos_t saved_pos = arena_get_pos(main_arena);
 
     char s_temp[] = "[--THIS IS A TEMPORARY ALLOCATION THAT WILL BE ROLLED BACK--]";
-    char *p_temp = arena_alloc(main_arena, strlen(s_temp) + 1);
-    strcpy(p_temp, s_temp);
+    char *p_temp = arena_alloc(main_arena, base_strlen(s_temp) + 1);
+    base_strcpy(p_temp, s_temp);
     print("Allocated temporary string: ");
     print(p_temp);
     print("\n");
@@ -213,8 +213,8 @@ void test_arena(void) {
 
     print("Allocating again from the saved position...\n");
     char s4[] = "String 3, allocated after reset.\n";
-    char *p_s4 = arena_alloc(main_arena, strlen(s4) + 1);
-    strcpy(p_s4, s4);
+    char *p_s4 = arena_alloc(main_arena, base_strlen(s4) + 1);
+    base_strcpy(p_s4, s4);
     print("Allocated: ");
     print(p_s4);
 
@@ -231,8 +231,8 @@ void test_arena(void) {
     print("Allocating a new string to show that memory is being reused:\n");
 
     char s5[] = "This new string overwrites the old data after the reset!\n";
-    char *p_s5 = arena_alloc(main_arena, strlen(s5) + 1);
-    strcpy(p_s5, s5);
+    char *p_s5 = arena_alloc(main_arena, base_strlen(s5) + 1);
+    base_strcpy(p_s5, s5);
     print(p_s5);
 
     print("Freeing the arena...\n");
@@ -254,7 +254,7 @@ void test_arena(void) {
 
     // Allocate data that fits in first chunk
     char *block1 = arena_alloc(expand_arena, 2048);
-    strcpy(block1, "Block 1 in first chunk");
+    base_strcpy(block1, "Block 1 in first chunk");
     print("Allocated block 1: ");
     print(block1);
     print("\n");
@@ -271,7 +271,7 @@ void test_arena(void) {
         print("Error: Failed to expand arena.\n");
         wasi_proc_exit(1);
     }
-    strcpy(block2, "Block 2 forces expansion to second chunk");
+    base_strcpy(block2, "Block 2 forces expansion to second chunk");
     print("Allocated block 2 (forces expansion): ");
     print(block2);
     print("\n");
@@ -288,7 +288,7 @@ void test_arena(void) {
 
     // Allocate another block to confirm arena still works after expansion
     char *block3 = arena_alloc(expand_arena, 256);
-    strcpy(block3, "Block 3 after expansion");
+    base_strcpy(block3, "Block 3 after expansion");
     print("Allocated block 3: ");
     print(block3);
     print("\n");
@@ -310,7 +310,7 @@ void test_arena(void) {
 
     Arena *reset_test_arena = arena_new(512); // Will be rounded to MIN_CHUNK_SIZE=4096
     char *r1 = arena_alloc(reset_test_arena, 2048);
-    strcpy(r1, "R1");
+    base_strcpy(r1, "R1");
     arena_pos_t pos_after_r1 = arena_get_pos(reset_test_arena);
 
     // Verify we're in chunk 0 with 1 total chunk
@@ -319,7 +319,7 @@ void test_arena(void) {
 
     // Force expansion - allocate more than remaining space in first chunk
     char *r2 = arena_alloc(reset_test_arena, 3072);
-    strcpy(r2, "R2 in second chunk");
+    base_strcpy(r2, "R2 in second chunk");
 
     // Verify expansion occurred: 2 chunks, at index 1
     assert(arena_chunk_count(reset_test_arena) == 2);
@@ -327,7 +327,7 @@ void test_arena(void) {
 
     // Allocate more in expanded chunk
     char *r3 = arena_alloc(reset_test_arena, 512);
-    strcpy(r3, "R3 also in second chunk");
+    base_strcpy(r3, "R3 also in second chunk");
 
     // Still in chunk 1
     assert(arena_chunk_count(reset_test_arena) == 2);
@@ -351,7 +351,7 @@ void test_arena(void) {
 
     // Allocate again - should reuse the space from r2/r3
     char *r4 = arena_alloc(reset_test_arena, 256);
-    strcpy(r4, "R4 after reset");
+    base_strcpy(r4, "R4 after reset");
 
     // Still in chunk 0
     assert(arena_current_chunk_index(reset_test_arena) == 0);
@@ -382,14 +382,14 @@ void test_scratch(void) {
 
     print("Test 1: Basic scratch allocation and cleanup\n");
     char *persistent = arena_alloc(scratch_test_arena, 100);
-    strcpy(persistent, "This persists");
+    base_strcpy(persistent, "This persists");
 
     {
         Scratch scratch = scratch_begin();
         char *temp1 = arena_alloc(scratch.arena, 50);
-        strcpy(temp1, "Temporary 1");
+        base_strcpy(temp1, "Temporary 1");
         char *temp2 = arena_alloc(scratch.arena, 50);
-        strcpy(temp2, "Temporary 2");
+        base_strcpy(temp2, "Temporary 2");
         print("  Inside scratch: ");
         print(persistent);
         print(", ");
@@ -402,7 +402,7 @@ void test_scratch(void) {
     }
 
     char *after_scratch = arena_alloc(scratch_test_arena, 100);
-    strcpy(after_scratch, "After scratch");
+    base_strcpy(after_scratch, "After scratch");
     print("  After scratch end: ");
     print(persistent);
     print(", ");
@@ -419,7 +419,7 @@ void test_scratch(void) {
     {
         Scratch scratch = scratch_begin();
         char *temp = arena_alloc(scratch.arena, 100);
-        strcpy(temp, "Iteration 0");
+        base_strcpy(temp, "Iteration 0");
         print("  ");
         print(temp);
         print("\n");
@@ -428,7 +428,7 @@ void test_scratch(void) {
     {
         Scratch scratch = scratch_begin();
         char *temp = arena_alloc(scratch.arena, 100);
-        strcpy(temp, "Iteration 1");
+        base_strcpy(temp, "Iteration 1");
         print("  ");
         print(temp);
         print("\n");
@@ -437,7 +437,7 @@ void test_scratch(void) {
     {
         Scratch scratch = scratch_begin();
         char *temp = arena_alloc(scratch.arena, 100);
-        strcpy(temp, "Iteration 2");
+        base_strcpy(temp, "Iteration 2");
         print("  ");
         print(temp);
         print("\n");
@@ -630,62 +630,62 @@ void test_file_flags(void) {
 
     // Test 1: WRONLY | CREAT - Create new file and write
     println(str_lit("Test 1: WASI_O_WRONLY | WASI_O_CREAT"));
-    wasi_fd_t fd = wasi_path_open(test_file, strlen(test_file), WASI_RIGHTS_WRITE, WASI_O_CREAT);
+    wasi_fd_t fd = wasi_path_open(test_file, base_strlen(test_file), WASI_RIGHTS_WRITE, WASI_O_CREAT);
     assert(fd >= 0);
-    ciovec_t iov = {.buf = test_content, .buf_len = strlen(test_content)};
+    ciovec_t iov = {.buf = test_content, .buf_len = base_strlen(test_content)};
     size_t nwritten;
     uint32_t ret = wasi_fd_write(fd, &iov, 1, &nwritten);
     assert(ret == 0);
-    assert(nwritten == strlen(test_content));
+    assert(nwritten == base_strlen(test_content));
     assert(wasi_fd_close(fd) == 0);
     println(str_lit("  Created and wrote to file"));
 
     // Test 2: RDONLY - Read from existing file
     println(str_lit("Test 2: WASI_O_RDONLY"));
-    fd = wasi_path_open(test_file, strlen(test_file), WASI_RIGHTS_READ, 0);
+    fd = wasi_path_open(test_file, base_strlen(test_file), WASI_RIGHTS_READ, 0);
     assert(fd >= 0);
     char read_buf[100] = {0};
     iovec_t read_iov = {.iov_base = read_buf, .iov_len = 99};
     size_t nread;
     int read_ret = wasi_fd_read(fd, &read_iov, 1, &nread);
     assert(read_ret == 0);
-    assert(nread == strlen(test_content));
-    assert(memcmp(read_buf, test_content, nread) == 0);
+    assert(nread == base_strlen(test_content));
+    assert(base_memcmp(read_buf, test_content, nread) == 0);
     assert(wasi_fd_close(fd) == 0);
     println(str_lit("  Read file successfully: {}"), read_buf);
 
     // Test 3: WRONLY | TRUNC - Truncate and write new content
     println(str_lit("Test 3: WASI_O_WRONLY | WASI_O_TRUNC"));
-    fd = wasi_path_open(test_file, strlen(test_file), WASI_RIGHTS_WRITE, WASI_O_TRUNC);
+    fd = wasi_path_open(test_file, base_strlen(test_file), WASI_RIGHTS_WRITE, WASI_O_TRUNC);
     assert(fd >= 0);
-    ciovec_t trunc_iov = {.buf = new_content, .buf_len = strlen(new_content)};
+    ciovec_t trunc_iov = {.buf = new_content, .buf_len = base_strlen(new_content)};
     ret = wasi_fd_write(fd, &trunc_iov, 1, &nwritten);
     assert(ret == 0);
-    assert(nwritten == strlen(new_content));
+    assert(nwritten == base_strlen(new_content));
     assert(wasi_fd_close(fd) == 0);
     println(str_lit("  Truncated and wrote new content"));
 
     // Test 4: RDONLY - Verify truncation worked
     println(str_lit("Test 4: Verify truncation"));
-    fd = wasi_path_open(test_file, strlen(test_file), WASI_RIGHTS_READ, 0);
+    fd = wasi_path_open(test_file, base_strlen(test_file), WASI_RIGHTS_READ, 0);
     assert(fd >= 0);
-    memset(read_buf, 0, sizeof(read_buf));
+    base_memset(read_buf, 0, sizeof(read_buf));
     read_iov.iov_base = read_buf;
     read_iov.iov_len = 99;
     read_ret = wasi_fd_read(fd, &read_iov, 1, &nread);
     assert(read_ret == 0);
-    assert(nread == strlen(new_content));
-    assert(memcmp(read_buf, new_content, nread) == 0);
+    assert(nread == base_strlen(new_content));
+    assert(base_memcmp(read_buf, new_content, nread) == 0);
     assert(wasi_fd_close(fd) == 0);
     println(str_lit("  Verified truncated content: {}"), read_buf);
 
     // Test 5: RDWR - Read and write with same fd
     println(str_lit("Test 5: WASI_O_RDWR"));
-    fd = wasi_path_open(test_file, strlen(test_file), WASI_RIGHTS_RDWR, 0);
+    fd = wasi_path_open(test_file, base_strlen(test_file), WASI_RIGHTS_RDWR, 0);
     assert(fd >= 0);
 
     // Read current content
-    memset(read_buf, 0, sizeof(read_buf));
+    base_memset(read_buf, 0, sizeof(read_buf));
     read_iov.iov_base = read_buf;
     read_iov.iov_len = 99;
     read_ret = wasi_fd_read(fd, &read_iov, 1, &nread);
@@ -700,20 +700,20 @@ void test_file_flags(void) {
 
     // Write over it
     const char* rdwr_content = "RDWR!";
-    ciovec_t rdwr_iov = {.buf = rdwr_content, .buf_len = strlen(rdwr_content)};
+    ciovec_t rdwr_iov = {.buf = rdwr_content, .buf_len = base_strlen(rdwr_content)};
     ret = wasi_fd_write(fd, &rdwr_iov, 1, &nwritten);
     assert(ret == 0);
-    assert(nwritten == strlen(rdwr_content));
+    assert(nwritten == base_strlen(rdwr_content));
     assert(wasi_fd_close(fd) == 0);
     println(str_lit("  Wrote with RDWR"));
 
     // Test 6: RDWR | CREAT - Create if doesn't exist
     println(str_lit("Test 6: WASI_O_RDWR | WASI_O_CREAT"));
     const char* new_file = "test_rdwr_creat.txt";
-    fd = wasi_path_open(new_file, strlen(new_file), WASI_RIGHTS_RDWR, WASI_O_CREAT);
+    fd = wasi_path_open(new_file, base_strlen(new_file), WASI_RIGHTS_RDWR, WASI_O_CREAT);
     assert(fd >= 0);
     const char* creat_content = "Created with RDWR|CREAT";
-    ciovec_t creat_iov = {.buf = creat_content, .buf_len = strlen(creat_content)};
+    ciovec_t creat_iov = {.buf = creat_content, .buf_len = base_strlen(creat_content)};
     ret = wasi_fd_write(fd, &creat_iov, 1, &nwritten);
     assert(ret == 0);
     assert(wasi_fd_close(fd) == 0);
@@ -721,10 +721,10 @@ void test_file_flags(void) {
 
     // Test 7: WRONLY | CREAT | TRUNC - All flags combined
     println(str_lit("Test 7: WASI_O_WRONLY | WASI_O_CREAT | WASI_O_TRUNC"));
-    fd = wasi_path_open(test_file, strlen(test_file), WASI_RIGHTS_WRITE, WASI_O_CREAT | WASI_O_TRUNC);
+    fd = wasi_path_open(test_file, base_strlen(test_file), WASI_RIGHTS_WRITE, WASI_O_CREAT | WASI_O_TRUNC);
     assert(fd >= 0);
     const char* final_content = "Final!";
-    ciovec_t final_iov = {.buf = final_content, .buf_len = strlen(final_content)};
+    ciovec_t final_iov = {.buf = final_content, .buf_len = base_strlen(final_content)};
     ret = wasi_fd_write(fd, &final_iov, 1, &nwritten);
     assert(ret == 0);
     assert(wasi_fd_close(fd) == 0);
@@ -847,7 +847,7 @@ void test_string(void) {
     // Test str_to_cstr_copy
     char *cstr = str_to_cstr_copy(arena, s5);
     assert(cstr[11] == '\0');
-    assert(strlen(cstr) == 11);
+    assert(base_strlen(cstr) == 11);
 
     print("String function tests passed\n");
     arena_free(arena);
@@ -858,25 +858,25 @@ void test_std_fds(void) {
 
     // Test that WASI_STDOUT_FD works
     const char *msg_stdout = "Testing WASI_STDOUT_FD\n";
-    ciovec_t iov_stdout = {.buf = msg_stdout, .buf_len = strlen(msg_stdout)};
+    ciovec_t iov_stdout = {.buf = msg_stdout, .buf_len = base_strlen(msg_stdout)};
     size_t nwritten;
     uint32_t ret = wasi_fd_write(WASI_STDOUT_FD, &iov_stdout, 1, &nwritten);
     assert(ret == 0);
-    assert(nwritten == strlen(msg_stdout));
+    assert(nwritten == base_strlen(msg_stdout));
     print("WASI_STDOUT_FD works\n");
 
     // Test that WASI_STDERR_FD works
     const char *msg_stderr = "Testing WASI_STDERR_FD\n";
-    ciovec_t iov_stderr = {.buf = msg_stderr, .buf_len = strlen(msg_stderr)};
+    ciovec_t iov_stderr = {.buf = msg_stderr, .buf_len = base_strlen(msg_stderr)};
     ret = wasi_fd_write(WASI_STDERR_FD, &iov_stderr, 1, &nwritten);
     assert(ret == 0);
-    assert(nwritten == strlen(msg_stderr));
+    assert(nwritten == base_strlen(msg_stderr));
     print("WASI_STDERR_FD works\n");
 
     // Test that file operations don't interfere with standard streams
     // Open a file and verify the returned FD is not 0, 1, or 2
     const char* test_file = "test_std_fds.txt";
-    wasi_fd_t fd = wasi_path_open(test_file, strlen(test_file), WASI_RIGHTS_WRITE, WASI_O_CREAT | WASI_O_TRUNC);
+    wasi_fd_t fd = wasi_path_open(test_file, base_strlen(test_file), WASI_RIGHTS_WRITE, WASI_O_CREAT | WASI_O_TRUNC);
     assert(fd >= 0);
     assert(fd != WASI_STDIN_FD);
     assert(fd != WASI_STDOUT_FD);
@@ -888,19 +888,19 @@ void test_std_fds(void) {
 
     // Write to the file
     const char *file_content = "Test content";
-    ciovec_t iov_file = {.buf = file_content, .buf_len = strlen(file_content)};
+    ciovec_t iov_file = {.buf = file_content, .buf_len = base_strlen(file_content)};
     ret = wasi_fd_write(fd, &iov_file, 1, &nwritten);
     assert(ret == 0);
-    assert(nwritten == strlen(file_content));
+    assert(nwritten == base_strlen(file_content));
     assert(wasi_fd_close(fd) == 0);
     print("File write successful\n");
 
     // Verify stdout/stderr still work after file operations
     const char *msg_after = "stdout works after file ops\n";
-    ciovec_t iov_after = {.buf = msg_after, .buf_len = strlen(msg_after)};
+    ciovec_t iov_after = {.buf = msg_after, .buf_len = base_strlen(msg_after)};
     ret = wasi_fd_write(WASI_STDOUT_FD, &iov_after, 1, &nwritten);
     assert(ret == 0);
-    assert(nwritten == strlen(msg_after));
+    assert(nwritten == base_strlen(msg_after));
 
     // Test opening multiple files to verify fcntl F_DUPFD works correctly
     // This ensures that even if FD 3 is taken, we can still open more files
@@ -908,14 +908,14 @@ void test_std_fds(void) {
     const char* file2 = "test_multi_fd2.txt";
     const char* file3 = "test_multi_fd3.txt";
 
-    wasi_fd_t fd1 = wasi_path_open(file1, strlen(file1), WASI_RIGHTS_WRITE, WASI_O_CREAT | WASI_O_TRUNC);
+    wasi_fd_t fd1 = wasi_path_open(file1, base_strlen(file1), WASI_RIGHTS_WRITE, WASI_O_CREAT | WASI_O_TRUNC);
     assert(fd1 >= 3);  // Should be >= 3 (not 0, 1, 2)
 
-    wasi_fd_t fd2 = wasi_path_open(file2, strlen(file2), WASI_RIGHTS_WRITE, WASI_O_CREAT | WASI_O_TRUNC);
+    wasi_fd_t fd2 = wasi_path_open(file2, base_strlen(file2), WASI_RIGHTS_WRITE, WASI_O_CREAT | WASI_O_TRUNC);
     assert(fd2 >= 3);  // Should be >= 3
     assert(fd2 != fd1);  // Should be different from fd1
 
-    wasi_fd_t fd3 = wasi_path_open(file3, strlen(file3), WASI_RIGHTS_WRITE, WASI_O_CREAT | WASI_O_TRUNC);
+    wasi_fd_t fd3 = wasi_path_open(file3, base_strlen(file3), WASI_RIGHTS_WRITE, WASI_O_CREAT | WASI_O_TRUNC);
     assert(fd3 >= 3);  // Should be >= 3
     assert(fd3 != fd1 && fd3 != fd2);  // Should be different from both
 
@@ -924,18 +924,18 @@ void test_std_fds(void) {
     const char* content2 = "File 2";
     const char* content3 = "File 3";
 
-    ciovec_t iov1 = {.buf = content1, .buf_len = strlen(content1)};
-    ciovec_t iov2 = {.buf = content2, .buf_len = strlen(content2)};
-    ciovec_t iov3 = {.buf = content3, .buf_len = strlen(content3)};
+    ciovec_t iov1 = {.buf = content1, .buf_len = base_strlen(content1)};
+    ciovec_t iov2 = {.buf = content2, .buf_len = base_strlen(content2)};
+    ciovec_t iov3 = {.buf = content3, .buf_len = base_strlen(content3)};
 
     ret = wasi_fd_write(fd1, &iov1, 1, &nwritten);
-    assert(ret == 0 && nwritten == strlen(content1));
+    assert(ret == 0 && nwritten == base_strlen(content1));
 
     ret = wasi_fd_write(fd2, &iov2, 1, &nwritten);
-    assert(ret == 0 && nwritten == strlen(content2));
+    assert(ret == 0 && nwritten == base_strlen(content2));
 
     ret = wasi_fd_write(fd3, &iov3, 1, &nwritten);
-    assert(ret == 0 && nwritten == strlen(content3));
+    assert(ret == 0 && nwritten == base_strlen(content3));
 
     // Close all files
     assert(wasi_fd_close(fd1) == 0);
@@ -968,7 +968,7 @@ void test_stdin(void) {
 
     // Verify we read the expected test data
     const char* expected = "test input data";
-    size_t expected_len = strlen(expected);
+    size_t expected_len = base_strlen(expected);
 
     // Debug output
     print("Read from stdin (length ");
@@ -985,7 +985,7 @@ void test_stdin(void) {
     arena_free(debug_arena);
 
     assert(nread == expected_len);
-    assert(memcmp(buffer, expected, expected_len) == 0);
+    assert(base_memcmp(buffer, expected, expected_len) == 0);
 
     print("Read from stdin: ");
     print(buffer);
@@ -1054,7 +1054,7 @@ int check_test_input_flag(void) {
             wasi_args_get(argv, argv_buf);
 
             // Check if first argument is --test-input
-            if (strcmp(argv[1], "--test-input") == 0) {
+            if (base_strcmp(argv[1], "--test-input") == 0) {
                 test_stdin();
                 buddy_free(argv);
                 buddy_free(argv_buf);

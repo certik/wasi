@@ -102,7 +102,11 @@ uint32_t wasi_fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nw
 }
 
 // Initialize the heap by reserving and committing initial memory
+#ifdef WASI_WINDOWS_SKIP_ENTRY
+void ensure_heap_initialized() {
+#else
 static void ensure_heap_initialized() {
+#endif
     if (windows_heap_base == NULL) {
         // Reserve a large virtual address space
         windows_heap_base = (uint8_t*)VirtualAlloc(NULL, RESERVED_SIZE, MEM_RESERVE, PAGE_READWRITE);
@@ -420,6 +424,7 @@ int wasi_args_get(char** argv, char* argv_buf) {
 }
 
 // Entry point for Windows - MSVC uses _start but we need to set it up correctly
+#ifndef WASI_WINDOWS_SKIP_ENTRY
 void _start() {
     init_args();
     ensure_heap_initialized();
@@ -427,3 +432,4 @@ void _start() {
     int status = main();
     wasi_proc_exit(status);
 }
+#endif

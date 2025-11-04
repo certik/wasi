@@ -1,0 +1,11 @@
+[package]
+name = "shader_compiler"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "shader_compiler"
+path = "src/main.rs"
+
+[dependencies]
+naga = { version = "26.0", features = ["wgsl-in", "msl-out", "hlsl-out", "spv-out"] }

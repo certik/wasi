@@ -119,6 +119,9 @@ int wasi_args_get(char** argv, char* argv_buf) {
 // For WASI, the entry point is `_start`, which we define to call our `main` function.
 int main();
 
+void ensure_heap_initialized() {
+}
+
 void _start() {
     buddy_init();
     int status = main();

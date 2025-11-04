@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MouseCircle - SDL3 GPU via WebGPU</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <script type="module">
+import { createWasmSDLHost } from './sdl/wasm/SDL_wasm_host.js';
+import { createFetchingVirtualFileSystem } from './sdl/wasm/SDL_wasm_vfs.js';
+import { fetchBundle } from './sdl/wasm/SDL_wasm_bundle.js';
+
+let wasmMemory = null;
+const stdoutDecoder = new TextDecoder();
+
+        async function init() {
+            const canvas = document.getElementById('canvas');
+            canvas.width = 640;
+            canvas.height = 480;
+
+            if (!navigator.gpu) {
+                alert('WebGPU not supported.');
+                return;
+            }
+
+            const adapter = await navigator.gpu.requestAdapter();
+            const device = await adapter.requestDevice();
+
+            // Create virtual filesystem
+            const wasiFs = createFetchingVirtualFileSystem();
+
+            // Load shader bundle for instant filesystem access
+            try {
+                const cacheBust = Date.now();
+                const bundleMap = await fetchBundle(`shaders.bundle?v=${cacheBust}`);
+                wasiFs.preloadFromBundle(bundleMap);
+            } catch (err) {
+                console.error('[Init] Failed to load shader bundle:', err);
+                alert('Failed to load shaders. Check console for details.');
+                return;
+            }
+
+            device.addEventListener('uncapturederror', (event) => {
+                console.error('[WebGPU] Uncaptured error:', event.error);
+            });
+
+            const sdlHost = createWasmSDLHost(device, canvas);
+
+            // Load WASM module
+            const cacheBust = Date.now();
+            const wasmResponse = await fetch(`game.wasm?v=${cacheBust}`);
+            const wasmBytes = await wasmResponse.arrayBuffer();
+
+            const wasiImports = {
+                fd_write: (fd, iovs, iovs_len, nwritten) => {
+                    if (!wasmMemory) {
+                        return 0;
+                    }
+                    let written = 0;
+                    const view = new DataView(wasmMemory.buffer);
+                    for (let i = 0; i < iovs_len; i++) {
+                        const ptr = view.getUint32(iovs + i * 8, true);
+                        const len = view.getUint32(iovs + i * 8 + 4, true);
+                        const bytes = new Uint8Array(wasmMemory.buffer, ptr, len);
+                        console.log(stdoutDecoder.decode(bytes));
+                        written += len;
+                    }
+                    view.setUint32(nwritten, written, true);
+                    return 0;
+                },
+                proc_exit: (code) => {
+                    console.log('WASM exited with code:', code);
+                    if (code != 0) {
+                        throw new Error("WASM exited with non-zero exit code");
+                    }
+                },
+                path_open: (...args) => wasiFs.path_open(...args),
+                fd_read: (...args) => wasiFs.fd_read(...args),
+                fd_seek: (...args) => wasiFs.fd_seek(...args),
+                fd_close: (...args) => wasiFs.fd_close(...args),
+                fd_tell: (...args) => wasiFs.fd_tell(...args),
+                args_sizes_get: (...args) => wasiFs.args_sizes_get(...args),
+                args_get: (...args) => wasiFs.args_get(...args),
+            };
+
+            const wasmModule = await WebAssembly.instantiate(wasmBytes, {
+                sdl: sdlHost.imports,
+                wasi_snapshot_preview1: wasiImports,
+            });
+
+            const wasmInstance = wasmModule.instance;
+            wasmMemory = wasmInstance.exports.memory;
+            sdlHost.setMemory(wasmMemory);
+            wasiFs.setMemory(wasmMemory);
+
+            // Call main
+            const app_init = wasmInstance.exports.app_init;
+            const app_iterate = wasmInstance.exports.app_iterate;
+            const app_quit = wasmInstance.exports.app_quit;
+
+            console.log('app_init()');
+            const initResult = app_init();
+            if (initResult < 0) {
+                console.error('app_init() failed');
+                return;
+            }
+
+            if (initResult > 0) {
+                console.log('app_init() completed immediately');
+                app_quit();
+                return;
+            }
+
+            let animationFrameId = null;
+            function frame() {
+                const iterateResult = app_iterate();
+                if (iterateResult === 0) {
+                    animationFrameId = requestAnimationFrame(frame);
+                } else {
+                    if (iterateResult < 0) {
+                        console.error('app_iterate() failed');
+                    }
+                    app_quit();
+
+                    // Clean up on quit
+                    document.exitPointerLock();
+                    canvas.style.display = 'none';
+                    console.log('Game ended. Canvas hidden and pointer released.');
+                }
+            }
+
+            animationFrameId = requestAnimationFrame(frame);
+        }
+
+        init();
+    </script>
+</body>
+</html>

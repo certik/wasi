@@ -1,12 +1,11 @@
 #include <base/exit.h>
 #include <base/wasi.h>
-#include <base/base_io.h>
 
-void exit(int status) {
+void base_exit(int status) {
     wasi_proc_exit(status);
 }
 
-void abort(void) {
+void base_abort(void) {
     PRINT_ERR("Aborting...");
-    exit(1);
+    base_exit(1);
 }

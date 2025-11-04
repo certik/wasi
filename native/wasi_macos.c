@@ -49,7 +49,7 @@ static const size_t RESERVED_SIZE = 1ULL << 32; // 4GB virtual space
 static int stored_argc = 0;
 static char** stored_argv = NULL;
 
-static void ensure_heap_initialized() {
+void ensure_heap_initialized() {
     if (linux_heap_base == NULL) {
         linux_heap_base = (uint8_t*)mmap(
             NULL,
@@ -248,6 +248,7 @@ int wasi_args_get(char** argv, char* argv_buf) {
 
 // Entry point for macOS.
 // macOS passes argc and argv to the entry point (unlike raw Linux)
+#ifndef WASI_MACOS_SKIP_ENTRY
 void _start(int argc, char** argv) {
     stored_argc = argc;
     stored_argv = argv;
@@ -256,3 +257,4 @@ void _start(int argc, char** argv) {
     int status = main();
     wasi_proc_exit(status);
 }
+#endif

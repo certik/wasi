@@ -89,15 +89,15 @@ void buddy_init(void) {
 
 // Helper to append a string to a buffer (simple strcat that knows buffer size)
 static void str_append_safe(char *dest, const char *src, size_t dest_size) {
-    size_t dest_len = strlen(dest);
-    size_t src_len = strlen(src);
+    size_t dest_len = base_strlen(dest);
+    size_t src_len = base_strlen(src);
     size_t space_left = dest_size - dest_len - 1; // -1 for null terminator
 
     if (src_len > space_left) {
         src_len = space_left;
     }
 
-    memcpy(dest + dest_len, src, src_len);
+    base_memcpy(dest + dest_len, src, src_len);
     dest[dest_len + src_len] = '\0';
 }
 
@@ -160,7 +160,7 @@ void buddy_print_stats() {
         char buf[32]; \
         size_t len = uint64_to_str((value), buf); \
         buf[len] = '\0'; \
-        write_all(fd, (ciovec_t[]){(ciovec_t){(label), strlen(label)}}, 1); \
+        write_all(fd, (ciovec_t[]){(ciovec_t){(label), base_strlen(label)}}, 1); \
         write_all(fd, (ciovec_t[]){(ciovec_t){" ", 1}}, 1); \
         write_all(fd, (ciovec_t[]){(ciovec_t){buf, len}}, 1); \
         write_all(fd, (ciovec_t[]){(ciovec_t){"\n", 1}}, 1); \
@@ -172,7 +172,7 @@ void buddy_print_stats() {
         char buf[32]; \
         size_t len = double_to_str(mib, buf, 2); \
         buf[len] = '\0'; \
-        write_all(fd, (ciovec_t[]){(ciovec_t){(label), strlen(label)}}, 1); \
+        write_all(fd, (ciovec_t[]){(ciovec_t){(label), base_strlen(label)}}, 1); \
         write_all(fd, (ciovec_t[]){(ciovec_t){" ", 1}}, 1); \
         write_all(fd, (ciovec_t[]){(ciovec_t){buf, len}}, 1); \
         write_all(fd, (ciovec_t[]){(ciovec_t){"\n", 1}}, 1); \
@@ -289,12 +289,12 @@ void buddy_print_stats() {
     size_t alloc_orders_len = int_to_str(total_orders_with_allocated, alloc_orders_str);
     alloc_orders_str[alloc_orders_len] = '\0';
 
-    strcpy(summary1, "Summary: ");
+    base_strcpy(summary1, "Summary: ");
     str_append_safe(summary1, free_orders_str, sizeof(summary1));
     str_append_safe(summary1, " orders have free blocks (buddy has memory at these sizes)", sizeof(summary1));
     writeln(fd, summary1);
 
-    strcpy(summary2, "         ");
+    base_strcpy(summary2, "         ");
     str_append_safe(summary2, alloc_orders_str, sizeof(summary2));
     str_append_safe(summary2, " orders have allocated blocks (user is using these sizes)", sizeof(summary2));
     writeln(fd, summary2);
@@ -327,17 +327,17 @@ void buddy_print_stats() {
         size_str[size_str_len] = '\0';
 
         if (misalignment == 0) {
-            strcpy(status, "ALIGNED");
+            base_strcpy(status, "ALIGNED");
         } else {
             char mis_str[32];
             size_t mis_str_len = uint64_to_str(misalignment, mis_str);
             mis_str[mis_str_len] = '\0';
-            strcpy(status, "MISALIGNED by ");
+            base_strcpy(status, "MISALIGNED by ");
             str_append_safe(status, mis_str, sizeof(status));
             str_append_safe(status, " bytes", sizeof(status));
         }
 
-        strcpy(line, "    Order ");
+        base_strcpy(line, "    Order ");
         str_append_safe(line, order_str, sizeof(line));
         str_append_safe(line, " (", sizeof(line));
         str_append_safe(line, size_str, sizeof(line));
@@ -375,7 +375,7 @@ void buddy_print_stats() {
             size_t padding_len = uint64_to_str(padding_needed, padding_str);
             padding_str[padding_len] = '\0';
 
-            strcpy(msg, "    Order ");
+            base_strcpy(msg, "    Order ");
             str_append_safe(msg, order_str, sizeof(msg));
             str_append_safe(msg, " (", sizeof(msg));
             str_append_safe(msg, size_str, sizeof(msg));

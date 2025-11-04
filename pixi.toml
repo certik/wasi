@@ -1,6 +1,9 @@
-[project]
+[workspace]
 authors = ["Ondřej Čertík <ondrej@certik.us>"]
-channels = ["conda-forge"]
+channels = [
+    "https://prefix.dev/sdl",  # Prioritize our SDL3 packages
+    "conda-forge"              # Fallback
+]
 name = "wasi"
 platforms = ["osx-arm64", "linux-64", "win-64"]
 version = "0.1.0"
@@ -28,6 +31,7 @@ clang \
     stdlib/stdio.c \
     stdlib/stdlib.c \
     stdlib/printf.c \
+    stdlib/string.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
@@ -52,7 +56,6 @@ clang \
     -nostdinc \
     -fno-builtin \
     -I base \
-    -I stdlib \
     -I native \
     -I . \
     -Wl,--no-entry \
@@ -62,8 +65,6 @@ clang \
     -o arena_base.wasm \
     test_base_only.c \
     test_base.c \
-    stdlib/stdio.c \
-    stdlib/stdlib.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
@@ -113,9 +114,84 @@ clang \
 
 test_wordfreq_wasm = { cmd="wasmtime --dir . wordfreq.wasm test_wordfreq.txt", depends-on=["build_wordfreq_wasm"] }
 
+build_hotel2gltf_wasm = """
+clang \
+    --target=wasm32-wasi \
+    -Os \
+    -nostdlib \
+    -nostdinc \
+    -fno-builtin \
+    -I base \
+    -I stdlib \
+    -I native \
+    -I . \
+    -Wl,--no-entry \
+    -Wl,--export=__heap_base \
+    -Wl,--export=_start \
+    -Wl,--initial-memory=1048576 \
+    -o hotel2gltf.wasm \
+    hotel2gltf.c \
+    base/base_io.c \
+    base/buddy.c \
+    base/arena.c \
+    base/scratch.c \
+    base/format.c \
+    base/io.c \
+    base/base_string.c \
+    base/mem.c \
+    base/numconv.c \
+    base/assert.c \
+    base/exit.c \
+    native/wasi_wasm.c
+"""
+
+test_hotel2gltf_wasm = { cmd="wasmtime --dir . hotel2gltf.wasm", depends-on=["build_hotel2gltf_wasm"] }
+
+build_game_wasm = """
+clang \
+    --target=wasm32-wasi \
+    -Os \
+    -nostdlib \
+    -nostdinc \
+    -fno-builtin \
+    -I base \
+    -I stdlib \
+    -I native \
+    -I sdl/wasm \
+    -I . \
+    -Wl,--no-entry \
+    -Wl,--export=app_init \
+    -Wl,--export=app_iterate \
+    -Wl,--export=app_quit \
+    -Wl,--export=__heap_base \
+    -Wl,--initial-memory=2097152 \
+    -o game.wasm \
+    game.c \
+    sdl/wasm/SDL_wasm.c \
+    base/buddy.c \
+    base/arena.c \
+    base/scratch.c \
+    base/format.c \
+    base/base_string.c \
+    base/numconv.c \
+    base/mem.c \
+    base/io.c \
+    base/base_io.c \
+    base/assert.c \
+    base/exit.c \
+    base/mat4.c \
+    base/base_math.c \
+    native/wasi_wasm.c
+"""
+
+test_game_wasm = { cmd="echo 'WASM build successful: game.wasm'", depends-on=["build_game_wasm"] }
+
+serve = { cmd="python server.py", depends-on=["test_game_wasm", "bundle_shaders"] }
+
 [feature.wasm.dependencies]
 clang = ">=20.1.4,<21"
 lld = ">=20.1.4,<21"
+python = ">=3.10"
 
 [feature.linux.tasks]
 build_linux = """
@@ -134,6 +210,7 @@ clang \
     stdlib/stdio.c \
     stdlib/stdlib.c \
     stdlib/printf.c \
+    stdlib/string.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
@@ -177,8 +254,68 @@ clang \
 
 test_wordfreq_linux = { cmd="./wordfreq_linux test_wordfreq.txt", depends-on=["build_wordfreq_linux"] }
 
+build_hotel2gltf_linux = """
+clang \
+    -nostdlib \
+    -nostdinc \
+    -fno-builtin \
+    -I base \
+    -I stdlib \
+    -I native \
+    -I . \
+    -o hotel2gltf_linux \
+    hotel2gltf.c \
+    base/base_io.c \
+    base/buddy.c \
+    base/arena.c \
+    base/scratch.c \
+    base/format.c \
+    base/io.c \
+    base/base_string.c \
+    base/mem.c \
+    base/numconv.c \
+    base/assert.c \
+    base/exit.c \
+    native/wasi_linux.c
+"""
+
+test_hotel2gltf_linux = { cmd="./hotel2gltf_linux", depends-on=["build_hotel2gltf_linux"] }
+
+build_game_linux = """
+clang \
+    -I$CONDA_PREFIX/include \
+    -L$CONDA_PREFIX/lib \
+    -Wl,-rpath,$CONDA_PREFIX/lib \
+    -DWASI_LINUX_SKIP_ENTRY \
+    -I base \
+    -I native \
+    -I . \
+    -lSDL3 \
+    -lm \
+    -Wno-macro-redefined \
+    -o game_linux \
+    game.c \
+    base/base_io.c \
+    base/buddy.c \
+    base/arena.c \
+    base/scratch.c \
+    base/format.c \
+    base/io.c \
+    base/base_string.c \
+    base/mem.c \
+    base/numconv.c \
+    base/assert.c \
+    base/exit.c \
+    base/mat4.c \
+    base/base_math.c \
+    native/wasi_linux.c
+"""
+
+test_game_linux = { cmd="./game_linux", depends-on=["build_game_linux"] }
+
 [feature.linux.dependencies]
 clang = ">=20.1.4,<21"
+sdl3 = ">=3.2.24,<4"
 
 [feature.macos.tasks]
 build_macos = """
@@ -246,9 +383,73 @@ clang \
 
 test_wordfreq_macos = { cmd="./wordfreq_macos test_wordfreq.txt", depends-on=["build_wordfreq_macos"] }
 
+build_hotel2gltf_macos = """
+clang \
+    -g \
+    -nostdlib \
+    -nostdinc \
+    -fno-builtin \
+    -I base \
+    -I stdlib \
+    -I native \
+    -I . \
+    -o hotel2gltf_macos \
+    hotel2gltf.c \
+    base/base_io.c \
+    base/buddy.c \
+    base/arena.c \
+    base/scratch.c \
+    base/format.c \
+    base/io.c \
+    base/base_string.c \
+    base/mem.c \
+    base/numconv.c \
+    base/assert.c \
+    base/exit.c \
+    native/wasi_macos.c \
+    -lSystem \
+    -Wl,-e,__start
+"""
+
+test_hotel2gltf_macos = { cmd="./hotel2gltf_macos", depends-on=["build_hotel2gltf_macos"] }
+
+build_game_macos = """
+clang \
+    -I$CONDA_PREFIX/include \
+    -L$CONDA_PREFIX/lib \
+    -Wl,-rpath,$CONDA_PREFIX/lib \
+    -DWASI_MACOS_SKIP_ENTRY \
+    -I base \
+    -I native \
+    -I . \
+    -lSDL3 \
+    -lSystem \
+    -framework Metal -framework CoreGraphics -framework AppKit \
+    -Wno-macro-redefined \
+    -o game_macos \
+    game.c \
+    base/base_io.c \
+    base/buddy.c \
+    base/arena.c \
+    base/scratch.c \
+    base/format.c \
+    base/io.c \
+    base/base_string.c \
+    base/mem.c \
+    base/numconv.c \
+    base/assert.c \
+    base/exit.c \
+    base/mat4.c \
+    base/base_math.c \
+    native/wasi_macos.c
+"""
+
+test_game_macos = { cmd="./game_macos", depends-on=["build_game_macos"] }
+
 [feature.macos.dependencies]
 # Use the system Clang on macOS
 #clang = ">=20.1.4,<21"
+sdl3 = ">=3.2.24,<4"
 
 [feature.windows.tasks]
 build_windows = """
@@ -271,6 +472,7 @@ cl \
     stdlib/stdio.c \
     stdlib/stdlib.c \
     stdlib/printf.c \
+    stdlib/string.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
@@ -297,6 +499,7 @@ link \
     stdio.obj \
     stdlib.obj \
     printf.obj \
+    string.obj \
     base_io.obj \
     buddy.obj \
     arena.obj \
@@ -367,12 +570,128 @@ link \
 
 test_wordfreq_windows = { cmd="wordfreq_windows.exe test_wordfreq.txt", depends-on=["build_wordfreq_windows"] }
 
+build_hotel2gltf_windows = """
+cl \
+    /nologo \
+    /X \
+    /std:c11 \
+    /Zc:preprocessor \
+    /I"base" \
+    /I"stdlib" \
+    /I"native" \
+    /I"." \
+    /GS- \
+    /Gs0 \
+    /kernel \
+    /c \
+    hotel2gltf.c \
+    base/base_io.c \
+    base/buddy.c \
+    base/arena.c \
+    base/scratch.c \
+    base/format.c \
+    base/io.c \
+    base/base_string.c \
+    base/mem.c \
+    base/numconv.c \
+    base/assert.c \
+    base/exit.c \
+    native/wasi_windows.c \
+    && \
+link \
+    /nologo \
+    /subsystem:console \
+    /nodefaultlib \
+    /entry:_start \
+    kernel32.lib \
+    shell32.lib \
+    hotel2gltf.obj \
+    base_io.obj \
+    buddy.obj \
+    arena.obj \
+    scratch.obj \
+    format.obj \
+    io.obj \
+    base_string.obj \
+    mem.obj \
+    numconv.obj \
+    exit.obj \
+    assert.obj \
+    wasi_windows.obj \
+    /out:hotel2gltf_windows.exe
+"""
+
+test_hotel2gltf_windows = { cmd="hotel2gltf_windows.exe", depends-on=["build_hotel2gltf_windows"] }
+
+build_game_windows = """
+cl \
+    /nologo \
+    /std:c11 \
+    /Zc:preprocessor \
+    /I"$CONDA_PREFIX/Library/include" \
+    /I"base" \
+    /I"native" \
+    /I"." \
+    /DWASI_WINDOWS_SKIP_ENTRY \
+    /MD \
+    /c \
+    game.c \
+    base/base_io.c \
+    base/buddy.c \
+    base/arena.c \
+    base/scratch.c \
+    base/format.c \
+    base/io.c \
+    base/base_string.c \
+    base/mem.c \
+    base/numconv.c \
+    base/assert.c \
+    base/exit.c \
+    base/mat4.c \
+    base/base_math.c \
+    native/wasi_windows.c \
+    && \
+link \
+    /nologo \
+    /subsystem:console \
+    /LIBPATH:"$CONDA_PREFIX/Library/lib" \
+    game.obj \
+    base_io.obj \
+    buddy.obj \
+    arena.obj \
+    scratch.obj \
+    format.obj \
+    io.obj \
+    base_string.obj \
+    mem.obj \
+    numconv.obj \
+    exit.obj \
+    assert.obj \
+    mat4.obj \
+    base_math.obj \
+    wasi_windows.obj \
+    SDL3.lib \
+    shell32.lib \
+    d3d12.lib \
+    dxgi.lib \
+    dxguid.lib \
+    /out:game_windows.exe
+"""
+
+test_game_windows = { cmd="./game_windows", depends-on=["build_game_windows"] }
+
 [feature.windows.dependencies]
 # Note: MSVC is not available through conda-forge, so we rely on system installation
 # Users need to have Visual Studio or Build Tools for Visual Studio installed
 # The cl.exe and link.exe commands should be available in PATH
+# SDL3 is included from prefix.dev as priority
+cmake = ">=3.20"
+ninja = ">=1.10"
+sdl3 = ">=3.2.24,<4"
 
 [tasks]
+build_bundler = "clang -o bundler bundler.c"
+bundle_shaders = { cmd="./bundler shaders_manifest.txt shaders.bundle", depends-on=["build_bundler"] }
 all = { depends-on=["test_wasm", "test_linux"] }
 all_with_macos = { depends-on=["test_wasm", "test_linux", "test_macos"] }
 all_with_windows = { depends-on=["test_wasm", "test_linux", "test_windows"] }
@@ -392,3 +711,8 @@ wasm = ["wasm"]
 linux = { features = ["linux"], solve-group = "linux" }
 macos = { features = ["macos"], solve-group = "macos" }
 windows = { features = ["windows"], solve-group = "windows" }
+
+# Platform-specific task overrides
+# On macOS, use system clang to avoid LTO library issues with conda clang
+[target.osx-arm64.tasks]
+build_bundler = "/usr/bin/clang -o bundler bundler.c"
