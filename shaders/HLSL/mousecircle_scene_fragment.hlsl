@@ -47,12 +47,14 @@ float checker(float2 uv)
 float4 main(FragmentInput_main fragmentinput_main) : SV_Target0
 {
     VertexOutput input = { fragmentinput_main.position, fragmentinput_main.surfaceType, fragmentinput_main.uv_1, fragmentinput_main.normal, fragmentinput_main.worldPos };
+    // Sample texture unconditionally (required for uniform control flow)
+    float4 texColor = floorTexture.Sample(floorSampler, input.uv);
+    
     float3 baseColor = (float3)0;
     float3 color = (float3)0;
 
     if ((input.surfaceType < 0.5)) {
-        // Floor: sample from texture
-        float4 texColor = floorTexture.Sample(floorSampler, input.uv);
+        // Floor: use sampled texture
         baseColor = texColor.rgb;
     } else {
         if ((input.surfaceType < 1.5)) {

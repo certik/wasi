@@ -1459,7 +1459,7 @@ static int complete_gpu_setup(GameApp *app) {
         .entrypoint = "main",
         .format = app->shader_format,
         .stage = SDL_GPU_SHADERSTAGE_VERTEX,
-        .num_samplers = 0,
+        .num_samplers = 1,
         .num_uniform_buffers = 1,
         .num_storage_buffers = 0,
         .num_storage_textures = 0,
@@ -2011,11 +2011,12 @@ static int render_game(GameApp *app) {
     SDL_PushGPUVertexUniformData(cmdbuf, 0, &app->scene_uniforms, sizeof(SceneUniforms));
     SDL_PushGPUFragmentUniformData(cmdbuf, 0, &app->scene_uniforms, sizeof(SceneUniforms));
 
-    // Bind floor texture and sampler (fragment stage only)
+    // Bind floor texture and sampler (both stages - vertex shader doesn't use it but SDL checks)
     SDL_GPUTextureSamplerBinding texture_binding = {
         .texture = app->floor_texture,
         .sampler = app->floor_sampler,
     };
+    SDL_BindGPUVertexSamplers(render_pass, 0, &texture_binding, 1);
     SDL_BindGPUFragmentSamplers(render_pass, 0, &texture_binding, 1);
 
     SDL_GPUBufferBinding vertex_binding = {
