@@ -17,6 +17,85 @@ import { fetchBundle } from './sdl/wasm/SDL_wasm_bundle.js';
 
 let wasmMemory = null;
 const stdoutDecoder = new TextDecoder();
+const FLOOR_TEXTURE_PATH = 'assets/WoodFloor007_1K-JPG_Color.jpg';
+const REQUIRED_IMAGE_ASSETS = [FLOOR_TEXTURE_PATH];
+
+function mimeTypeForPath(path) {
+    const lower = path.toLowerCase();
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    throw new Error(`Unsupported image type for ${path}`);
+}
+
+function loadImageElementFromBlob(blob) {
+    return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+            URL.revokeObjectURL(url);
+            resolve(img);
+        };
+        img.onerror = (err) => {
+            URL.revokeObjectURL(url);
+            reject(err);
+        };
+        img.src = url;
+    });
+}
+
+async function decodeImageAsset(path, bytes) {
+    const mimeType = mimeTypeForPath(path);
+    const blob = new Blob([bytes], { type: mimeType });
+    let source;
+    if (typeof createImageBitmap === 'function') {
+        source = await createImageBitmap(blob);
+    } else {
+        source = await loadImageElementFromBlob(blob);
+    }
+
+    const width = source.width || source.naturalWidth;
+    const height = source.height || source.naturalHeight;
+    let canvas;
+    if (typeof OffscreenCanvas !== 'undefined') {
+        canvas = new OffscreenCanvas(width, height);
+    } else {
+        canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+    }
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+        if (source.close) {
+            source.close();
+        }
+        throw new Error('Failed to obtain 2D context for image decoding');
+    }
+    ctx.drawImage(source, 0, 0);
+    const imageData = ctx.getImageData(0, 0, width, height);
+    if (source.close) {
+        source.close();
+    }
+    return {
+        width,
+        height,
+        pixels: new Uint8Array(imageData.data.buffer.slice(0)),
+    };
+}
+
+async function prepareImageAssets(bundleMap) {
+    const assets = new Map();
+    for (const path of REQUIRED_IMAGE_ASSETS) {
+        const bytes = bundleMap.get(path);
+        if (!bytes) {
+            throw new Error(`Required asset missing from bundle: ${path}`);
+        }
+        const decoded = await decodeImageAsset(path, bytes);
+        assets.set(path, decoded);
+        console.log(`[Init] Decoded asset ${path}: ${decoded.width}x${decoded.height}`);
+    }
+    return assets;
+}
 
         async function init() {
             const canvas = document.getElementById('canvas');
@@ -35,10 +114,14 @@ const stdoutDecoder = new TextDecoder();
             const wasiFs = createFetchingVirtualFileSystem();
 
             // Load shader bundle for instant filesystem access
+            let assetImages = new Map();
             try {
                 const cacheBust = Date.now();
                 const bundleMap = await fetchBundle(`shaders.bundle?v=${cacheBust}`);
                 wasiFs.preloadFromBundle(bundleMap);
+
+                // Decode required image assets so the WASM module can request them synchronously
+                assetImages = await prepareImageAssets(bundleMap);
             } catch (err) {
                 console.error('[Init] Failed to load shader bundle:', err);
                 alert('Failed to load shaders. Check console for details.');
@@ -49,7 +132,7 @@ const stdoutDecoder = new TextDecoder();
                 console.error('[WebGPU] Uncaptured error:', event.error);
             });
 
-            const sdlHost = createWasmSDLHost(device, canvas);
+            const sdlHost = createWasmSDLHost(device, canvas, assetImages);
 
             // Load WASM module
             const cacheBust = Date.now();

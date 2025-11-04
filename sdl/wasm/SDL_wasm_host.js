@@ -1,12 +1,13 @@
 const fsDecoder = new TextDecoder('utf-8');
 
-export function createWasmSDLHost(device, canvas) {
+export function createWasmSDLHost(device, canvas, assetImages = new Map()) {
             let memory = null;
             let wasmBuddyAlloc = null;
             let wasmBuddyFree = null;
             let nextHandle = 1;
             const decoder = new TextDecoder('utf-8');
             const encoder = new TextEncoder();
+            const imageAssets = assetImages;
 
             const context = canvas.getContext('webgpu');
             canvas.tabIndex = 0;
@@ -76,6 +77,15 @@ export function createWasmSDLHost(device, canvas) {
                 const dst = new Uint8Array(memory.buffer, ptr, maxLen);
                 dst.set(bytes.subarray(0, len));
                 dst[len] = 0; // null terminator
+            }
+
+            function getAssetImage(path) {
+                const asset = imageAssets.get(path);
+                if (!asset) {
+                    setError(`Asset not preloaded: ${path}`);
+                    return null;
+                }
+                return asset;
             }
 
             // Set up event listeners
@@ -1044,6 +1054,42 @@ export function createWasmSDLHost(device, canvas) {
                         const msg = readString(msg_ptr, msg_len);
                         console.log('[SDL Log]', msg);
                     }
+                },
+
+                get_asset_image_info(path_ptr, path_len, width_ptr, height_ptr) {
+                    if (!memory) {
+                        setError('Memory not set before image info request');
+                        return 0;
+                    }
+                    const path = readString(path_ptr, path_len);
+                    const asset = getAssetImage(path);
+                    if (!asset) {
+                        return 0;
+                    }
+                    const dv = new DataView(memory.buffer);
+                    if (width_ptr) dv.setUint32(width_ptr, asset.width, true);
+                    if (height_ptr) dv.setUint32(height_ptr, asset.height, true);
+                    return 1;
+                },
+
+                copy_asset_image_rgba(path_ptr, path_len, dest_ptr, dest_len) {
+                    if (!memory) {
+                        setError('Memory not set before image copy request');
+                        return 0;
+                    }
+                    const path = readString(path_ptr, path_len);
+                    const asset = getAssetImage(path);
+                    if (!asset) {
+                        return 0;
+                    }
+                    const required = asset.width * asset.height * 4;
+                    if (dest_len < required) {
+                        setError(`Destination buffer too small for ${path}: need ${required}, have ${dest_len}`);
+                        return 0;
+                    }
+                    const dest = new Uint8Array(memory.buffer, dest_ptr, required);
+                    dest.set(asset.pixels);
+                    return 1;
                 },
 
                 get_ticks() {

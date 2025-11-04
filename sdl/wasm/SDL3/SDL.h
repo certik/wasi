@@ -21,6 +21,7 @@ typedef struct SDL_GPURenderPass SDL_GPURenderPass;
 typedef struct SDL_GPUCopyPass SDL_GPUCopyPass;
 typedef struct SDL_GPUBuffer SDL_GPUBuffer;
 typedef struct SDL_GPUTransferBuffer SDL_GPUTransferBuffer;
+typedef struct SDL_GPUSampler SDL_GPUSampler;
 
 // Color type
 typedef struct SDL_FColor {
@@ -122,6 +123,23 @@ typedef enum {
     SDL_GPU_BUFFERUSAGE_VERTEX = 1 << 0,
     SDL_GPU_BUFFERUSAGE_INDEX = 1 << 1,
 } SDL_GPUBufferUsageFlags;
+
+typedef enum {
+    SDL_GPU_FILTER_NEAREST,
+    SDL_GPU_FILTER_LINEAR,
+} SDL_GPUFilter;
+
+typedef enum {
+    SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
+    SDL_GPU_SAMPLERMIPMAPMODE_LINEAR,
+} SDL_GPUSamplerMipmapMode;
+
+typedef enum {
+    SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
+    SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+    SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_BORDER,
+    SDL_GPU_SAMPLERADDRESSMODE_MIRRORED_REPEAT,
+} SDL_GPUSamplerAddressMode;
 
 typedef enum {
     SDL_GPU_VERTEXELEMENTFORMAT_FLOAT,
@@ -237,6 +255,15 @@ typedef struct SDL_GPUTransferBufferCreateInfo {
     Uint32 size;
 } SDL_GPUTransferBufferCreateInfo;
 
+typedef struct SDL_GPUSamplerCreateInfo {
+    SDL_GPUFilter min_filter;
+    SDL_GPUFilter mag_filter;
+    SDL_GPUSamplerMipmapMode mipmap_mode;
+    SDL_GPUSamplerAddressMode address_mode_u;
+    SDL_GPUSamplerAddressMode address_mode_v;
+    SDL_GPUSamplerAddressMode address_mode_w;
+} SDL_GPUSamplerCreateInfo;
+
 typedef struct SDL_GPUBufferBinding {
     SDL_GPUBuffer* buffer;
     Uint32 offset;
@@ -254,6 +281,30 @@ typedef struct SDL_GPUBufferRegion {
     Uint32 offset;
     Uint32 size;
 } SDL_GPUBufferRegion;
+
+typedef struct SDL_GPUTextureTransferInfo {
+    SDL_GPUTransferBuffer* transfer_buffer;
+    Uint32 offset;
+    Uint32 pixels_per_row;
+    Uint32 rows_per_layer;
+} SDL_GPUTextureTransferInfo;
+
+typedef struct SDL_GPUTextureRegion {
+    SDL_GPUTexture* texture;
+    Uint32 mip_level;
+    Uint32 layer;
+    Uint32 x;
+    Uint32 y;
+    Uint32 z;
+    Uint32 w;
+    Uint32 h;
+    Uint32 d;
+} SDL_GPUTextureRegion;
+
+typedef struct SDL_GPUTextureSamplerBinding {
+    SDL_GPUTexture* texture;
+    SDL_GPUSampler* sampler;
+} SDL_GPUTextureSamplerBinding;
 
 // App callbacks
 typedef enum SDL_AppResult {
@@ -291,6 +342,8 @@ void SDL_SubmitGPUCommandBuffer(SDL_GPUCommandBuffer* cmdbuf);
 
 SDL_GPUTexture* SDL_CreateGPUTexture(SDL_GPUDevice* device, const SDL_GPUTextureCreateInfo* info);
 void SDL_ReleaseGPUTexture(SDL_GPUDevice* device, SDL_GPUTexture* texture);
+SDL_GPUSampler* SDL_CreateGPUSampler(SDL_GPUDevice* device, const SDL_GPUSamplerCreateInfo* info);
+void SDL_ReleaseGPUSampler(SDL_GPUDevice* device, SDL_GPUSampler* sampler);
 
 SDL_GPURenderPass* SDL_BeginGPURenderPass(SDL_GPUCommandBuffer* cmdbuf, const SDL_GPUColorTargetInfo* colorTargets, Uint32 numColorTargets, const SDL_GPUDepthStencilTargetInfo* depthStencilTarget);
 void SDL_EndGPURenderPass(SDL_GPURenderPass* pass);
@@ -309,10 +362,13 @@ void SDL_UnmapGPUTransferBuffer(SDL_GPUDevice* device, SDL_GPUTransferBuffer* bu
 
 SDL_GPUCopyPass* SDL_BeginGPUCopyPass(SDL_GPUCommandBuffer* cmdbuf);
 void SDL_UploadToGPUBuffer(SDL_GPUCopyPass* copy_pass, const SDL_GPUTransferBufferLocation* source, const SDL_GPUBufferRegion* destination, bool cycle);
+void SDL_UploadToGPUTexture(SDL_GPUCopyPass* copy_pass, const SDL_GPUTextureTransferInfo* source, const SDL_GPUTextureRegion* destination, bool cycle);
 void SDL_EndGPUCopyPass(SDL_GPUCopyPass* copy_pass);
 
 void SDL_BindGPUVertexBuffers(SDL_GPURenderPass* pass, Uint32 firstSlot, const SDL_GPUBufferBinding* bindings, Uint32 numBindings);
 void SDL_BindGPUIndexBuffer(SDL_GPURenderPass* pass, const SDL_GPUBufferBinding* binding, SDL_GPUIndexElementSize indexElementSize);
+void SDL_BindGPUVertexSamplers(SDL_GPURenderPass* pass, Uint32 firstSlot, const SDL_GPUTextureSamplerBinding* bindings, Uint32 numBindings);
+void SDL_BindGPUFragmentSamplers(SDL_GPURenderPass* pass, Uint32 firstSlot, const SDL_GPUTextureSamplerBinding* bindings, Uint32 numBindings);
 
 bool SDL_PollEvent(SDL_Event* event);
 Uint32 SDL_GetMouseState(float* x, float* y);
