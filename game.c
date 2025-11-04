@@ -1117,14 +1117,6 @@ static uint32_t append_glyph(OverlayVertex *verts, uint32_t offset, uint32_t max
                              const float color[4]) {
     const uint32_t *glyph = GM_FONT_GLYPHS[ch];
 
-    // Log if we're near the problematic offset (triangle 2644 = vertex 7932)
-    static bool logged_once = false;
-    if (!logged_once && offset >= 7920 && offset <= 7940) {
-        SDL_Log("append_glyph at offset %u: char='%c' origin=(%.1f,%.1f) canvas=%.0fx%.0f",
-                offset, (ch >= 32 && ch < 127) ? ch : '?', origin_x, origin_y, canvas_w, canvas_h);
-        logged_once = true;
-    }
-
     for (int row = 0; row < GLYPH_HEIGHT; row++) {
         uint32_t row_bits = glyph[row];
         for (int col = 0; col < GLYPH_WIDTH; col++) {
@@ -1139,7 +1131,12 @@ static uint32_t append_glyph(OverlayVertex *verts, uint32_t offset, uint32_t max
                 float x1 = to_clip_x(px1, canvas_w);
                 float y1 = to_clip_y(py1, canvas_h);
 
-                offset = append_quad(verts, offset, max, x0, y0, x1, y1, color);
+                uint32_t new_offset = append_quad(verts, offset, max, x0, y0, x1, y1, color);
+                // If append_quad failed (buffer full), stop trying to add more pixels
+                if (new_offset == offset) {
+                    return offset;
+                }
+                offset = new_offset;
             }
         }
     }
@@ -1207,11 +1204,6 @@ static void build_overlay(GameApp *app) {
                  state->map_visible ? "ON" : "OFF",
                  state->hud_visible ? "ON" : "OFF");
     SDL_snprintf(lines[4], sizeof(lines[4]), "TOGGLE M/R/H/T/I/B/F");
-
-    // Clear only the vertex buffer we'll use (much cheaper than clearing all 1.1MB)
-    // This prevents stale data from appearing as artifacts when append functions
-    // fail partway through writing a glyph due to buffer limits
-    base_memset(app->overlay_cpu_vertices, 0, sizeof(OverlayVertex) * 20000); // ~480KB, covers typical usage
 
     uint32_t offset = 0;
     for (int i = 0; i < 5; i++) {
