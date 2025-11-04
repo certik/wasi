@@ -1668,44 +1668,8 @@ static int complete_gpu_setup(GameApp *app) {
     // Load floor texture using SDL3_Image
     SDL_Log("Loading floor texture from %s", FLOOR_TEXTURE_PATH);
 
-    // Load image file into memory
-    FILE *img_file = fopen(FLOOR_TEXTURE_PATH, "rb");
-    if (!img_file) {
-        SDL_Log("Failed to open image file %s", FLOOR_TEXTURE_PATH);
-        return -1;
-    }
-
-    fseek(img_file, 0, SEEK_END);
-    long img_size = ftell(img_file);
-    fseek(img_file, 0, SEEK_SET);
-
-    void *img_data = buddy_alloc((size_t)img_size);
-    if (!img_data) {
-        SDL_Log("Failed to allocate memory for image file");
-        fclose(img_file);
-        return -1;
-    }
-
-    size_t bytes_read = fread(img_data, 1, (size_t)img_size, img_file);
-    fclose(img_file);
-
-    if (bytes_read != (size_t)img_size) {
-        SDL_Log("Failed to read image file");
-        buddy_free(img_data);
-        return -1;
-    }
-
-    // Create IOStream from the file data
-    SDL_IOStream *io = SDL_IOFromConstMem(img_data, (size_t)img_size);
-    if (!io) {
-        SDL_Log("Failed to create IOStream");
-        buddy_free(img_data);
-        return -1;
-    }
-
-    // Decode the image
-    SDL_Surface *surface = IMG_Load_IO(io, true);  // closeio=true will free the IOStream
-    buddy_free(img_data);  // Free the file data after IMG_Load_IO is done
+    // Decode the image directly from the path
+    SDL_Surface *surface = IMG_Load(FLOOR_TEXTURE_PATH);
 
     if (!surface) {
         SDL_Log("Failed to load floor texture: %s", SDL_GetError());

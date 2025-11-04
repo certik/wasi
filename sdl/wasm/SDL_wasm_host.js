@@ -27,6 +27,7 @@ export function createWasmSDLHost(device, canvas) {
             const buffers = new Map();
             const transferBuffers = new Map();
             const textureViews = new Map();
+            const imageAssets = globalThis.__SDL_IMAGE_ASSETS || (globalThis.__SDL_IMAGE_ASSETS = new Map());
 
             // Mouse state
             let mouseX = 0;
@@ -111,6 +112,121 @@ export function createWasmSDLHost(device, canvas) {
                 const dst = new Uint8Array(memory.buffer, ptr, maxLen);
                 dst.set(bytes.subarray(0, len));
                 dst[len] = 0; // null terminator
+            }
+
+            function mimeTypeForPath(path) {
+                const lower = path.toLowerCase();
+                if (lower.endsWith('.png')) return 'image/png';
+                if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+                if (lower.endsWith('.webp')) return 'image/webp';
+                return null;
+            }
+
+            function isImagePath(path) {
+                return mimeTypeForPath(path) !== null;
+            }
+
+            function loadImageElementFromBlob(blob) {
+                return new Promise((resolve, reject) => {
+                    const url = URL.createObjectURL(blob);
+                    const img = new Image();
+                    img.onload = () => {
+                        URL.revokeObjectURL(url);
+                        resolve(img);
+                    };
+                    img.onerror = (err) => {
+                        URL.revokeObjectURL(url);
+                        reject(err);
+                    };
+                    img.src = url;
+                });
+            }
+
+            async function decodeImageAsset(path, bytes) {
+                const mimeType = mimeTypeForPath(path);
+                if (!mimeType) {
+                    throw new Error(`Unsupported image type for ${path}`);
+                }
+
+                const slice = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+                const blob = new Blob([slice], { type: mimeType });
+                let source;
+                if (typeof createImageBitmap === 'function') {
+                    source = await createImageBitmap(blob);
+                } else {
+                    source = await loadImageElementFromBlob(blob);
+                }
+
+                const width = source.width || source.naturalWidth;
+                const height = source.height || source.naturalHeight;
+                let canvas;
+                if (typeof OffscreenCanvas !== 'undefined') {
+                    canvas = new OffscreenCanvas(width, height);
+                } else {
+                    canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                }
+
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    if (source.close) {
+                        source.close();
+                    }
+                    throw new Error(`Failed to obtain 2D context for ${path}`);
+                }
+
+                ctx.drawImage(source, 0, 0);
+                const imageData = ctx.getImageData(0, 0, width, height);
+                if (source.close) {
+                    source.close();
+                }
+
+                return {
+                    width,
+                    height,
+                    pixels: new Uint8Array(imageData.data.buffer.slice(0)),
+                };
+            }
+
+            async function preloadImageAssetsFromBundle(bundleMap) {
+                if (!bundleMap) {
+                    return;
+                }
+
+                const tasks = [];
+                for (const [path, rawBytes] of bundleMap.entries()) {
+                    if (!isImagePath(path)) {
+                        continue;
+                    }
+                    if (imageAssets.has(path)) {
+                        continue;
+                    }
+                    const bytes = rawBytes instanceof Uint8Array ? rawBytes : new Uint8Array(rawBytes);
+                    tasks.push((async () => {
+                        try {
+                            const decoded = await decodeImageAsset(path, bytes);
+                            imageAssets.set(path, decoded);
+                            console.log(`[SDL] Pre-decoded image ${path}: ${decoded.width}x${decoded.height}`);
+                        } catch (err) {
+                            console.error(`[SDL] Failed to decode image ${path}:`, err);
+                            throw err;
+                        }
+                    })());
+                }
+
+                if (tasks.length > 0) {
+                    await Promise.all(tasks);
+                }
+            }
+
+            function getAssetImage(path) {
+                const asset = imageAssets.get(path);
+                if (!asset) {
+                    setError(`Asset not preloaded: ${path}`);
+                    return null;
+                }
+                return asset;
             }
 
             function mapFilter(value) {
@@ -1512,11 +1628,40 @@ export function createWasmSDLHost(device, canvas) {
                     }
                 },
 
-                decode_image_from_memory(data_ptr, data_len, width_out_ptr, height_out_ptr, pixels_out_ptr) {
-                    console.error('[SDL] decode_image_from_memory: Not implemented - requires Asyncify support');
-                    console.error('[SDL] Image decoding in JavaScript is async (createImageBitmap), but WASM imports must be sync');
-                    console.error('[SDL] Possible solutions: 1) Use Asyncify, 2) Pre-decode images at startup, 3) Use sync decoder');
-                    return 0;
+                get_asset_image_info(path_ptr, path_len, width_ptr, height_ptr) {
+                    if (!memory) {
+                        setError('Memory not set before image info request');
+                        return 0;
+                    }
+                    const path = readString(path_ptr, path_len);
+                    const asset = getAssetImage(path);
+                    if (!asset) {
+                        return 0;
+                    }
+                    const dv = new DataView(memory.buffer);
+                    if (width_ptr) dv.setUint32(width_ptr, asset.width, true);
+                    if (height_ptr) dv.setUint32(height_ptr, asset.height, true);
+                    return 1;
+                },
+
+                copy_asset_image_rgba(path_ptr, path_len, dest_ptr, dest_len) {
+                    if (!memory) {
+                        setError('Memory not set before image copy request');
+                        return 0;
+                    }
+                    const path = readString(path_ptr, path_len);
+                    const asset = getAssetImage(path);
+                    if (!asset) {
+                        return 0;
+                    }
+                    const required = asset.width * asset.height * 4;
+                    if (dest_len < required) {
+                        setError(`Destination buffer too small for ${path}: need ${required}, have ${dest_len}`);
+                        return 0;
+                    }
+                    const dest = new Uint8Array(memory.buffer, dest_ptr, required);
+                    dest.set(asset.pixels);
+                    return 1;
                 },
 
                 get_ticks() {
@@ -1533,6 +1678,9 @@ export function createWasmSDLHost(device, canvas) {
                     wasmBuddyAlloc = allocFn;
                     wasmBuddyFree = freeFn;
                     console.log('[SDL] Buddy allocator functions registered');
+                },
+                async preloadAssetsFromBundle(bundleMap) {
+                    await preloadImageAssetsFromBundle(bundleMap);
                 },
             };
         }

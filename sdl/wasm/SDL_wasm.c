@@ -152,8 +152,11 @@ uint32_t sdl_host_set_window_relative_mouse_mode(uint32_t window, uint32_t enabl
 WASM_IMPORT("sdl", "get_ticks")
 uint32_t sdl_host_get_ticks(void);
 
-WASM_IMPORT("sdl", "decode_image_from_memory")
-uint32_t sdl_host_decode_image_from_memory(uint32_t data_ptr, uint32_t data_len, uint32_t width_ptr, uint32_t height_ptr, uint32_t pixels_ptr);
+WASM_IMPORT("sdl", "get_asset_image_info")
+uint32_t sdl_host_get_asset_image_info(uint32_t path_ptr, uint32_t path_len, uint32_t width_ptr, uint32_t height_ptr);
+
+WASM_IMPORT("sdl", "copy_asset_image_rgba")
+uint32_t sdl_host_copy_asset_image_rgba(uint32_t path_ptr, uint32_t path_len, uint32_t dest_ptr, uint32_t dest_len);
 
 WASM_IMPORT("sdl", "upload_to_gpu_texture")
 void sdl_host_upload_to_gpu_texture(uint32_t copy_pass, uint32_t source_ptr, uint32_t destination_ptr, uint32_t cycle);
@@ -163,6 +166,28 @@ static size_t wasm_strlen(const char* str) {
     size_t len = 0;
     while (str[len]) len++;
     return len;
+}
+
+bool SDL_JSGetImageInfo(const char* path, uint32_t* out_width, uint32_t* out_height) {
+    uint32_t path_len = (uint32_t)wasm_strlen(path);
+    uint32_t result = sdl_host_get_asset_image_info(
+        (uint32_t)(uintptr_t)path,
+        path_len,
+        (uint32_t)(uintptr_t)out_width,
+        (uint32_t)(uintptr_t)out_height
+    );
+    return result != 0;
+}
+
+bool SDL_JSGetImagePixelsRGBA(const char* path, void* dest, uint32_t dest_len) {
+    uint32_t path_len = (uint32_t)wasm_strlen(path);
+    uint32_t result = sdl_host_copy_asset_image_rgba(
+        (uint32_t)(uintptr_t)path,
+        path_len,
+        (uint32_t)(uintptr_t)dest,
+        dest_len
+    );
+    return result != 0;
 }
 
 // SDL3 API implementations
@@ -722,64 +747,71 @@ SDL_IOStream* SDL_IOFromFile(const char* file, const char* mode) {
 // SDL_Image implementation for WASM
 #include <SDL3_image/SDL_image.h>
 
-SDL_Surface* IMG_Load_IO(SDL_IOStream* src, bool closeio) {
+SDL_Surface* IMG_Load(const char* file) {
     extern void* buddy_alloc(size_t size);
     extern void buddy_free(void* ptr);
 
-    if (!src) {
-        SDL_Log("IMG_Load_IO: null IOStream");
+    if (!file) {
+        SDL_Log("IMG_Load: null file path");
         return NULL;
     }
 
-    // For WASM, src->mem contains the raw image file bytes
-    if (!src->mem || src->size == 0) {
-        SDL_Log("IMG_Load_IO: IOStream has no data");
-        if (closeio) {
-            buddy_free(src);
-        }
-        return NULL;
-    }
-
-    // Call host function to decode the image
     uint32_t width = 0;
     uint32_t height = 0;
-    uint32_t pixels_ptr = 0;
-
-    uint32_t result = sdl_host_decode_image_from_memory(
-        (uint32_t)(uintptr_t)src->mem,
-        (uint32_t)src->size,
-        (uint32_t)(uintptr_t)&width,
-        (uint32_t)(uintptr_t)&height,
-        (uint32_t)(uintptr_t)&pixels_ptr
-    );
-
-    if (result == 0 || pixels_ptr == 0) {
-        SDL_Log("IMG_Load_IO: failed to decode image");
-        if (closeio) {
-            buddy_free(src);
-        }
+    if (!SDL_JSGetImageInfo(file, &width, &height)) {
+        SDL_Log("IMG_Load: failed to get image info for %s", file);
         return NULL;
     }
 
-    // Create surface structure
     SDL_Surface* surface = (SDL_Surface*)buddy_alloc(sizeof(SDL_Surface));
     if (!surface) {
-        SDL_Log("IMG_Load_IO: failed to allocate surface");
-        buddy_free((void*)(uintptr_t)pixels_ptr);
-        if (closeio) {
-            buddy_free(src);
-        }
+        SDL_Log("IMG_Load: failed to allocate surface");
         return NULL;
     }
 
-    // Fill in surface metadata
+    uint32_t pixel_size = width * height * 4;
+    void* pixels = buddy_alloc(pixel_size);
+    if (!pixels) {
+        SDL_Log("IMG_Load: failed to allocate pixel buffer");
+        buddy_free(surface);
+        return NULL;
+    }
+
+    if (!SDL_JSGetImagePixelsRGBA(file, pixels, pixel_size)) {
+        SDL_Log("IMG_Load: failed to load pixels for %s", file);
+        buddy_free(pixels);
+        buddy_free(surface);
+        return NULL;
+    }
+
     surface->w = (int)width;
     surface->h = (int)height;
     surface->format = SDL_PIXELFORMAT_RGBA32;
     surface->pitch = (int)(width * 4);
-    surface->pixels = (void*)(uintptr_t)pixels_ptr;
+    surface->pixels = pixels;
 
-    SDL_Log("IMG_Load_IO: decoded image %dx%d", width, height);
+    SDL_Log("IMG_Load: loaded %s (%ux%u)", file, width, height);
+    return surface;
+}
+
+SDL_Surface* IMG_Load_IO(SDL_IOStream* src, bool closeio) {
+    extern void buddy_free(void* ptr);
+
+    if (!src) {
+        return NULL;
+    }
+
+    const char* path = src->path;
+    if (!path && src->mem) {
+        path = (const char*)src->mem;
+    }
+
+    SDL_Surface* surface = NULL;
+    if (path) {
+        surface = IMG_Load(path);
+    } else {
+        SDL_Log("IMG_Load_IO: no path provided in IOStream");
+    }
 
     // Close IOStream if requested
     if (closeio && src) {

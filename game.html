@@ -35,9 +35,10 @@ const stdoutDecoder = new TextDecoder();
             const wasiFs = createFetchingVirtualFileSystem();
 
             // Load shader bundle for instant filesystem access
+            let bundleMap = null;
             try {
                 const cacheBust = Date.now();
-                const bundleMap = await fetchBundle(`shaders.bundle?v=${cacheBust}`);
+                bundleMap = await fetchBundle(`shaders.bundle?v=${cacheBust}`);
                 wasiFs.preloadFromBundle(bundleMap);
             } catch (err) {
                 console.error('[Init] Failed to load shader bundle:', err);
@@ -50,6 +51,7 @@ const stdoutDecoder = new TextDecoder();
             });
 
             const sdlHost = createWasmSDLHost(device, canvas);
+            await sdlHost.preloadAssetsFromBundle(bundleMap);
 
             // Load WASM module
             const cacheBust = Date.now();
