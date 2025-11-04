@@ -1,13 +1,13 @@
 const fsDecoder = new TextDecoder('utf-8');
 
-export function createWasmSDLHost(device, canvas, assetImages = new Map()) {
+export function createWasmSDLHost(device, canvas, assetImages = null) {
             let memory = null;
             let wasmBuddyAlloc = null;
             let wasmBuddyFree = null;
             let nextHandle = 1;
             const decoder = new TextDecoder('utf-8');
             const encoder = new TextEncoder();
-            const imageAssets = assetImages;
+            const SDL_GPU_SHADERFORMAT_WGSL = 1 << 6;
 
             const context = canvas.getContext('webgpu');
             canvas.tabIndex = 0;
@@ -27,12 +27,19 @@ export function createWasmSDLHost(device, canvas, assetImages = new Map()) {
             const buffers = new Map();
             const transferBuffers = new Map();
             const textureViews = new Map();
+            const imageAssets = assetImages ?? (globalThis.__SDL_IMAGE_ASSETS || (globalThis.__SDL_IMAGE_ASSETS = new Map()));
+            if (assetImages) {
+                globalThis.__SDL_IMAGE_ASSETS = imageAssets;
+            }
 
             // Mouse state
             let mouseX = 0;
             let mouseY = 0;
             let mouseLocked = false;
             let pendingPointerLockRequest = false;
+            let fatalError = false;
+            let fatalErrorReason = null;
+            let fatalQuitDelivered = false;
 
             function tryRequestPointerLock() {
                 if (document.pointerLockElement === canvas) {
@@ -62,6 +69,23 @@ export function createWasmSDLHost(device, canvas, assetImages = new Map()) {
             // Error handling
             let lastError = "";
 
+            function triggerFatalError(msg, detail) {
+                if (fatalError) {
+                    return;
+                }
+                fatalError = true;
+                fatalErrorReason = msg;
+                lastError = msg;
+                console.error('[SDL Fatal]', msg);
+                if (detail) {
+                    console.error('[SDL Fatal Detail]', detail);
+                }
+                // Drop queued events and force the app to quit so logs stop after the error.
+                eventQueue.length = 0;
+                eventQueue.push({ type: 'quit' });
+                fatalQuitDelivered = false;
+            }
+
             function setError(msg) {
                 lastError = msg;
                 console.error('[SDL Error]', msg);
@@ -71,6 +95,18 @@ export function createWasmSDLHost(device, canvas, assetImages = new Map()) {
                 if (!ptr || length === 0) return '';
                 const bytes = new Uint8Array(memory.buffer, ptr, length);
                 return decoder.decode(bytes);
+            }
+
+            function readCString(ptr) {
+                if (!ptr || !memory) {
+                    return '';
+                }
+                const bytes = new Uint8Array(memory.buffer);
+                let end = ptr;
+                while (end < bytes.length && bytes[end] !== 0) {
+                    end++;
+                }
+                return decoder.decode(bytes.subarray(ptr, end));
             }
 
             function writeString(ptr, maxLen, str) {
@@ -119,6 +155,9 @@ export function createWasmSDLHost(device, canvas, assetImages = new Map()) {
             }
 
             function ensureBindGroups(cmdbuf) {
+                if (fatalError) {
+                    return;
+                }
                 if (!cmdbuf || !cmdbuf.currentPipeline) {
                     return;
                 }
@@ -127,34 +166,60 @@ export function createWasmSDLHost(device, canvas, assetImages = new Map()) {
                     return;
                 }
 
-                if (cmdbuf.uniformBuffer && cmdbuf.uniformBindGroupDirty) {
-                    const layout0 = pipelineInfo.pipeline.getBindGroupLayout(0);
-                    cmdbuf.uniformBindGroup = device.createBindGroup({
-                        layout: layout0,
-                        entries: [{
-                            binding: 0,
-                            resource: { buffer: cmdbuf.uniformBuffer }
-                        }]
-                    });
+                const uniformLayout = pipelineInfo.uniformLayout || null;
+                const samplerLayout = pipelineInfo.samplerLayout || null;
+                const uniformSlotCount = pipelineInfo.uniformSlotCount || 0;
+
+                if (!uniformLayout || uniformSlotCount === 0) {
+                    cmdbuf.uniformBindGroup = null;
+                    cmdbuf.uniformBindGroupPipeline = null;
+                    cmdbuf.uniformBindGroupDirty = false;
+                } else if (cmdbuf.uniformBindGroupDirty) {
+                    if (cmdbuf.uniformBuffer) {
+                        cmdbuf.uniformBindGroup = device.createBindGroup({
+                            layout: uniformLayout,
+                            entries: [{
+                                binding: 0,
+                                resource: { buffer: cmdbuf.uniformBuffer }
+                            }]
+                        });
+                        cmdbuf.uniformBindGroupPipeline = cmdbuf.currentPipeline;
+                    } else {
+                        cmdbuf.uniformBindGroup = null;
+                        cmdbuf.uniformBindGroupPipeline = null;
+                    }
                     cmdbuf.uniformBindGroupDirty = false;
                 }
 
-                if (cmdbuf.boundTextureView && cmdbuf.boundSampler && cmdbuf.textureBindGroupDirty) {
-                    let layout1;
-                    try {
-                        layout1 = pipelineInfo.pipeline.getBindGroupLayout(1);
-                    } catch (err) {
-                        cmdbuf.textureBindGroupDirty = false;
-                        return;
+                if (!samplerLayout) {
+                    cmdbuf.textureBindGroup = null;
+                    cmdbuf.textureBindGroupPipeline = null;
+                    cmdbuf.textureBindGroupDirty = false;
+                } else if (cmdbuf.textureBindGroupDirty) {
+                    const samplerBindingInfo = pipelineInfo.samplerBindingInfo || [];
+                    const entries = [];
+                    let missing = false;
+
+                    for (const bindingInfo of samplerBindingInfo) {
+                        const bound = cmdbuf.boundSamplers?.get(bindingInfo.slot);
+                        if (!bound) {
+                            missing = true;
+                            break;
+                        }
+                        entries.push({ binding: bindingInfo.textureBinding, resource: bound.view });
+                        entries.push({ binding: bindingInfo.samplerBinding, resource: bound.sampler });
                     }
 
-                    cmdbuf.textureBindGroup = device.createBindGroup({
-                        layout: layout1,
-                        entries: [
-                            { binding: 0, resource: cmdbuf.boundTextureView },
-                            { binding: 1, resource: cmdbuf.boundSampler }
-                        ]
-                    });
+                    if (!missing && entries.length === samplerBindingInfo.length * 2 && entries.length > 0) {
+                        cmdbuf.textureBindGroup = device.createBindGroup({
+                            layout: samplerLayout,
+                            entries
+                        });
+                        cmdbuf.textureBindGroupPipeline = cmdbuf.currentPipeline;
+                    } else {
+                        cmdbuf.textureBindGroup = null;
+                        cmdbuf.textureBindGroupPipeline = null;
+                    }
                     cmdbuf.textureBindGroupDirty = false;
                 }
             }
@@ -185,7 +250,7 @@ export function createWasmSDLHost(device, canvas, assetImages = new Map()) {
                 ensureBindGroups(cmdbuf);
             }
 
-            function bindSamplersForPass(passHandle, bindingsPtr, count) {
+            function bindSamplersForPass(passHandle, firstSlot, bindingsPtr, count) {
                 if (!memory || count === 0) {
                     return;
                 }
@@ -196,32 +261,45 @@ export function createWasmSDLHost(device, canvas, assetImages = new Map()) {
                 }
 
                 const dv = new DataView(memory.buffer);
-                const textureHandle = dv.getUint32(bindingsPtr, true);
-                const samplerHandle = dv.getUint32(bindingsPtr + 4, true);
-
-                const texture = textures.get(textureHandle);
-                const sampler = samplers.get(samplerHandle);
-
-                if (!texture || !sampler) {
-                    setError(`Invalid texture/sampler binding: texture=${textureHandle}, sampler=${samplerHandle}`);
-                    return;
+                if (!cmdbuf.boundSamplers) {
+                    cmdbuf.boundSamplers = new Map();
                 }
 
-                let view = textureViews.get(textureHandle);
-                if (!view) {
-                    try {
-                        view = texture.createView();
-                    } catch (err) {
-                        setError(`Failed to create texture view: ${err.message}`);
-                        console.error(err);
+                for (let i = 0; i < count; i++) {
+                    const offset = bindingsPtr + i * 8;
+                    const textureHandle = dv.getUint32(offset, true);
+                    const samplerHandle = dv.getUint32(offset + 4, true);
+                    const slot = firstSlot + i;
+
+                    if (textureHandle === 0 || samplerHandle === 0) {
+                        cmdbuf.boundSamplers.delete(slot);
+                        continue;
+                    }
+
+                    const texture = textures.get(textureHandle);
+                    const sampler = samplers.get(samplerHandle);
+
+                    if (!texture || !sampler) {
+                        setError(`Invalid texture/sampler binding: texture=${textureHandle}, sampler=${samplerHandle}`);
                         return;
                     }
-                    textureViews.set(textureHandle, view);
+
+                    let view = textureViews.get(textureHandle);
+                    if (!view) {
+                        try {
+                            view = texture.createView();
+                        } catch (err) {
+                            setError(`Failed to create texture view: ${err.message}`);
+                            console.error(err);
+                            return;
+                        }
+                        textureViews.set(textureHandle, view);
+                    }
+
+                    cmdbuf.boundSamplers.set(slot, { view, sampler });
                 }
 
-                cmdbuf.boundTextureHandle = textureHandle;
-                cmdbuf.boundTextureView = view;
-                cmdbuf.boundSampler = sampler;
+                cmdbuf.textureBindGroupPipeline = null;
                 cmdbuf.textureBindGroupDirty = true;
                 ensureBindGroups(cmdbuf);
             }
@@ -318,6 +396,20 @@ export function createWasmSDLHost(device, canvas, assetImages = new Map()) {
                 eventQueue.push({ type: 'quit' });
             });
 
+            if (typeof device?.addEventListener === 'function') {
+                device.addEventListener('uncapturederror', (event) => {
+                    event?.preventDefault?.();
+                    const message = event?.error?.message || event?.message || 'Unknown WebGPU error';
+                    triggerFatalError(`WebGPU uncaptured error: ${message}`, event?.error || event);
+                });
+            } else if (device) {
+                device.onuncapturederror = (event) => {
+                    event?.preventDefault?.();
+                    const message = event?.error?.message || event?.message || 'Unknown WebGPU error';
+                    triggerFatalError(`WebGPU uncaptured error: ${message}`, event?.error || event);
+                };
+            }
+
             const imports = {
                 init(flags) {
                     console.log('[SDL] Init with flags:', flags);
@@ -394,6 +486,11 @@ export function createWasmSDLHost(device, canvas, assetImages = new Map()) {
                     const entrypoint_ptr = dv.getUint32(info_ptr + 8, true);
                     const format = dv.getUint32(info_ptr + 12, true);
                     const stage = dv.getUint32(info_ptr + 16, true);
+                    const numSamplers = dv.getUint32(info_ptr + 20, true);
+                    const numUniformBuffers = dv.getUint32(info_ptr + 24, true);
+                    const numStorageBuffers = dv.getUint32(info_ptr + 28, true);
+                    const numStorageTextures = dv.getUint32(info_ptr + 32, true);
+                    const entryPoint = readCString(entrypoint_ptr) || 'main';
 
                     // Read shader code from WASM memory
                     const shaderBytes = new Uint8Array(memory.buffer, code_ptr, code_size);
@@ -414,7 +511,16 @@ export function createWasmSDLHost(device, canvas, assetImages = new Map()) {
                         });
 
                         const handle = nextHandle++;
-                        shaders.set(handle, shaderModule);
+                        shaders.set(handle, {
+                            module: shaderModule,
+                            entryPoint,
+                            stage,
+                            format,
+                            numSamplers,
+                            numUniformBuffers,
+                            numStorageBuffers,
+                            numStorageTextures,
+                        });
                         console.log('[SDL] CreateGPUShader, handle:', handle);
                         return handle;
                     } catch (e) {
@@ -471,13 +577,90 @@ export function createWasmSDLHost(device, canvas, assetImages = new Map()) {
                     console.log('[SDL]   vertexShaderHandle = ', vertexShaderHandle);
                     console.log('[SDL]   fragmentShaderHandle = ', fragmentShaderHandle);
 
-                    const vertexShader = shaders.get(vertexShaderHandle);
-                    const fragmentShader = shaders.get(fragmentShaderHandle);
+                    const vertexShaderInfo = shaders.get(vertexShaderHandle);
+                    const fragmentShaderInfo = shaders.get(fragmentShaderHandle);
 
-                    if (!vertexShader || !fragmentShader) {
+                    if (!vertexShaderInfo || !fragmentShaderInfo) {
                         setError('Invalid shader handles');
                         return 0;
                     }
+                    const vertexShader = vertexShaderInfo.module;
+                    const fragmentShader = fragmentShaderInfo.module;
+                    const vertexEntryPoint = (vertexShaderInfo.format & SDL_GPU_SHADERFORMAT_WGSL) ? 'main' : (vertexShaderInfo.entryPoint || 'main');
+                    const fragmentEntryPoint = (fragmentShaderInfo.format & SDL_GPU_SHADERFORMAT_WGSL) ? 'main' : (fragmentShaderInfo.entryPoint || 'main');
+
+                    const bindGroupLayouts = [];
+
+                    const uniformEntries = [];
+                    const uniformSlotCount = Math.max(
+                        vertexShaderInfo.numUniformBuffers || 0,
+                        fragmentShaderInfo.numUniformBuffers || 0
+                    );
+                    let uniformGroupIndex = null;
+                    for (let slot = 0; slot < uniformSlotCount; slot++) {
+                        let visibility = 0;
+                        if (slot < (vertexShaderInfo.numUniformBuffers || 0)) {
+                            visibility |= GPUShaderStage.VERTEX;
+                        }
+                        if (slot < (fragmentShaderInfo.numUniformBuffers || 0)) {
+                            visibility |= GPUShaderStage.FRAGMENT;
+                        }
+                        if (visibility !== 0) {
+                            uniformEntries.push({
+                                binding: slot,
+                                visibility,
+                                buffer: { type: 'uniform' }
+                            });
+                        }
+                    }
+                    let uniformLayout = null;
+                    if (uniformEntries.length > 0) {
+                        uniformGroupIndex = bindGroupLayouts.length;
+                        uniformLayout = device.createBindGroupLayout({ entries: uniformEntries });
+                        bindGroupLayouts.push(uniformLayout);
+                    }
+
+                    const samplerEntries = [];
+                    const samplerBindingInfo = [];
+                    const maxSamplers = Math.max(
+                        vertexShaderInfo.numSamplers || 0,
+                        fragmentShaderInfo.numSamplers || 0
+                    );
+                    let samplerGroupIndex = null;
+                    for (let slot = 0; slot < maxSamplers; slot++) {
+                        let visibility = 0;
+                        if (slot < (vertexShaderInfo.numSamplers || 0)) {
+                            visibility |= GPUShaderStage.VERTEX;
+                        }
+                        if (slot < (fragmentShaderInfo.numSamplers || 0)) {
+                            visibility |= GPUShaderStage.FRAGMENT;
+                        }
+                        if (visibility !== 0) {
+                            const textureBinding = slot * 2;
+                            const samplerBinding = slot * 2 + 1;
+                            samplerEntries.push({
+                                binding: textureBinding,
+                                visibility,
+                                texture: { sampleType: 'float' }
+                            });
+                            samplerEntries.push({
+                                binding: samplerBinding,
+                                visibility,
+                                sampler: { type: 'filtering' }
+                            });
+                            samplerBindingInfo.push({ slot, textureBinding, samplerBinding });
+                        }
+                    }
+                    let samplerLayout = null;
+                    if (samplerEntries.length > 0) {
+                        samplerGroupIndex = bindGroupLayouts.length;
+                        samplerLayout = device.createBindGroupLayout({ entries: samplerEntries });
+                        bindGroupLayouts.push(samplerLayout);
+                    }
+
+                    const pipelineLayout = device.createPipelineLayout({
+                        bindGroupLayouts
+                    });
 
                     // Read vertex input state
                     const formatMap = {
@@ -552,43 +735,16 @@ export function createWasmSDLHost(device, canvas, assetImages = new Map()) {
                     }
 
                     try {
-                        const uniformLayout = device.createBindGroupLayout({
-                            entries: [{
-                                binding: 0,
-                                visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
-                                buffer: { type: 'uniform' }
-                            }]
-                        });
-
-                        const samplerLayout = device.createBindGroupLayout({
-                            entries: [
-                                {
-                                    binding: 0,
-                                    visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
-                                    texture: { sampleType: 'float' }
-                                },
-                                {
-                                    binding: 1,
-                                    visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
-                                    sampler: { type: 'filtering' }
-                                }
-                            ]
-                        });
-
-                        const pipelineLayout = device.createPipelineLayout({
-                            bindGroupLayouts: [uniformLayout, samplerLayout]
-                        });
-
                         const pipelineDesc = {
                             layout: pipelineLayout,
                             vertex: {
                                 module: vertexShader,
-                                entryPoint: 'main',
+                                entryPoint: vertexEntryPoint,
                                 buffers: vertexBuffers
                             },
                             fragment: {
                                 module: fragmentShader,
-                                entryPoint: 'main',
+                                entryPoint: fragmentEntryPoint,
                                 targets: [{
                                     format: navigator.gpu.getPreferredCanvasFormat(),
                                 }],
@@ -605,7 +761,16 @@ export function createWasmSDLHost(device, canvas, assetImages = new Map()) {
                         const pipeline = device.createRenderPipeline(pipelineDesc);
 
                         const handle = nextHandle++;
-                        pipelines.set(handle, { pipeline, layout: pipelineLayout });
+                        pipelines.set(handle, {
+                            pipeline,
+                            bindGroupLayouts,
+                            uniformLayout,
+                            samplerLayout,
+                            uniformSlotCount,
+                            uniformGroupIndex,
+                            samplerGroupIndex,
+                            samplerBindingInfo
+                        });
                         return handle;
                     } catch (e) {
                         setError('Failed to create pipeline: ' + e.message);
@@ -620,6 +785,10 @@ export function createWasmSDLHost(device, canvas, assetImages = new Map()) {
                 },
 
                 acquire_gpu_command_buffer(deviceHandle) {
+                    if (fatalError) {
+                        console.error('[SDL] AcquireGPUCommandBuffer after fatal error:', fatalErrorReason);
+                        return 0;
+                    }
                     const encoder = device.createCommandEncoder();
                     const handle = nextHandle++;
                     commandBuffers.set(handle, {
@@ -627,10 +796,10 @@ export function createWasmSDLHost(device, canvas, assetImages = new Map()) {
                         uniformBuffer: null,
                         uniformBufferSize: 0,
                         uniformBindGroup: null,
+                        uniformBindGroupPipeline: null,
                         textureBindGroup: null,
-                        boundTextureHandle: null,
-                        boundTextureView: null,
-                        boundSampler: null,
+                        textureBindGroupPipeline: null,
+                        boundSamplers: new Map(),
                         uniformBindGroupDirty: false,
                         textureBindGroupDirty: false,
                         currentPipeline: null,
@@ -744,8 +913,33 @@ export function createWasmSDLHost(device, canvas, assetImages = new Map()) {
                         const cmdbuf = commandBuffers.get(passEntry.cmdbufHandle);
                         if (cmdbuf) {
                             cmdbuf.currentPipeline = pipelineHandle;
-                            cmdbuf.uniformBindGroupDirty = true;
-                            cmdbuf.textureBindGroupDirty = true;
+                            cmdbuf.uniformBindGroupPipeline = null;
+                            cmdbuf.textureBindGroupPipeline = null;
+
+                            // Check which bind groups this pipeline actually has
+                            const hasBindGroup0 = pipelineInfo.uniformGroupIndex !== null && (pipelineInfo.uniformSlotCount || 0) > 0;
+                            const hasBindGroup1 = pipelineInfo.samplerGroupIndex !== null && (pipelineInfo.samplerBindingInfo?.length || 0) > 0;
+
+                            console.log('[SDL] Pipeline bind groups', pipelineHandle, { hasBindGroup0, hasBindGroup1 });
+
+                            // Clear bind groups and mark as dirty only if pipeline has them
+                            if (hasBindGroup0) {
+                                cmdbuf.uniformBindGroup = null;
+                                cmdbuf.uniformBindGroupDirty = true;
+                            } else {
+                                cmdbuf.uniformBindGroup = null;
+                                cmdbuf.uniformBindGroupDirty = false;
+                            }
+
+                            if (hasBindGroup1) {
+                                cmdbuf.textureBindGroup = null;
+                                cmdbuf.textureBindGroupDirty = true;
+                            } else {
+                                cmdbuf.textureBindGroup = null;
+                                cmdbuf.textureBindGroupPipeline = null;
+                                cmdbuf.textureBindGroupDirty = false;
+                            }
+
                             ensureBindGroups(cmdbuf);
                         }
                         console.log('[SDL] Pipeline set');
@@ -1097,11 +1291,16 @@ export function createWasmSDLHost(device, canvas, assetImages = new Map()) {
                     const cmdbuf = commandBuffers.get(passEntry.cmdbufHandle);
                     if (cmdbuf) {
                         ensureBindGroups(cmdbuf);
-                        if (cmdbuf.uniformBindGroup) {
-                            passEntry.pass.setBindGroup(0, cmdbuf.uniformBindGroup);
-                        }
-                        if (cmdbuf.textureBindGroup) {
-                            passEntry.pass.setBindGroup(1, cmdbuf.textureBindGroup);
+
+                        const pipelineInfo = pipelines.get(cmdbuf.currentPipeline);
+                        if (pipelineInfo) {
+                            if (cmdbuf.uniformBindGroup && cmdbuf.uniformBindGroupPipeline === cmdbuf.currentPipeline && pipelineInfo.uniformGroupIndex !== null) {
+                                passEntry.pass.setBindGroup(pipelineInfo.uniformGroupIndex, cmdbuf.uniformBindGroup);
+                            }
+
+                            if (cmdbuf.textureBindGroup && cmdbuf.textureBindGroupPipeline === cmdbuf.currentPipeline && pipelineInfo.samplerGroupIndex !== null) {
+                                passEntry.pass.setBindGroup(pipelineInfo.samplerGroupIndex, cmdbuf.textureBindGroup);
+                            }
                         }
                     }
 
@@ -1192,11 +1391,11 @@ export function createWasmSDLHost(device, canvas, assetImages = new Map()) {
                 },
 
                 bind_gpu_vertex_samplers(passHandle, firstSlot, bindings_ptr, numBindings) {
-                    bindSamplersForPass(passHandle, bindings_ptr, numBindings);
+                    bindSamplersForPass(passHandle, firstSlot, bindings_ptr, numBindings);
                 },
 
                 bind_gpu_fragment_samplers(passHandle, firstSlot, bindings_ptr, numBindings) {
-                    bindSamplersForPass(passHandle, bindings_ptr, numBindings);
+                    bindSamplersForPass(passHandle, firstSlot, bindings_ptr, numBindings);
                 },
 
                 set_window_relative_mouse_mode(windowHandle, enabled) {
@@ -1233,11 +1432,16 @@ export function createWasmSDLHost(device, canvas, assetImages = new Map()) {
 
                     if (cmdbuf) {
                         ensureBindGroups(cmdbuf);
-                        if (cmdbuf.uniformBindGroup) {
-                            passEntry.pass.setBindGroup(0, cmdbuf.uniformBindGroup);
-                        }
-                        if (cmdbuf.textureBindGroup) {
-                            passEntry.pass.setBindGroup(1, cmdbuf.textureBindGroup);
+
+                        const pipelineInfo = pipelines.get(cmdbuf.currentPipeline);
+                        if (pipelineInfo) {
+                            if (cmdbuf.uniformBindGroup && cmdbuf.uniformBindGroupPipeline === cmdbuf.currentPipeline && pipelineInfo.uniformGroupIndex !== null) {
+                                passEntry.pass.setBindGroup(pipelineInfo.uniformGroupIndex, cmdbuf.uniformBindGroup);
+                            }
+
+                            if (cmdbuf.textureBindGroup && cmdbuf.textureBindGroupPipeline === cmdbuf.currentPipeline && pipelineInfo.samplerGroupIndex !== null) {
+                                passEntry.pass.setBindGroup(pipelineInfo.samplerGroupIndex, cmdbuf.textureBindGroup);
+                            }
                         }
                     }
 
@@ -1246,6 +1450,10 @@ export function createWasmSDLHost(device, canvas, assetImages = new Map()) {
 
                 submit_gpu_command_buffer(cmdbufHandle) {
                     console.log('[SDL] SubmitGPUCommandBuffer, handle:', cmdbufHandle);
+                    if (fatalError) {
+                        console.warn('[SDL] Skipping command buffer submit after fatal error');
+                        return;
+                    }
                     const cmdbuf = commandBuffers.get(cmdbufHandle);
                     if (cmdbuf) {
                         const commandBuffer = cmdbuf.encoder.finish();
@@ -1263,9 +1471,15 @@ export function createWasmSDLHost(device, canvas, assetImages = new Map()) {
                 },
 
                 poll_event(event_ptr) {
+                    if (fatalError && !fatalQuitDelivered && eventQueue.length === 0) {
+                        eventQueue.push({ type: 'quit' });
+                    }
                     if (eventQueue.length === 0) return 0;
 
                     const event = eventQueue.shift();
+                    if (fatalError && event?.type === 'quit') {
+                        fatalQuitDelivered = true;
+                    }
 
                     if (memory && event_ptr) {
                         const dv = new DataView(memory.buffer);

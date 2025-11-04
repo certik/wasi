@@ -2,6 +2,7 @@
 authors = ["Ondřej Čertík <ondrej@certik.us>"]
 channels = [
     "https://prefix.dev/sdl",  # Prioritize our SDL3 packages
+    "https://prefix.dev/certik-forge",  # Prioritize our packages
     "conda-forge"              # Fallback
 ]
 name = "wasi"
@@ -192,6 +193,7 @@ serve = { cmd="python server.py", depends-on=["test_game_wasm", "bundle_shaders"
 clang = ">=20.1.4,<21"
 lld = ">=20.1.4,<21"
 python = ">=3.10"
+wasmtime = ">=38.0.3,<39"
 
 [feature.linux.tasks]
 build_linux = """
@@ -515,7 +517,7 @@ link \
     /out:arena_windows.exe
 """
 
-test_windows = { cmd="arena_windows.exe", depends-on=["build_windows"] }
+test_windows = { cmd="./arena_windows.exe", depends-on=["build_windows"] }
 
 build_wordfreq_windows = """
 cl \
@@ -568,7 +570,7 @@ link \
     /out:wordfreq_windows.exe
 """
 
-test_wordfreq_windows = { cmd="wordfreq_windows.exe test_wordfreq.txt", depends-on=["build_wordfreq_windows"] }
+test_wordfreq_windows = { cmd="./wordfreq_windows.exe test_wordfreq.txt", depends-on=["build_wordfreq_windows"] }
 
 build_hotel2gltf_windows = """
 cl \
@@ -621,7 +623,7 @@ link \
     /out:hotel2gltf_windows.exe
 """
 
-test_hotel2gltf_windows = { cmd="hotel2gltf_windows.exe", depends-on=["build_hotel2gltf_windows"] }
+test_hotel2gltf_windows = { cmd="./hotel2gltf_windows.exe", depends-on=["build_hotel2gltf_windows"] }
 
 build_game_windows = """
 cl \
