@@ -6,6 +6,7 @@
 #include <stddef.h>
 #include <base/stdarg.h>
 #include <base/numconv.h>
+#include <base/mem.h>
 
 #define WASM_IMPORT(module, name) __attribute__((import_module(module), import_name(name)))
 
@@ -133,11 +134,32 @@ uint32_t sdl_host_create_gpu_texture(uint32_t device, uint32_t info_ptr);
 WASM_IMPORT("sdl", "release_gpu_texture")
 void sdl_host_release_gpu_texture(uint32_t device, uint32_t texture);
 
+WASM_IMPORT("sdl", "create_gpu_sampler")
+uint32_t sdl_host_create_gpu_sampler(uint32_t device, uint32_t info_ptr);
+
+WASM_IMPORT("sdl", "release_gpu_sampler")
+void sdl_host_release_gpu_sampler(uint32_t device, uint32_t sampler);
+
+WASM_IMPORT("sdl", "bind_gpu_vertex_samplers")
+void sdl_host_bind_gpu_vertex_samplers(uint32_t pass, uint32_t first_slot, uint32_t bindings_ptr, uint32_t num_bindings);
+
+WASM_IMPORT("sdl", "bind_gpu_fragment_samplers")
+void sdl_host_bind_gpu_fragment_samplers(uint32_t pass, uint32_t first_slot, uint32_t bindings_ptr, uint32_t num_bindings);
+
 WASM_IMPORT("sdl", "set_window_relative_mouse_mode")
 uint32_t sdl_host_set_window_relative_mouse_mode(uint32_t window, uint32_t enabled);
 
 WASM_IMPORT("sdl", "get_ticks")
 uint32_t sdl_host_get_ticks(void);
+
+WASM_IMPORT("sdl", "get_asset_image_info")
+uint32_t sdl_host_get_asset_image_info(uint32_t path_ptr, uint32_t path_len, uint32_t width_ptr, uint32_t height_ptr);
+
+WASM_IMPORT("sdl", "copy_asset_image_rgba")
+uint32_t sdl_host_copy_asset_image_rgba(uint32_t path_ptr, uint32_t path_len, uint32_t dest_ptr, uint32_t dest_len);
+
+WASM_IMPORT("sdl", "upload_to_gpu_texture")
+void sdl_host_upload_to_gpu_texture(uint32_t copy_pass, uint32_t source_ptr, uint32_t destination_ptr, uint32_t cycle);
 
 // String utilities
 static size_t wasm_strlen(const char* str) {
@@ -338,6 +360,10 @@ size_t SDL_strlen(const char* str) {
     return wasm_strlen(str);
 }
 
+void* SDL_memcpy(void* dst, const void* src, size_t len) {
+    return base_memcpy(dst, src, len);
+}
+
 // Managed main bridging for WASM builds
 static void *wasm_appstate = NULL;
 static SDL_AppResult wasm_last_result = SDL_APP_SUCCESS;
@@ -487,6 +513,15 @@ void SDL_UploadToGPUBuffer(SDL_GPUCopyPass* copy_pass, const SDL_GPUTransferBuff
     );
 }
 
+void SDL_UploadToGPUTexture(SDL_GPUCopyPass* copy_pass, const SDL_GPUTextureTransferInfo* source, const SDL_GPUTextureRegion* destination, bool cycle) {
+    sdl_host_upload_to_gpu_texture(
+        (uint32_t)(uintptr_t)copy_pass,
+        (uint32_t)(uintptr_t)source,
+        (uint32_t)(uintptr_t)destination,
+        cycle ? 1 : 0
+    );
+}
+
 void SDL_EndGPUCopyPass(SDL_GPUCopyPass* copy_pass) {
     sdl_host_end_gpu_copy_pass((uint32_t)(uintptr_t)copy_pass);
 }
@@ -520,6 +555,39 @@ void SDL_ReleaseGPUTexture(SDL_GPUDevice* device, SDL_GPUTexture* texture) {
     sdl_host_release_gpu_texture(
         (uint32_t)(uintptr_t)device,
         (uint32_t)(uintptr_t)texture
+    );
+}
+
+SDL_GPUSampler* SDL_CreateGPUSampler(SDL_GPUDevice* device, const SDL_GPUSamplerCreateInfo* info) {
+    uint32_t handle = sdl_host_create_gpu_sampler(
+        (uint32_t)(uintptr_t)device,
+        (uint32_t)(uintptr_t)info
+    );
+    return (SDL_GPUSampler*)(uintptr_t)handle;
+}
+
+void SDL_ReleaseGPUSampler(SDL_GPUDevice* device, SDL_GPUSampler* sampler) {
+    sdl_host_release_gpu_sampler(
+        (uint32_t)(uintptr_t)device,
+        (uint32_t)(uintptr_t)sampler
+    );
+}
+
+void SDL_BindGPUVertexSamplers(SDL_GPURenderPass* pass, Uint32 firstSlot, const SDL_GPUTextureSamplerBinding* bindings, Uint32 numBindings) {
+    sdl_host_bind_gpu_vertex_samplers(
+        (uint32_t)(uintptr_t)pass,
+        firstSlot,
+        (uint32_t)(uintptr_t)bindings,
+        numBindings
+    );
+}
+
+void SDL_BindGPUFragmentSamplers(SDL_GPURenderPass* pass, Uint32 firstSlot, const SDL_GPUTextureSamplerBinding* bindings, Uint32 numBindings) {
+    sdl_host_bind_gpu_fragment_samplers(
+        (uint32_t)(uintptr_t)pass,
+        firstSlot,
+        (uint32_t)(uintptr_t)bindings,
+        numBindings
     );
 }
 
