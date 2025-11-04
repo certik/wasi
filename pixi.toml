@@ -314,7 +314,7 @@ clang \
     native/wasi_linux.c
 """
 
-test_game_linux = { cmd="./game_linux", depends-on=["build_game_linux"] }
+test_game_linux = { cmd="./game_linux --test-frames 5", depends-on=["build_game_linux"] }
 
 [feature.linux.dependencies]
 clang = ">=20.1.4,<21"
@@ -447,7 +447,7 @@ clang \
     native/wasi_macos.c
 """
 
-test_game_macos = { cmd="./game_macos", depends-on=["build_game_macos"] }
+test_game_macos = { cmd="./game_macos --test-frames 5", depends-on=["build_game_macos"] }
 
 [feature.macos.dependencies]
 # Use the system Clang on macOS
@@ -681,7 +681,7 @@ link \
     /out:game_windows.exe
 """
 
-test_game_windows = { cmd="./game_windows", depends-on=["build_game_windows"] }
+test_game_windows = { cmd="./game_windows --test-frames 5", depends-on=["build_game_windows"] }
 
 [feature.windows.dependencies]
 # Note: MSVC is not available through conda-forge, so we rely on system installation

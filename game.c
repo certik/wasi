@@ -171,6 +171,9 @@ typedef struct {
     char scene_fragment_path[256];
     char overlay_vertex_path[256];
     char overlay_fragment_path[256];
+
+    int test_frames_max;      // Max frames to run (0 = unlimited)
+    int test_frames_count;    // Current frame counter
 } GameApp;
 
 static GameApp g_App;
@@ -1975,8 +1978,16 @@ static void shutdown_game(GameApp *app) {
 // ============================================================================
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
-    (void)argc;
-    (void)argv;
+    // Parse command-line arguments
+    g_App.test_frames_max = 0;    // 0 = unlimited
+    g_App.test_frames_count = 0;
+
+    for (int i = 1; i < argc; i++) {
+        if (SDL_strcmp(argv[i], "--test-frames") == 0 && i + 1 < argc) {
+            g_App.test_frames_max = SDL_atoi(argv[i + 1]);
+            i++;  // Skip the next argument since we consumed it
+        }
+    }
 
     int init_status = init_game(&g_App);
     if (init_status < 0) {
@@ -2037,6 +2048,14 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     update_game(app);
     if (render_game(app) < 0) {
         return SDL_APP_FAILURE;
+    }
+
+    // Check if we've reached the frame limit for testing
+    if (app->test_frames_max > 0) {
+        app->test_frames_count++;
+        if (app->test_frames_count >= app->test_frames_max) {
+            return SDL_APP_SUCCESS;  // Exit after N frames
+        }
     }
 
     return SDL_APP_CONTINUE;
