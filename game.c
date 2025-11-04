@@ -1456,10 +1456,10 @@ static int complete_gpu_setup(GameApp *app) {
     SDL_GPUShaderCreateInfo shader_info = {
         .code = (const Uint8 *)scene_vs_code.str,
         .code_size = shader_code_size(scene_vs_code),
-        .entrypoint = "main_vertex",
+        .entrypoint = "main",
         .format = app->shader_format,
         .stage = SDL_GPU_SHADERSTAGE_VERTEX,
-        .num_samplers = 1,
+        .num_samplers = 0,
         .num_uniform_buffers = 1,
         .num_storage_buffers = 0,
         .num_storage_textures = 0,
@@ -1474,7 +1474,7 @@ static int complete_gpu_setup(GameApp *app) {
     string scene_fs_code = load_shader_source(&g_scene_fragment_shader, app->scene_fragment_path);
     shader_info.code = (const Uint8 *)scene_fs_code.str;
     shader_info.code_size = shader_code_size(scene_fs_code);
-    shader_info.entrypoint = "main_fragment";
+    shader_info.entrypoint = "main";
     shader_info.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
     shader_info.num_samplers = 1;
     shader_info.num_uniform_buffers = 1;
@@ -1490,7 +1490,7 @@ static int complete_gpu_setup(GameApp *app) {
     string overlay_vs_code = load_shader_source(&g_overlay_vertex_shader, app->overlay_vertex_path);
     shader_info.code = (const Uint8 *)overlay_vs_code.str;
     shader_info.code_size = shader_code_size(overlay_vs_code);
-    shader_info.entrypoint = "overlay_vertex";
+    shader_info.entrypoint = "main";
     shader_info.stage = SDL_GPU_SHADERSTAGE_VERTEX;
     shader_info.num_uniform_buffers = 0;
     SDL_GPUShader *overlay_vs = SDL_CreateGPUShader(app->device, &shader_info);
@@ -1504,7 +1504,7 @@ static int complete_gpu_setup(GameApp *app) {
     string overlay_fs_code = load_shader_source(&g_overlay_fragment_shader, app->overlay_fragment_path);
     shader_info.code = (const Uint8 *)overlay_fs_code.str;
     shader_info.code_size = shader_code_size(overlay_fs_code);
-    shader_info.entrypoint = "overlay_fragment";
+    shader_info.entrypoint = "main";
     shader_info.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
     shader_info.num_uniform_buffers = 0;
     SDL_GPUShader *overlay_fs = SDL_CreateGPUShader(app->device, &shader_info);
@@ -2011,12 +2011,11 @@ static int render_game(GameApp *app) {
     SDL_PushGPUVertexUniformData(cmdbuf, 0, &app->scene_uniforms, sizeof(SceneUniforms));
     SDL_PushGPUFragmentUniformData(cmdbuf, 0, &app->scene_uniforms, sizeof(SceneUniforms));
 
-    // Bind floor texture and sampler (for both vertex and fragment stages)
+    // Bind floor texture and sampler (fragment stage only)
     SDL_GPUTextureSamplerBinding texture_binding = {
         .texture = app->floor_texture,
         .sampler = app->floor_sampler,
     };
-    SDL_BindGPUVertexSamplers(render_pass, 0, &texture_binding, 1);
     SDL_BindGPUFragmentSamplers(render_pass, 0, &texture_binding, 1);
 
     SDL_GPUBufferBinding vertex_binding = {

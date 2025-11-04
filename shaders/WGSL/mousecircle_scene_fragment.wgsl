@@ -24,10 +24,12 @@ fn checker(uv: vec2f) -> f32 {
 
 @fragment
 fn main(input: VertexOutput) -> @location(0) vec4f {
+    // Sample texture unconditionally (required for uniform control flow)
+    let texColor = textureSample(floorTexture, floorSampler, input.uv);
+    
     var baseColor: vec3f;
     if (input.surfaceType < 0.5) {
-        // Floor: sample from texture
-        let texColor = textureSample(floorTexture, floorSampler, input.uv);
+        // Floor: use sampled texture
         baseColor = texColor.rgb;
     } else if (input.surfaceType < 1.5) {
         baseColor = vec3f(0.9, 0.2, 0.2) * checker(input.uv);
