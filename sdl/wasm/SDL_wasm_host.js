@@ -32,6 +32,8 @@ export function createWasmSDLHost(device, canvas) {
             let mouseY = 0;
             let mouseLocked = false;
             let pendingPointerLockRequest = false;
+            let fatalError = false;
+            let fatalErrorReason = null;
 
             function tryRequestPointerLock() {
                 if (document.pointerLockElement === canvas) {
@@ -60,6 +62,22 @@ export function createWasmSDLHost(device, canvas) {
 
             // Error handling
             let lastError = "";
+
+            function triggerFatalError(msg, detail) {
+                if (fatalError) {
+                    return;
+                }
+                fatalError = true;
+                fatalErrorReason = msg;
+                lastError = msg;
+                console.error('[SDL Fatal]', msg);
+                if (detail) {
+                    console.error('[SDL Fatal Detail]', detail);
+                }
+                // Drop queued events and force the app to quit so logs stop after the error.
+                eventQueue.length = 0;
+                eventQueue.push({ type: 'quit' });
+            }
 
             function setError(msg) {
                 lastError = msg;
@@ -118,6 +136,9 @@ export function createWasmSDLHost(device, canvas) {
             }
 
             function ensureBindGroups(cmdbuf) {
+                if (fatalError) {
+                    return;
+                }
                 if (!cmdbuf || !cmdbuf.currentPipeline) {
                     return;
                 }
@@ -126,15 +147,21 @@ export function createWasmSDLHost(device, canvas) {
                     return;
                 }
 
-                if (cmdbuf.uniformBindGroupDirty) {
+                if (!cmdbuf.currentPipelineHasBindGroup0) {
+                    cmdbuf.uniformBindGroup = null;
+                    cmdbuf.uniformBindGroupPipeline = null;
+                    cmdbuf.uniformBindGroupDirty = false;
+                } else if (cmdbuf.uniformBindGroupDirty) {
                     // Try to get bind group layout 0
                     let layout0;
                     try {
                         layout0 = pipelineInfo.pipeline.getBindGroupLayout(0);
                     } catch (err) {
                         // Pipeline doesn't have bind group 0
+                        cmdbuf.currentPipelineHasBindGroup0 = false;
                         cmdbuf.uniformBindGroupDirty = false;
                         cmdbuf.uniformBindGroup = null;
+                        cmdbuf.uniformBindGroupPipeline = null;
                         // Don't return - still need to process bind group 1
                     }
 
@@ -148,22 +175,30 @@ export function createWasmSDLHost(device, canvas) {
                                     resource: { buffer: cmdbuf.uniformBuffer }
                                 }]
                             });
+                            cmdbuf.uniformBindGroupPipeline = cmdbuf.currentPipeline;
                         } else {
                             cmdbuf.uniformBindGroup = null;
+                            cmdbuf.uniformBindGroupPipeline = null;
                         }
                         cmdbuf.uniformBindGroupDirty = false;
                     }
                 }
 
-                if (cmdbuf.textureBindGroupDirty) {
+                if (!cmdbuf.currentPipelineHasBindGroup1) {
+                    cmdbuf.textureBindGroup = null;
+                    cmdbuf.textureBindGroupPipeline = null;
+                    cmdbuf.textureBindGroupDirty = false;
+                } else if (cmdbuf.textureBindGroupDirty) {
                     // Try to get bind group layout 1
                     let layout1;
                     try {
                         layout1 = pipelineInfo.pipeline.getBindGroupLayout(1);
                     } catch (err) {
                         // Pipeline doesn't have bind group 1
+                        cmdbuf.currentPipelineHasBindGroup1 = false;
                         cmdbuf.textureBindGroupDirty = false;
                         cmdbuf.textureBindGroup = null;
+                        cmdbuf.textureBindGroupPipeline = null;
                         return;
                     }
 
@@ -176,8 +211,10 @@ export function createWasmSDLHost(device, canvas) {
                                 { binding: 1, resource: cmdbuf.boundSampler }
                             ]
                         });
+                        cmdbuf.textureBindGroupPipeline = cmdbuf.currentPipeline;
                     } else {
                         cmdbuf.textureBindGroup = null;
+                        cmdbuf.textureBindGroupPipeline = null;
                     }
                     cmdbuf.textureBindGroupDirty = false;
                 }
@@ -341,6 +378,20 @@ export function createWasmSDLHost(device, canvas) {
             window.addEventListener('beforeunload', () => {
                 eventQueue.push({ type: 'quit' });
             });
+
+            if (typeof device?.addEventListener === 'function') {
+                device.addEventListener('uncapturederror', (event) => {
+                    event?.preventDefault?.();
+                    const message = event?.error?.message || event?.message || 'Unknown WebGPU error';
+                    triggerFatalError(`WebGPU uncaptured error: ${message}`, event?.error || event);
+                });
+            } else if (device) {
+                device.onuncapturederror = (event) => {
+                    event?.preventDefault?.();
+                    const message = event?.error?.message || event?.message || 'Unknown WebGPU error';
+                    triggerFatalError(`WebGPU uncaptured error: ${message}`, event?.error || event);
+                };
+            }
 
             const imports = {
                 init(flags) {
@@ -617,6 +668,10 @@ export function createWasmSDLHost(device, canvas) {
                 },
 
                 acquire_gpu_command_buffer(deviceHandle) {
+                    if (fatalError) {
+                        console.error('[SDL] AcquireGPUCommandBuffer after fatal error:', fatalErrorReason);
+                        return 0;
+                    }
                     const encoder = device.createCommandEncoder();
                     const handle = nextHandle++;
                     commandBuffers.set(handle, {
@@ -624,13 +679,17 @@ export function createWasmSDLHost(device, canvas) {
                         uniformBuffer: null,
                         uniformBufferSize: 0,
                         uniformBindGroup: null,
+                        uniformBindGroupPipeline: null,
                         textureBindGroup: null,
+                        textureBindGroupPipeline: null,
                         boundTextureHandle: null,
                         boundTextureView: null,
                         boundSampler: null,
                         uniformBindGroupDirty: false,
                         textureBindGroupDirty: false,
                         currentPipeline: null,
+                        currentPipelineHasBindGroup0: false,
+                        currentPipelineHasBindGroup1: false,
                         swapchainTextures: []
                     });
                     console.log('[SDL] AcquireGPUCommandBuffer, handle:', handle);
@@ -741,6 +800,8 @@ export function createWasmSDLHost(device, canvas) {
                         const cmdbuf = commandBuffers.get(passEntry.cmdbufHandle);
                         if (cmdbuf) {
                             cmdbuf.currentPipeline = pipelineHandle;
+                            cmdbuf.uniformBindGroupPipeline = null;
+                            cmdbuf.textureBindGroupPipeline = null;
 
                             // Check which bind groups this pipeline actually has
                             let hasBindGroup0 = false;
@@ -753,6 +814,10 @@ export function createWasmSDLHost(device, canvas) {
                                 pipelineInfo.pipeline.getBindGroupLayout(1);
                                 hasBindGroup1 = true;
                             } catch (e) {}
+
+                            cmdbuf.currentPipelineHasBindGroup0 = hasBindGroup0;
+                            cmdbuf.currentPipelineHasBindGroup1 = hasBindGroup1;
+                            console.log('[SDL] Pipeline bind groups', pipelineHandle, { hasBindGroup0, hasBindGroup1 });
 
                             // Clear bind groups and mark as dirty only if pipeline has them
                             if (hasBindGroup0) {
@@ -768,6 +833,7 @@ export function createWasmSDLHost(device, canvas) {
                                 cmdbuf.textureBindGroupDirty = true;
                             } else {
                                 cmdbuf.textureBindGroup = null;
+                                cmdbuf.textureBindGroupPipeline = null;
                                 cmdbuf.textureBindGroupDirty = false;
                             }
 
@@ -1126,10 +1192,9 @@ export function createWasmSDLHost(device, canvas) {
                         const pipelineInfo = pipelines.get(cmdbuf.currentPipeline);
                         if (pipelineInfo) {
                             // Only set bind group 0 if pipeline has it and bind group exists
-                            if (cmdbuf.uniformBindGroup) {
+                            if (cmdbuf.uniformBindGroup && cmdbuf.uniformBindGroupPipeline === cmdbuf.currentPipeline) {
                                 try {
-                                    const layout0 = pipelineInfo.pipeline.getBindGroupLayout(0);
-                                    if (layout0) {
+                                    if (cmdbuf.currentPipelineHasBindGroup0) {
                                         passEntry.pass.setBindGroup(0, cmdbuf.uniformBindGroup);
                                     }
                                 } catch (e) {
@@ -1138,10 +1203,10 @@ export function createWasmSDLHost(device, canvas) {
                             }
 
                             // Only set bind group 1 if pipeline has it and bind group exists
-                            if (cmdbuf.textureBindGroup) {
+                            if (cmdbuf.textureBindGroup && cmdbuf.textureBindGroupPipeline === cmdbuf.currentPipeline) {
                                 try {
-                                    const layout1 = pipelineInfo.pipeline.getBindGroupLayout(1);
-                                    if (layout1) {
+                                    if (cmdbuf.currentPipelineHasBindGroup1) {
+                                        console.log('[SDL] Setting bind group 1 (indexed draw)', cmdbuf.currentPipeline);
                                         passEntry.pass.setBindGroup(1, cmdbuf.textureBindGroup);
                                     }
                                 } catch (e) {
@@ -1283,10 +1348,9 @@ export function createWasmSDLHost(device, canvas) {
                         const pipelineInfo = pipelines.get(cmdbuf.currentPipeline);
                         if (pipelineInfo) {
                             // Only set bind group 0 if pipeline has it and bind group exists
-                            if (cmdbuf.uniformBindGroup) {
+                            if (cmdbuf.uniformBindGroup && cmdbuf.uniformBindGroupPipeline === cmdbuf.currentPipeline) {
                                 try {
-                                    const layout0 = pipelineInfo.pipeline.getBindGroupLayout(0);
-                                    if (layout0) {
+                                    if (cmdbuf.currentPipelineHasBindGroup0) {
                                         passEntry.pass.setBindGroup(0, cmdbuf.uniformBindGroup);
                                     }
                                 } catch (e) {
@@ -1295,10 +1359,10 @@ export function createWasmSDLHost(device, canvas) {
                             }
 
                             // Only set bind group 1 if pipeline has it and bind group exists
-                            if (cmdbuf.textureBindGroup) {
+                            if (cmdbuf.textureBindGroup && cmdbuf.textureBindGroupPipeline === cmdbuf.currentPipeline) {
                                 try {
-                                    const layout1 = pipelineInfo.pipeline.getBindGroupLayout(1);
-                                    if (layout1) {
+                                    if (cmdbuf.currentPipelineHasBindGroup1) {
+                                        console.log('[SDL] Setting bind group 1 (non-indexed draw)', cmdbuf.currentPipeline);
                                         passEntry.pass.setBindGroup(1, cmdbuf.textureBindGroup);
                                     }
                                 } catch (e) {
@@ -1313,6 +1377,10 @@ export function createWasmSDLHost(device, canvas) {
 
                 submit_gpu_command_buffer(cmdbufHandle) {
                     console.log('[SDL] SubmitGPUCommandBuffer, handle:', cmdbufHandle);
+                    if (fatalError) {
+                        console.warn('[SDL] Skipping command buffer submit after fatal error');
+                        return;
+                    }
                     const cmdbuf = commandBuffers.get(cmdbufHandle);
                     if (cmdbuf) {
                         const commandBuffer = cmdbuf.encoder.finish();
@@ -1330,6 +1398,9 @@ export function createWasmSDLHost(device, canvas) {
                 },
 
                 poll_event(event_ptr) {
+                    if (fatalError && eventQueue.length === 0) {
+                        eventQueue.push({ type: 'quit' });
+                    }
                     if (eventQueue.length === 0) return 0;
 
                     const event = eventQueue.shift();
