@@ -19,7 +19,7 @@ All builds use pixi with platform-specific environments:
 **WebAssembly:**
 ```bash
 pixi r build_wasm
-pixi r build_mousecircle_wasm
+pixi r build_game_wasm
 pixi r test_wasm       # requires wasmtime
 pixi r test_base_wasm  # requires wasmtime
 ```
@@ -34,7 +34,7 @@ pixi r test_linux
 ```bash
 pixi r build_macos  # macOS only
 pixi r test_macos
-pixi r test_mousecircle_sdl
+pixi r test_game_macos
 ```
 
 **Windows:**

@@ -2,7 +2,7 @@
 
 set -ex
 
-clang MouseCircle_standalone.c sdl_mock.c -o MouseCircle_mock \
+clang game.c sdl_mock.c -o game_mock \
     -I.
 
-echo "Build successful! Run with ./MouseCircle_mock"
+echo "Build successful! Run with ./game_mock"

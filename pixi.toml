@@ -150,7 +150,7 @@ clang \
 
 test_hotel2gltf_wasm = { cmd="wasmtime --dir . hotel2gltf.wasm", depends-on=["build_hotel2gltf_wasm"] }
 
-build_mousecircle_wasm = """
+build_game_wasm = """
 clang \
     --target=wasm32-wasi \
     -Os \
@@ -168,8 +168,8 @@ clang \
     -Wl,--export=app_quit \
     -Wl,--export=__heap_base \
     -Wl,--initial-memory=2097152 \
-    -o mousecircle.wasm \
-    MouseCircle_standalone.c \
+    -o game.wasm \
+    game.c \
     sdl/wasm/SDL_wasm.c \
     base/buddy.c \
     base/arena.c \
@@ -187,9 +187,9 @@ clang \
     native/wasi_wasm.c
 """
 
-test_mousecircle_wasm = { cmd="echo 'WASM build successful: mousecircle.wasm'", depends-on=["build_mousecircle_wasm"] }
+test_game_wasm = { cmd="echo 'WASM build successful: game.wasm'", depends-on=["build_game_wasm"] }
 
-serve = { cmd="python server.py", depends-on=["test_mousecircle_wasm", "bundle_shaders"] }
+serve = { cmd="python server.py", depends-on=["test_game_wasm", "bundle_shaders"] }
 
 [feature.wasm.dependencies]
 clang = ">=20.1.4,<21"
@@ -284,7 +284,7 @@ clang \
 
 test_hotel2gltf_linux = { cmd="./hotel2gltf_linux", depends-on=["build_hotel2gltf_linux"] }
 
-build_mousecircle_linux = """
+build_game_linux = """
 clang \
     -I$CONDA_PREFIX/include \
     -L$CONDA_PREFIX/lib \
@@ -296,8 +296,8 @@ clang \
     -lSDL3 \
     -lm \
     -Wno-macro-redefined \
-    -o mousecircle_linux \
-    MouseCircle_standalone.c \
+    -o game_linux \
+    game.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
@@ -314,7 +314,7 @@ clang \
     native/wasi_linux.c
 """
 
-test_mousecircle_linux = { cmd="./mousecircle_linux", depends-on=["build_mousecircle_linux"] }
+test_game_linux = { cmd="./game_linux", depends-on=["build_game_linux"] }
 
 [feature.linux.dependencies]
 clang = ">=20.1.4,<21"
@@ -416,7 +416,7 @@ clang \
 
 test_hotel2gltf_macos = { cmd="./hotel2gltf_macos", depends-on=["build_hotel2gltf_macos"] }
 
-build_mousecircle_macos = """
+build_game_macos = """
 clang \
     -I$CONDA_PREFIX/include \
     -L$CONDA_PREFIX/lib \
@@ -429,8 +429,8 @@ clang \
     -lSystem \
     -framework Metal -framework CoreGraphics -framework AppKit \
     -Wno-macro-redefined \
-    -o mousecircle_macos \
-    MouseCircle_standalone.c \
+    -o game_macos \
+    game.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
@@ -447,7 +447,7 @@ clang \
     native/wasi_macos.c
 """
 
-test_mousecircle_macos = { cmd="./mousecircle_macos", depends-on=["build_mousecircle_macos"] }
+test_game_macos = { cmd="./game_macos", depends-on=["build_game_macos"] }
 
 [feature.macos.dependencies]
 # Use the system Clang on macOS
@@ -626,7 +626,7 @@ link \
 
 test_hotel2gltf_windows = { cmd="hotel2gltf_windows.exe", depends-on=["build_hotel2gltf_windows"] }
 
-build_mousecircle_windows = """
+build_game_windows = """
 cl \
     /nologo \
     /std:c11 \
@@ -638,7 +638,7 @@ cl \
     /DWASI_WINDOWS_SKIP_ENTRY \
     /MD \
     /c \
-    MouseCircle_standalone.c \
+    game.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
@@ -658,7 +658,7 @@ link \
     /nologo \
     /subsystem:console \
     /LIBPATH:"$CONDA_PREFIX/Library/lib" \
-    MouseCircle_standalone.obj \
+    game.obj \
     base_io.obj \
     buddy.obj \
     arena.obj \
@@ -678,10 +678,10 @@ link \
     d3d12.lib \
     dxgi.lib \
     dxguid.lib \
-    /out:mousecircle_windows.exe
+    /out:game_windows.exe
 """
 
-test_mousecircle_windows = { cmd="./mousecircle_windows", depends-on=["build_mousecircle_windows"] }
+test_game_windows = { cmd="./game_windows", depends-on=["build_game_windows"] }
 
 [feature.windows.dependencies]
 # Note: MSVC is not available through conda-forge, so we rely on system installation
