@@ -1574,7 +1574,7 @@ static int complete_gpu_setup(GameApp *app) {
     }
 
     SDL_GPUTransferBufferCreateInfo transfer_info = {
-        .usage = SDL_GPU_BUFFERUSAGE_VERTEX,
+        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
         .size = vertex_buffer_info.size,
     };
     app->scene_vertex_transfer_buffer = SDL_CreateGPUTransferBuffer(app->device, &transfer_info);
@@ -1624,7 +1624,7 @@ static int complete_gpu_setup(GameApp *app) {
     SDL_SubmitGPUCommandBuffer(upload_cmdbuf);
 
     SDL_GPUTransferBufferCreateInfo overlay_transfer_info = {
-        .usage = SDL_GPU_BUFFERUSAGE_VERTEX,
+        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
         .size = sizeof(OverlayVertex) * MAX_OVERLAY_VERTICES,
     };
     app->overlay_transfer_buffer = SDL_CreateGPUTransferBuffer(app->device, &overlay_transfer_info);
