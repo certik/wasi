@@ -1200,6 +1200,10 @@ static void build_overlay(GameApp *app) {
                  state->hud_visible ? "ON" : "OFF");
     SDL_snprintf(lines[4], sizeof(lines[4]), "TOGGLE M/R/H/T/I/B/F");
 
+    // Clear only the vertex buffer we'll use to prevent rendering stale data
+    // TODO: Investigate why stale data beyond overlay_vertex_count gets rendered
+    base_memset(app->overlay_cpu_vertices, 0, sizeof(OverlayVertex) * 20000);
+
     uint32_t offset = 0;
     for (int i = 0; i < 5; i++) {
         char *line = lines[i];
