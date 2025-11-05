@@ -4,7 +4,7 @@
 set -ex
 
 cd scripts
-cargo build --release
+cargo build # --release
 cd ..
 
 for shader in shaders/WGSL/*.wgsl; do
