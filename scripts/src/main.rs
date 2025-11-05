@@ -187,9 +187,8 @@ fn generate_msl(
     let (msl_source, _) = msl::write_string(module, module_info, &options, &pipeline_options)
         .map_err(|e| format!("MSL generation error: {:?}", e))?;
 
-    // Naga generates "main_" (with trailing underscore) for MSL entry points
-    // Rename to just "main" for consistency across all backends
-    let msl_final = msl_source.replace("main_(", "main(");
+    // Naga generates "main_" for MSL - keep it as-is (no post-processing needed)
+    let msl_final = msl_source;
 
     // Add header comment (each line prefixed with //)
     let header_lines: Vec<_> = header_comment.lines().map(|line| format!("// {}", line)).collect();
@@ -305,7 +304,11 @@ fn generate_hlsl(
         .map_err(|e| format!("HLSL generation error: {:?}", e))?;
 
     // Post-process HLSL for SDL3 D3D12 compatibility
-    let hlsl_fixed = fix_hlsl_for_sdl3(&hlsl_source);
+    let mut hlsl_fixed = fix_hlsl_for_sdl3(&hlsl_source);
+    
+    // Naga generates "main" for HLSL but "main_" for MSL
+    // Rename to "main_" for consistency across all backends
+    hlsl_fixed = hlsl_fixed.replace("main(", "main_(");
 
     // Add header comment (each line prefixed with //)
     let header_lines: Vec<_> = header_comment.lines().map(|line| format!("// {}", line)).collect();

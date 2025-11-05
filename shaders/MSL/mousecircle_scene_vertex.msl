@@ -42,7 +42,7 @@ struct main_Output {
     metal::float3 normal [[user(loc2), center_perspective]];
     metal::float3 worldPos [[user(loc3), center_perspective]];
 };
-vertex main_Output main(
+vertex main_Output main_(
   main_Input varyings [[stage_in]]
 , constant SceneUniforms& uniforms [[buffer(0)]]
 ) {

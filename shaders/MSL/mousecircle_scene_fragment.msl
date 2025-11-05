@@ -39,7 +39,7 @@ struct main_Input {
 struct main_Output {
     metal::float4 member [[color(0)]];
 };
-fragment main_Output main(
+fragment main_Output main_(
   main_Input varyings [[stage_in]]
 , metal::float4 position [[position]]
 , constant SceneUniforms& uniforms [[buffer(0)]]

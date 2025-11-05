@@ -47,7 +47,7 @@ float checker(float2 uv)
     return ((v < 0.5) ? 1.0 : 0.7);
 }
 
-float4 main(FragmentInput_main fragmentinput_main) : SV_Target0
+float4 main_(FragmentInput_main fragmentinput_main) : SV_Target0
 {
     VertexOutput input = { fragmentinput_main.position, fragmentinput_main.surfaceType, fragmentinput_main.uv_1, fragmentinput_main.normal, fragmentinput_main.worldPos };
     float3 baseColor = (float3)0;

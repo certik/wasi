@@ -208,10 +208,10 @@ static string g_overlay_vertex_shader = {0};
 static string g_overlay_fragment_shader = {0};
 
 static const char *select_shader_entrypoint(SDL_GPUShaderFormat format, SDL_GPUShaderStage stage, bool overlay) {
-    (void)format;  // Unused - all backends now use "main"
+    (void)format;  // Unused - all backends now use "main_"
     (void)stage;   // Unused
     (void)overlay; // Unused
-    return "main";
+    return "main_";
 }
 
 static void ensure_runtime_heap(void) {
