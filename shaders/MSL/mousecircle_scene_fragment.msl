@@ -44,15 +44,14 @@ fragment main_Output main_fragment(
 , metal::float4 position [[position]]
 , constant SceneUniforms& uniforms [[buffer(0)]]
 , metal::texture2d<float, metal::access::sample> floorTexture [[texture(0)]]
-, metal::sampler floorSampler [[sampler(0)]]
 , metal::texture2d<float, metal::access::sample> wallTexture [[texture(1)]]
-, metal::sampler wallSampler [[sampler(1)]]
+, metal::sampler surfaceSampler [[sampler(0)]]
 ) {
     const VertexOutput input = { position, varyings.surfaceType, {}, varyings.uv, varyings.normal, varyings.worldPos };
     metal::float3 baseColor = {};
     metal::float3 color = {};
-    metal::float4 floorColor = floorTexture.sample(floorSampler, input.uv);
-    metal::float4 wallColor = wallTexture.sample(wallSampler, input.uv);
+    metal::float4 floorColor = floorTexture.sample(surfaceSampler, input.uv);
+    metal::float4 wallColor = wallTexture.sample(surfaceSampler, input.uv);
     if (input.surfaceType < 0.5) {
         baseColor = floorColor.xyz;
     } else {

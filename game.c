@@ -2009,7 +2009,7 @@ static int render_game(GameApp *app) {
     SDL_PushGPUVertexUniformData(cmdbuf, 0, &app->scene_uniforms, sizeof(SceneUniforms));
     SDL_PushGPUFragmentUniformData(cmdbuf, 0, &app->scene_uniforms, sizeof(SceneUniforms));
 
-    // Bind scene textures and sampler (both stages - vertex shader doesn't use them but SDL checks)
+    // Bind scene textures and sampler (shared sampler for both textures)
     SDL_GPUTextureSamplerBinding texture_bindings[2] = {
         {
             .texture = app->floor_texture,
@@ -2017,9 +2017,10 @@ static int render_game(GameApp *app) {
         },
         {
             .texture = app->wall_texture,
-            .sampler = app->floor_sampler,
+            .sampler = app->floor_sampler,  // Use shared sampler
         },
     };
+    SDL_BindGPUVertexSamplers(render_pass, 0, texture_bindings, SDL_arraysize(texture_bindings));
     SDL_BindGPUFragmentSamplers(render_pass, 0, texture_bindings, SDL_arraysize(texture_bindings));
 
     SDL_GPUBufferBinding vertex_binding = {
