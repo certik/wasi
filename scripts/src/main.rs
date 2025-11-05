@@ -278,6 +278,8 @@ fn generate_hlsl(
     }
 
     // Configure HLSL options for D3D12 (Shader Model 6.0)
+    // NOTE: Naga's HLSL backend always generates sampler heap pattern for bindless support.
+    // There's no option to disable it - we must post-process to convert to direct bindings.
     let options = hlsl::Options {
         shader_model: hlsl::ShaderModel::V6_0,
         binding_map,
@@ -329,7 +331,7 @@ fn fix_hlsl_for_sdl3(hlsl_source: &str) -> String {
     }
 
     // 2. Convert Naga sampler heap to direct sampler bindings
-    // Naga still generates sampler heap despite binding_map, so we need to fix it
+    // Naga's HLSL backend always generates bindless sampler heap - no option to disable
     result = fix_sampler_heap_to_direct(&result);
 
     // 3. Fix cbuffer syntax from Naga's nested form to flattened form
