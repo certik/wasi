@@ -225,7 +225,7 @@ fn generate_hlsl(
                 global_var.binding.as_ref().map(|binding| (handle, global_var, binding))
             })
             .collect();
-        
+
         // Sort by group, then binding number to ensure consistent ordering
         bindings_to_process.sort_by_key(|(_, _, binding)| (binding.group, binding.binding));
 
@@ -305,7 +305,7 @@ fn generate_hlsl(
 
     // Post-process HLSL for SDL3 D3D12 compatibility
     let mut hlsl_fixed = fix_hlsl_for_sdl3(&hlsl_source);
-    
+
     // Naga generates "main" for HLSL but "main_" for MSL
     // Rename to "main_" for consistency across all backends
     hlsl_fixed = hlsl_fixed.replace("main(", "main_(");
@@ -359,14 +359,14 @@ fn fix_sampler_heap_to_direct(hlsl: &str) -> String {
     // Convert to direct bindings that work with DXC:
     // SamplerState floorSampler : register(s0, space2);
     // SamplerState wallSampler : register(s1, space2);
-    
+
     let result = hlsl.to_string();
-    
+
     // Check if we have the sampler heap pattern
     if !result.contains("nagaSamplerHeap") {
         return result;  // No heap pattern, return as-is
     }
-    
+
     // First pass: collect all sampler names and their indices
     let mut samplers = Vec::new();
     for line in result.lines() {
@@ -381,21 +381,21 @@ fn fix_sampler_heap_to_direct(hlsl: &str) -> String {
             }
         }
     }
-    
+
     // Second pass: remove heap declarations and convert sampler declarations
     let lines: Vec<&str> = result.lines().collect();
     let mut new_lines = Vec::new();
-    
+
     for line in lines {
         let trimmed = line.trim();
-        
+
         // Skip sampler heap and related declarations
         if trimmed.starts_with("SamplerState nagaSamplerHeap") ||
            trimmed.starts_with("SamplerComparisonState nagaComparisonSamplerHeap") ||
            trimmed.starts_with("StructuredBuffer<uint> nagaGroup") {
             continue;
         }
-        
+
         // Convert static const sampler declarations to direct register bindings
         if trimmed.starts_with("static const SamplerState ") {
             if let Some(name_start) = trimmed.find("SamplerState ") {
@@ -410,10 +410,10 @@ fn fix_sampler_heap_to_direct(hlsl: &str) -> String {
                 }
             }
         }
-        
+
         new_lines.push(line.to_string());
     }
-    
+
     new_lines.join("\n")
 }
 

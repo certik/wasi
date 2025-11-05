@@ -207,12 +207,7 @@ static string g_scene_fragment_shader = {0};
 static string g_overlay_vertex_shader = {0};
 static string g_overlay_fragment_shader = {0};
 
-static const char *select_shader_entrypoint(SDL_GPUShaderFormat format, SDL_GPUShaderStage stage, bool overlay) {
-    (void)format;  // Unused - all backends now use "main_"
-    (void)stage;   // Unused
-    (void)overlay; // Unused
-    return "main_";
-}
+static const char *shader_entrypoint = "main_";
 
 static void ensure_runtime_heap(void) {
     if (!g_buddy_initialized) {
@@ -1559,7 +1554,7 @@ static int complete_gpu_setup(GameApp *app) {
     SDL_GPUShaderCreateInfo shader_info = {
         .code = (const Uint8 *)scene_vs_code.str,
         .code_size = shader_code_size(scene_vs_code),
-        .entrypoint = select_shader_entrypoint(app->shader_format, SDL_GPU_SHADERSTAGE_VERTEX, false),
+        .entrypoint = shader_entrypoint,
         .format = app->shader_format,
         .stage = SDL_GPU_SHADERSTAGE_VERTEX,
         .num_samplers = 0,
@@ -1577,7 +1572,7 @@ static int complete_gpu_setup(GameApp *app) {
     string scene_fs_code = load_shader_source(&g_scene_fragment_shader, app->scene_fragment_path);
     shader_info.code = (const Uint8 *)scene_fs_code.str;
     shader_info.code_size = shader_code_size(scene_fs_code);
-    shader_info.entrypoint = select_shader_entrypoint(app->shader_format, SDL_GPU_SHADERSTAGE_FRAGMENT, false);
+    shader_info.entrypoint = shader_entrypoint;
     shader_info.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
     shader_info.num_samplers = 3;
     shader_info.num_uniform_buffers = 1;
@@ -1593,7 +1588,7 @@ static int complete_gpu_setup(GameApp *app) {
     string overlay_vs_code = load_shader_source(&g_overlay_vertex_shader, app->overlay_vertex_path);
     shader_info.code = (const Uint8 *)overlay_vs_code.str;
     shader_info.code_size = shader_code_size(overlay_vs_code);
-    shader_info.entrypoint = select_shader_entrypoint(app->shader_format, SDL_GPU_SHADERSTAGE_VERTEX, true);
+    shader_info.entrypoint = shader_entrypoint;
     shader_info.stage = SDL_GPU_SHADERSTAGE_VERTEX;
     shader_info.num_samplers = 0;
     shader_info.num_uniform_buffers = 0;
@@ -1608,7 +1603,7 @@ static int complete_gpu_setup(GameApp *app) {
     string overlay_fs_code = load_shader_source(&g_overlay_fragment_shader, app->overlay_fragment_path);
     shader_info.code = (const Uint8 *)overlay_fs_code.str;
     shader_info.code_size = shader_code_size(overlay_fs_code);
-    shader_info.entrypoint = select_shader_entrypoint(app->shader_format, SDL_GPU_SHADERSTAGE_FRAGMENT, true);
+    shader_info.entrypoint = shader_entrypoint;
     shader_info.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
     shader_info.num_samplers = 0;
     shader_info.num_uniform_buffers = 0;
