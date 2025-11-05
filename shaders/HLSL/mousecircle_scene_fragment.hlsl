@@ -25,6 +25,8 @@ Texture2D<float4> floorTexture : register(t0, space2);
 SamplerState floorSampler : register(s0, space2);
 Texture2D<float4> wallTexture : register(t1, space2);
 SamplerState wallSampler : register(s1, space2);
+Texture2D<float4> ceilingTexture : register(t2, space2);
+SamplerState ceilingSampler : register(s2, space2);
 
 struct FragmentInput_main {
     float surfaceType : TEXCOORD0;
@@ -49,10 +51,12 @@ float4 main(FragmentInput_main fragmentinput_main) : SV_Target0
 {
     VertexOutput input = { fragmentinput_main.position, fragmentinput_main.surfaceType, fragmentinput_main.uv_1, fragmentinput_main.normal, fragmentinput_main.worldPos };
     float3 baseColor = (float3)0;
+    float diff = (float)0;
     float3 color = (float3)0;
 
     float4 floorColor = floorTexture.Sample(floorSampler, input.uv);
     float4 wallColor = wallTexture.Sample(wallSampler, input.uv);
+    float4 ceilingColor = ceilingTexture.Sample(ceilingSampler, input.uv);
     if ((input.surfaceType < 0.5)) {
         baseColor = floorColor.xyz;
     } else {
@@ -60,24 +64,27 @@ float4 main(FragmentInput_main fragmentinput_main) : SV_Target0
             baseColor = wallColor.xyz;
         } else {
             if ((input.surfaceType < 2.5)) {
-                const float _e26 = checker(input.uv);
-                baseColor = (float3(0.9, 0.9, 0.2) * _e26);
+                baseColor = ceilingColor.xyz;
             } else {
-                const float _e33 = checker(input.uv);
-                baseColor = (float3(0.7, 0.5, 0.3) * _e33);
+                const float _e31 = checker(input.uv);
+                baseColor = (float3(0.7, 0.5, 0.3) * _e31);
             }
         }
     }
     float3 n = normalize(input.normal);
     float3 lightDir = normalize(float3(0.35, 1.0, 0.45));
-    float diff = max(dot(n, lightDir), 0.15);
-    float4 _e48 = cameraPos;
-    float fogFactor = exp((-(distance(input.worldPos, _e48.xyz)) * 0.08));
-    float3 _e55 = baseColor;
-    color = (_e55 * diff);
-    float4 _e60 = fogColor;
-    float3 _e62 = color;
-    color = lerp(_e60.xyz, _e62, fogFactor);
-    float3 _e64 = color;
-    return float4(_e64, 1.0);
+    diff = max(dot(n, lightDir), 0.15);
+    if (((input.surfaceType >= 1.5) && (input.surfaceType < 2.5))) {
+        diff = 1.0;
+    }
+    float4 _e55 = cameraPos;
+    float fogFactor = exp((-(distance(input.worldPos, _e55.xyz)) * 0.08));
+    float3 _e62 = baseColor;
+    float _e63 = diff;
+    color = (_e62 * _e63);
+    float4 _e68 = fogColor;
+    float3 _e70 = color;
+    color = lerp(_e68.xyz, _e70, fogFactor);
+    float3 _e72 = color;
+    return float4(_e72, 1.0);
 }

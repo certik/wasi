@@ -162,6 +162,7 @@ typedef struct {
     SDL_GPUTexture *depth_texture;
     SDL_GPUTexture *floor_texture;
     SDL_GPUTexture *wall_texture;
+    SDL_GPUTexture *ceiling_texture;
     SDL_GPUSampler *floor_sampler;
 
     uint32_t scene_vertex_count;
@@ -199,6 +200,7 @@ static Arena *g_shader_arena = NULL;
 
 #define FLOOR_TEXTURE_PATH "assets/WoodFloor007_1K-JPG_Color.jpg"
 #define WALL_TEXTURE_PATH "assets/Concrete046_1K-JPG_Color.jpg"
+#define CEILING_TEXTURE_PATH "assets/OfficeCeiling001_1K-JPG_Color.jpg"
 
 static string g_scene_vertex_shader = {0};
 static string g_scene_fragment_shader = {0};
@@ -1580,7 +1582,7 @@ static int complete_gpu_setup(GameApp *app) {
     shader_info.code_size = shader_code_size(scene_fs_code);
     shader_info.entrypoint = select_shader_entrypoint(app->shader_format, SDL_GPU_SHADERSTAGE_FRAGMENT, false);
     shader_info.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
-    shader_info.num_samplers = 2;
+    shader_info.num_samplers = 3;
     shader_info.num_uniform_buffers = 1;
     shader_info.num_storage_buffers = 0;
     shader_info.num_storage_textures = 0;
@@ -1780,6 +1782,15 @@ static int complete_gpu_setup(GameApp *app) {
         return -1;
     }
 
+    app->ceiling_texture = load_texture_from_path(app, CEILING_TEXTURE_PATH, "ceiling");
+    if (!app->ceiling_texture) {
+        SDL_ReleaseGPUTexture(app->device, app->wall_texture);
+        app->wall_texture = NULL;
+        SDL_ReleaseGPUTexture(app->device, app->floor_texture);
+        app->floor_texture = NULL;
+        return -1;
+    }
+
     // Create sampler
     SDL_GPUSamplerCreateInfo sampler_info = {
         .min_filter = SDL_GPU_FILTER_LINEAR,
@@ -1792,6 +1803,8 @@ static int complete_gpu_setup(GameApp *app) {
     app->floor_sampler = SDL_CreateGPUSampler(app->device, &sampler_info);
     if (!app->floor_sampler) {
         SDL_Log("Failed to create texture sampler: %s", SDL_GetError());
+        SDL_ReleaseGPUTexture(app->device, app->ceiling_texture);
+        app->ceiling_texture = NULL;
         SDL_ReleaseGPUTexture(app->device, app->wall_texture);
         app->wall_texture = NULL;
         SDL_ReleaseGPUTexture(app->device, app->floor_texture);
@@ -2009,14 +2022,18 @@ static int render_game(GameApp *app) {
     SDL_PushGPUVertexUniformData(cmdbuf, 0, &app->scene_uniforms, sizeof(SceneUniforms));
     SDL_PushGPUFragmentUniformData(cmdbuf, 0, &app->scene_uniforms, sizeof(SceneUniforms));
 
-    // Bind scene textures and sampler (shared sampler for both textures)
-    SDL_GPUTextureSamplerBinding texture_bindings[2] = {
+    // Bind scene textures and sampler (shared sampler for all textures)
+    SDL_GPUTextureSamplerBinding texture_bindings[3] = {
         {
             .texture = app->floor_texture,
             .sampler = app->floor_sampler,
         },
         {
             .texture = app->wall_texture,
+            .sampler = app->floor_sampler,  // Use shared sampler
+        },
+        {
+            .texture = app->ceiling_texture,
             .sampler = app->floor_sampler,  // Use shared sampler
         },
     };
@@ -2096,6 +2113,10 @@ static void shutdown_game(GameApp *app) {
     if (app->wall_texture) {
         SDL_ReleaseGPUTexture(app->device, app->wall_texture);
         app->wall_texture = NULL;
+    }
+    if (app->ceiling_texture) {
+        SDL_ReleaseGPUTexture(app->device, app->ceiling_texture);
+        app->ceiling_texture = NULL;
     }
     if (app->floor_sampler) {
         SDL_ReleaseGPUSampler(app->device, app->floor_sampler);
