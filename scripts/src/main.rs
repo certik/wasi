@@ -71,13 +71,10 @@ fn compile_shader(input_path: &Path) -> Result<(), String> {
         source_path_str, NAGA_VERSION
     );
 
-    // Determine entrypoint name from filename
-    let entrypoint_name = determine_entrypoint_name(file_stem);
-
     println!("Compiling {} -> MSL, HLSL, SPIR-V", input_path.display());
 
     // Generate MSL
-    generate_msl(&module, &module_info, &msl_path, &header_comment, entrypoint_name)?;
+    generate_msl(&module, &module_info, &msl_path, &header_comment)?;
 
     // Generate HLSL
     generate_hlsl(&module, &module_info, &hlsl_path, &header_comment)?;
@@ -93,7 +90,6 @@ fn generate_msl(
     module_info: &naga::valid::ModuleInfo,
     output_path: &Path,
     header_comment: &str,
-    entrypoint_name: Option<&'static str>,
 ) -> Result<(), String> {
     // Build binding map for all entry points
     let mut per_entry_point_map = BTreeMap::new();
@@ -191,12 +187,8 @@ fn generate_msl(
     let (msl_source, _) = msl::write_string(module, module_info, &options, &pipeline_options)
         .map_err(|e| format!("MSL generation error: {:?}", e))?;
 
-    // Rename entrypoint if needed
-    let msl_final = if let Some(new_name) = entrypoint_name {
-        rename_entrypoint(&msl_source, "main_", new_name)
-    } else {
-        msl_source
-    };
+    // Naga generates "main_" for MSL - keep it as-is (no post-processing needed)
+    let msl_final = msl_source;
 
     // Add header comment (each line prefixed with //)
     let header_lines: Vec<_> = header_comment.lines().map(|line| format!("// {}", line)).collect();
@@ -233,7 +225,7 @@ fn generate_hlsl(
                 global_var.binding.as_ref().map(|binding| (handle, global_var, binding))
             })
             .collect();
-        
+
         // Sort by group, then binding number to ensure consistent ordering
         bindings_to_process.sort_by_key(|(_, _, binding)| (binding.group, binding.binding));
 
@@ -312,7 +304,11 @@ fn generate_hlsl(
         .map_err(|e| format!("HLSL generation error: {:?}", e))?;
 
     // Post-process HLSL for SDL3 D3D12 compatibility
-    let hlsl_fixed = fix_hlsl_for_sdl3(&hlsl_source);
+    let mut hlsl_fixed = fix_hlsl_for_sdl3(&hlsl_source);
+
+    // Naga generates "main" for HLSL but "main_" for MSL
+    // Rename to "main_" for consistency across all backends
+    hlsl_fixed = hlsl_fixed.replace("main(", "main_(");
 
     // Add header comment (each line prefixed with //)
     let header_lines: Vec<_> = header_comment.lines().map(|line| format!("// {}", line)).collect();
@@ -363,14 +359,14 @@ fn fix_sampler_heap_to_direct(hlsl: &str) -> String {
     // Convert to direct bindings that work with DXC:
     // SamplerState floorSampler : register(s0, space2);
     // SamplerState wallSampler : register(s1, space2);
-    
+
     let result = hlsl.to_string();
-    
+
     // Check if we have the sampler heap pattern
     if !result.contains("nagaSamplerHeap") {
         return result;  // No heap pattern, return as-is
     }
-    
+
     // First pass: collect all sampler names and their indices
     let mut samplers = Vec::new();
     for line in result.lines() {
@@ -385,21 +381,21 @@ fn fix_sampler_heap_to_direct(hlsl: &str) -> String {
             }
         }
     }
-    
+
     // Second pass: remove heap declarations and convert sampler declarations
     let lines: Vec<&str> = result.lines().collect();
     let mut new_lines = Vec::new();
-    
+
     for line in lines {
         let trimmed = line.trim();
-        
+
         // Skip sampler heap and related declarations
         if trimmed.starts_with("SamplerState nagaSamplerHeap") ||
            trimmed.starts_with("SamplerComparisonState nagaComparisonSamplerHeap") ||
            trimmed.starts_with("StructuredBuffer<uint> nagaGroup") {
             continue;
         }
-        
+
         // Convert static const sampler declarations to direct register bindings
         if trimmed.starts_with("static const SamplerState ") {
             if let Some(name_start) = trimmed.find("SamplerState ") {
@@ -414,10 +410,10 @@ fn fix_sampler_heap_to_direct(hlsl: &str) -> String {
                 }
             }
         }
-        
+
         new_lines.push(line.to_string());
     }
-    
+
     new_lines.join("\n")
 }
 
@@ -558,32 +554,4 @@ fn generate_spirv(
     Ok(())
 }
 
-fn determine_entrypoint_name(file_stem: &str) -> Option<&'static str> {
-    // Determine target entrypoint name based on filename convention
-    if file_stem.ends_with("_vertex") {
-        if file_stem.contains("_overlay_") {
-            Some("overlay_vertex")
-        } else {
-            Some("main_vertex")
-        }
-    } else if file_stem.ends_with("_fragment") {
-        if file_stem.contains("_overlay_") {
-            Some("overlay_fragment")
-        } else {
-            Some("main_fragment")
-        }
-    } else {
-        None
-    }
-}
 
-fn rename_entrypoint(msl_source: &str, old_name: &str, new_name: &str) -> String {
-    // Replace function definition
-    let vertex_pattern = format!("vertex main_Output {}(", old_name);
-    let fragment_pattern = format!("fragment main_Output {}(", old_name);
-
-    let result = msl_source.replace(&vertex_pattern, &format!("vertex main_Output {}(", new_name));
-    let result = result.replace(&fragment_pattern, &format!("fragment main_Output {}(", new_name));
-
-    result
-}

@@ -12,7 +12,7 @@ struct FragmentInput_main {
     float4 position : SV_Position;
 };
 
-float4 main(FragmentInput_main fragmentinput_main) : SV_Target0
+float4 main_(FragmentInput_main fragmentinput_main) : SV_Target0
 {
     VertexOutput input = { fragmentinput_main.position, fragmentinput_main.color };
     return input.color;

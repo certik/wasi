@@ -37,7 +37,7 @@ struct VertexOutput_main {
     float4 position : SV_Position;
 };
 
-VertexOutput_main main(VertexInput input)
+VertexOutput_main main_(VertexInput input)
 {
     VertexOutput output = (VertexOutput)0;
 
