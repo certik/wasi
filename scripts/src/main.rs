@@ -217,10 +217,10 @@ fn generate_hlsl(
     // Build binding map for D3D12 descriptor spaces
     // SDL3 uses: space1 for vertex shader resources, space3 for fragment shader resources
     let mut binding_map = BTreeMap::new();
-    
+
     for (ep_index, entry_point) in module.entry_points.iter().enumerate() {
         let ep_info = module_info.get_entry_point(ep_index);
-        
+
         // Determine space based on shader stage
         // SDL3 uses: space1 for vertex, space3 for fragment
         let space = match entry_point.stage {
@@ -230,7 +230,7 @@ fn generate_hlsl(
             naga::ShaderStage::Task => 4,
             naga::ShaderStage::Mesh => 5,
         };
-        
+
         // Map all resources used by this entry point to the appropriate space
         for (handle, global_var) in module.global_variables.iter() {
             if !ep_info[handle].is_empty() {
@@ -239,7 +239,7 @@ fn generate_hlsl(
                         group: binding.group,
                         binding: binding.binding,
                     };
-                    
+
                     // Map to D3D12 register and space
                     let bind_target = hlsl::BindTarget {
                         space,
@@ -248,7 +248,7 @@ fn generate_hlsl(
                         dynamic_storage_buffer_offsets_index: None,
                         restrict_indexing: true,
                     };
-                    
+
                     binding_map.insert(resource_binding, bind_target);
                 }
             }
@@ -302,29 +302,94 @@ fn fix_hlsl_for_sdl3(hlsl_source: &str) -> String {
         result = result.replace(&format!(" : LOC{}", i), &format!(" : TEXCOORD{}", i));
     }
     
-    // 2. Fix cbuffer syntax from Naga's nested form to flattened form
+    // 2. Convert Naga sampler heap to direct sampler bindings
+    // Naga generates sampler heap pattern which doesn't work with some DXC versions
+    result = fix_sampler_heap_to_direct(&result);
+    
+    // 3. Fix cbuffer syntax from Naga's nested form to flattened form
     // Pattern: cbuffer uniforms : register(...) { StructName uniforms; }
     // Target: cbuffer StructName : register(...) { struct fields }
     result = fix_cbuffer_syntax(&result);
     
-    // 3. Remove "uniforms." prefix since cbuffer fields are now directly accessible
+    // 4. Remove "uniforms." prefix since cbuffer fields are now directly accessible
     result = result.replace("uniforms.mvp", "mvp");
     result = result.replace("uniforms.cameraPos", "cameraPos");
     result = result.replace("uniforms.fogColor", "fogColor");
     
-    // 4. Remove unnecessary wrapper structs and simplify main function
+    // 5. Remove unnecessary wrapper structs and simplify main function
     // Naga generates VertexOutput_main wrapper structs that aren't needed for SDL3
     result = simplify_stage_io(&result);
     
     result
 }
 
+fn fix_sampler_heap_to_direct(hlsl: &str) -> String {
+    // Naga sometimes generates sampler heap pattern like:
+    // SamplerState nagaSamplerHeap[2048]: register(s0, space0);
+    // StructuredBuffer<uint> nagaGroup1SamplerIndexArray : register(t1, space255);
+    // static const SamplerState floorSampler = nagaSamplerHeap[nagaGroup1SamplerIndexArray[1]];
+    //
+    // This doesn't work with some DXC versions, so convert to direct bindings:
+    // SamplerState floorSampler : register(s0, space2);
+    
+    let result = hlsl.to_string();
+    
+    // Check if we have the sampler heap pattern
+    if !result.contains("nagaSamplerHeap") {
+        return result;  // No heap pattern, return as-is
+    }
+    
+    // Remove the heap declarations
+    let lines: Vec<&str> = result.lines().collect();
+    let mut new_lines = Vec::new();
+    
+    for line in lines {
+        let trimmed = line.trim();
+        
+        // Skip sampler heap and related declarations
+        if trimmed.starts_with("SamplerState nagaSamplerHeap") ||
+           trimmed.starts_with("SamplerComparisonState nagaComparisonSamplerHeap") ||
+           trimmed.starts_with("StructuredBuffer<uint> nagaGroup") {
+            continue;
+        }
+        
+        // Convert static const sampler declarations to direct register bindings
+        if trimmed.starts_with("static const SamplerState ") {
+            // Extract sampler name from: static const SamplerState floorSampler = ...
+            if let Some(name_start) = trimmed.find("SamplerState ") {
+                let after_type = &trimmed[name_start + "SamplerState ".len()..];
+                if let Some(name_end) = after_type.find(" =") {
+                    let sampler_name = &after_type[..name_end];
+                    
+                    // Extract the index from nagaGroup1SamplerIndexArray[1]
+                    if let Some(idx_start) = trimmed.rfind('[') {
+                        if let Some(idx_end) = trimmed[idx_start..].find(']') {
+                            let index_str = &trimmed[idx_start + 1..idx_start + idx_end];
+                            if let Ok(index) = index_str.parse::<u32>() {
+                                // Map to direct sampler register
+                                // Use space2 for SDL3 compatibility
+                                let register = index / 2;  // Each texture-sampler pair uses sequential indices
+                                new_lines.push(format!("SamplerState {} : register(s{}, space2);", sampler_name, register));
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        new_lines.push(line.to_string());
+    }
+    
+    new_lines.join("\n")
+}
+
 fn fix_cbuffer_syntax(hlsl: &str) -> String {
     let mut result = hlsl.to_string();
-    
+
     // Find all struct definitions first to extract their fields
     let mut struct_fields = std::collections::HashMap::new();
-    
+
     for line in hlsl.lines() {
         let trimmed = line.trim();
         // Look for struct definitions
@@ -333,12 +398,12 @@ fn fix_cbuffer_syntax(hlsl: &str) -> String {
                 .strip_prefix("struct ")
                 .and_then(|s| s.strip_suffix(" {"))
                 .unwrap_or("");
-            
+
             // Collect fields for this struct
             let mut in_struct = false;
             let mut fields = Vec::new();
             let mut brace_count = 0;
-            
+
             for scan_line in hlsl.lines() {
                 let scan_trimmed = scan_line.trim();
                 if scan_trimmed == format!("struct {} {{", struct_name) {
@@ -361,13 +426,13 @@ fn fix_cbuffer_syntax(hlsl: &str) -> String {
                     }
                 }
             }
-            
+
             if !fields.is_empty() {
                 struct_fields.insert(struct_name.to_string(), fields);
             }
         }
     }
-    
+
     // Now fix cbuffer declarations
     // Pattern: "cbuffer uniforms : register(b0, spaceN) { StructName uniforms; }"
     for (struct_name, fields) in &struct_fields {
@@ -376,12 +441,12 @@ fn fix_cbuffer_syntax(hlsl: &str) -> String {
             // Find the end of this cbuffer declaration
             if let Some(end_pos) = result[start_pos..].find('}') {
                 let cbuffer_section = &result[start_pos..start_pos + end_pos + 1];
-                
+
                 // Extract the register clause
                 if let Some(reg_start) = cbuffer_section.find("register(") {
                     if let Some(reg_end) = cbuffer_section[reg_start..].find(')') {
                         let register_clause = &cbuffer_section[reg_start..reg_start + reg_end + 1];
-                        
+
                         // Check if this cbuffer uses our struct
                         if cbuffer_section.contains(struct_name) {
                             // Build the replacement
@@ -391,7 +456,7 @@ fn fix_cbuffer_syntax(hlsl: &str) -> String {
                                 replacement.push('\n');
                             }
                             replacement.push_str("}");
-                            
+
                             result = result.replace(cbuffer_section, &replacement);
                         }
                     }
@@ -399,7 +464,7 @@ fn fix_cbuffer_syntax(hlsl: &str) -> String {
             }
         }
     }
-    
+
     result
 }
 
