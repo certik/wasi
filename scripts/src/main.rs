@@ -71,13 +71,10 @@ fn compile_shader(input_path: &Path) -> Result<(), String> {
         source_path_str, NAGA_VERSION
     );
 
-    // Determine entrypoint name from filename
-    let entrypoint_name = determine_entrypoint_name(file_stem);
-
     println!("Compiling {} -> MSL, HLSL, SPIR-V", input_path.display());
 
     // Generate MSL
-    generate_msl(&module, &module_info, &msl_path, &header_comment, entrypoint_name)?;
+    generate_msl(&module, &module_info, &msl_path, &header_comment)?;
 
     // Generate HLSL
     generate_hlsl(&module, &module_info, &hlsl_path, &header_comment)?;
@@ -93,7 +90,6 @@ fn generate_msl(
     module_info: &naga::valid::ModuleInfo,
     output_path: &Path,
     header_comment: &str,
-    entrypoint_name: Option<&'static str>,
 ) -> Result<(), String> {
     // Build binding map for all entry points
     let mut per_entry_point_map = BTreeMap::new();
@@ -191,12 +187,9 @@ fn generate_msl(
     let (msl_source, _) = msl::write_string(module, module_info, &options, &pipeline_options)
         .map_err(|e| format!("MSL generation error: {:?}", e))?;
 
-    // Rename entrypoint if needed
-    let msl_final = if let Some(new_name) = entrypoint_name {
-        rename_entrypoint(&msl_source, "main_", new_name)
-    } else {
-        msl_source
-    };
+    // Naga generates "main_" (with trailing underscore) for MSL entry points
+    // Rename to just "main" for consistency across all backends
+    let msl_final = msl_source.replace("main_(", "main(");
 
     // Add header comment (each line prefixed with //)
     let header_lines: Vec<_> = header_comment.lines().map(|line| format!("// {}", line)).collect();
@@ -558,32 +551,4 @@ fn generate_spirv(
     Ok(())
 }
 
-fn determine_entrypoint_name(file_stem: &str) -> Option<&'static str> {
-    // Determine target entrypoint name based on filename convention
-    if file_stem.ends_with("_vertex") {
-        if file_stem.contains("_overlay_") {
-            Some("overlay_vertex")
-        } else {
-            Some("main_vertex")
-        }
-    } else if file_stem.ends_with("_fragment") {
-        if file_stem.contains("_overlay_") {
-            Some("overlay_fragment")
-        } else {
-            Some("main_fragment")
-        }
-    } else {
-        None
-    }
-}
 
-fn rename_entrypoint(msl_source: &str, old_name: &str, new_name: &str) -> String {
-    // Replace function definition
-    let vertex_pattern = format!("vertex main_Output {}(", old_name);
-    let fragment_pattern = format!("fragment main_Output {}(", old_name);
-
-    let result = msl_source.replace(&vertex_pattern, &format!("vertex main_Output {}(", new_name));
-    let result = result.replace(&fragment_pattern, &format!("fragment main_Output {}(", new_name));
-
-    result
-}

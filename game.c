@@ -208,12 +208,9 @@ static string g_overlay_vertex_shader = {0};
 static string g_overlay_fragment_shader = {0};
 
 static const char *select_shader_entrypoint(SDL_GPUShaderFormat format, SDL_GPUShaderStage stage, bool overlay) {
-    if (format == SDL_GPU_SHADERFORMAT_MSL || format == SDL_GPU_SHADERFORMAT_METALLIB) {
-        if (overlay) {
-            return (stage == SDL_GPU_SHADERSTAGE_VERTEX) ? "overlay_vertex" : "overlay_fragment";
-        }
-        return (stage == SDL_GPU_SHADERSTAGE_VERTEX) ? "main_vertex" : "main_fragment";
-    }
+    (void)format;  // Unused - all backends now use "main"
+    (void)stage;   // Unused
+    (void)overlay; // Unused
     return "main";
 }
 
