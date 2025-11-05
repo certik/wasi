@@ -4,3 +4,4 @@ shaders/WGSL/mousecircle_overlay_vertex.wgsl
 shaders/WGSL/mousecircle_overlay_fragment.wgsl
 assets/WoodFloor007_1K-JPG_Color.jpg
 assets/Concrete046_1K-JPG_Color.jpg
+assets/OfficeCeiling001_1K-JPG_Color.jpg
