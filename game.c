@@ -19,6 +19,7 @@ typedef __builtin_va_list __gnuc_va_list;
 #define SDL_MAIN_USE_CALLBACKS 1
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
+#include <SDL3_image/SDL_image.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
@@ -159,6 +160,8 @@ typedef struct {
     SDL_GPUTransferBuffer *overlay_transfer_buffer;
 
     SDL_GPUTexture *depth_texture;
+    SDL_GPUTexture *floor_texture;
+    SDL_GPUSampler *floor_sampler;
 
     uint32_t scene_vertex_count;
     uint32_t scene_index_count;
@@ -192,10 +195,23 @@ typedef struct {
 static GameApp g_App;
 static bool g_buddy_initialized = false;
 static Arena *g_shader_arena = NULL;
+
+#define FLOOR_TEXTURE_PATH "assets/WoodFloor007_1K-JPG_Color.jpg"
+
 static string g_scene_vertex_shader = {0};
 static string g_scene_fragment_shader = {0};
 static string g_overlay_vertex_shader = {0};
 static string g_overlay_fragment_shader = {0};
+
+static const char *select_shader_entrypoint(SDL_GPUShaderFormat format, SDL_GPUShaderStage stage, bool overlay) {
+    if (format == SDL_GPU_SHADERFORMAT_MSL || format == SDL_GPU_SHADERFORMAT_METALLIB) {
+        if (overlay) {
+            return (stage == SDL_GPU_SHADERSTAGE_VERTEX) ? "overlay_vertex" : "overlay_fragment";
+        }
+        return (stage == SDL_GPU_SHADERSTAGE_VERTEX) ? "main_vertex" : "main_fragment";
+    }
+    return "main";
+}
 
 static void ensure_runtime_heap(void) {
     if (!g_buddy_initialized) {
@@ -539,19 +555,19 @@ static MeshData* generate_mesh(int *map, int width, int height) {
     push_triangle_id(&ctx, (float)ctx.triangle_counter);
 
     push_position(&ctx, (float)width, 0.0f, 0.0f);
-    push_uv(&ctx, (float)width * CHECKER_SIZE, 0.0f);
+    push_uv(&ctx, (float)width * CHECKER_SIZE / 4.0f, 0.0f);
     push_normal(&ctx, 0.0f, 1.0f, 0.0f);
     push_surface_type(&ctx, 0.0f);
     push_triangle_id(&ctx, (float)(ctx.triangle_counter + 1));
 
     push_position(&ctx, 0.0f, 0.0f, (float)height);
-    push_uv(&ctx, 0.0f, (float)height * CHECKER_SIZE);
+    push_uv(&ctx, 0.0f, (float)height * CHECKER_SIZE / 4.0f);
     push_normal(&ctx, 0.0f, 1.0f, 0.0f);
     push_surface_type(&ctx, 0.0f);
     push_triangle_id(&ctx, 0.0f);
 
     push_position(&ctx, (float)width, 0.0f, (float)height);
-    push_uv(&ctx, (float)width * CHECKER_SIZE, (float)height * CHECKER_SIZE);
+    push_uv(&ctx, (float)width * CHECKER_SIZE / 4.0f, (float)height * CHECKER_SIZE / 4.0f);
     push_normal(&ctx, 0.0f, 1.0f, 0.0f);
     push_surface_type(&ctx, 0.0f);
     push_triangle_id(&ctx, 0.0f);
@@ -1441,7 +1457,7 @@ static int complete_gpu_setup(GameApp *app) {
     SDL_GPUShaderCreateInfo shader_info = {
         .code = (const Uint8 *)scene_vs_code.str,
         .code_size = shader_code_size(scene_vs_code),
-        .entrypoint = "main_vertex",
+        .entrypoint = select_shader_entrypoint(app->shader_format, SDL_GPU_SHADERSTAGE_VERTEX, false),
         .format = app->shader_format,
         .stage = SDL_GPU_SHADERSTAGE_VERTEX,
         .num_samplers = 0,
@@ -1459,8 +1475,12 @@ static int complete_gpu_setup(GameApp *app) {
     string scene_fs_code = load_shader_source(&g_scene_fragment_shader, app->scene_fragment_path);
     shader_info.code = (const Uint8 *)scene_fs_code.str;
     shader_info.code_size = shader_code_size(scene_fs_code);
-    shader_info.entrypoint = "main_fragment";
+    shader_info.entrypoint = select_shader_entrypoint(app->shader_format, SDL_GPU_SHADERSTAGE_FRAGMENT, false);
     shader_info.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
+    shader_info.num_samplers = 1;
+    shader_info.num_uniform_buffers = 1;
+    shader_info.num_storage_buffers = 0;
+    shader_info.num_storage_textures = 0;
     SDL_GPUShader *scene_fs = SDL_CreateGPUShader(app->device, &shader_info);
     if (!scene_fs) {
         SDL_Log("Failed to create scene fragment shader: %s", SDL_GetError());
@@ -1471,8 +1491,9 @@ static int complete_gpu_setup(GameApp *app) {
     string overlay_vs_code = load_shader_source(&g_overlay_vertex_shader, app->overlay_vertex_path);
     shader_info.code = (const Uint8 *)overlay_vs_code.str;
     shader_info.code_size = shader_code_size(overlay_vs_code);
-    shader_info.entrypoint = "overlay_vertex";
+    shader_info.entrypoint = select_shader_entrypoint(app->shader_format, SDL_GPU_SHADERSTAGE_VERTEX, true);
     shader_info.stage = SDL_GPU_SHADERSTAGE_VERTEX;
+    shader_info.num_samplers = 0;
     shader_info.num_uniform_buffers = 0;
     SDL_GPUShader *overlay_vs = SDL_CreateGPUShader(app->device, &shader_info);
     if (!overlay_vs) {
@@ -1485,8 +1506,9 @@ static int complete_gpu_setup(GameApp *app) {
     string overlay_fs_code = load_shader_source(&g_overlay_fragment_shader, app->overlay_fragment_path);
     shader_info.code = (const Uint8 *)overlay_fs_code.str;
     shader_info.code_size = shader_code_size(overlay_fs_code);
-    shader_info.entrypoint = "overlay_fragment";
+    shader_info.entrypoint = select_shader_entrypoint(app->shader_format, SDL_GPU_SHADERSTAGE_FRAGMENT, true);
     shader_info.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
+    shader_info.num_samplers = 0;
     shader_info.num_uniform_buffers = 0;
     SDL_GPUShader *overlay_fs = SDL_CreateGPUShader(app->device, &shader_info);
     if (!overlay_fs) {
@@ -1642,6 +1664,130 @@ static int complete_gpu_setup(GameApp *app) {
         SDL_Log("Failed to create overlay vertex buffer: %s", SDL_GetError());
         return -1;
     }
+
+    // Load floor texture using SDL3_Image
+    SDL_Log("Loading floor texture from %s", FLOOR_TEXTURE_PATH);
+
+    // Decode the image directly from the path
+    SDL_Surface *surface = IMG_Load(FLOOR_TEXTURE_PATH);
+
+    if (!surface) {
+        SDL_Log("Failed to load floor texture: %s", SDL_GetError());
+        return -1;
+    }
+
+    // Log the loaded surface format for debugging
+    SDL_Log("Loaded texture: %dx%d, format=0x%08x, pitch=%d",
+            surface->w, surface->h, surface->format, surface->pitch);
+
+    // Ensure surface is in RGBA32 format
+    // On WASM, our implementation already returns RGBA32 so no conversion needed
+    // On native platforms, we may need to convert from RGB24 or other formats
+    if (surface->format != SDL_PIXELFORMAT_RGBA32 &&
+        surface->format != SDL_PIXELFORMAT_ABGR32) {
+        // Convert to RGBA32
+        SDL_Log("Converting surface from format 0x%08x to RGBA32", surface->format);
+        SDL_Surface *converted_surface = SDL_ConvertSurface(surface, SDL_PIXELFORMAT_RGBA32);
+        SDL_DestroySurface(surface);
+        if (!converted_surface) {
+            SDL_Log("Failed to convert surface: %s", SDL_GetError());
+            return -1;
+        }
+        surface = converted_surface;
+        SDL_Log("Converted texture: %dx%d, format=0x%08x, pitch=%d",
+                surface->w, surface->h, surface->format, surface->pitch);
+    }
+
+    int tex_width = surface->w;
+    int tex_height = surface->h;
+    unsigned char *tex_data = (unsigned char *)surface->pixels;
+    Uint32 tex_data_size = (Uint32)(tex_width * tex_height * 4);
+
+    // Create GPU texture
+    SDL_GPUTextureCreateInfo tex_info = {
+        .usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
+        .format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+        .width = (Uint32)tex_width,
+        .height = (Uint32)tex_height,
+        .layer_count_or_depth = 1,
+        .num_levels = 1,
+    };
+    app->floor_texture = SDL_CreateGPUTexture(app->device, &tex_info);
+    if (!app->floor_texture) {
+        SDL_Log("Failed to create floor texture: %s", SDL_GetError());
+        SDL_DestroySurface(surface);
+        return -1;
+    }
+
+    // Create transfer buffer for texture upload
+    SDL_GPUTransferBufferCreateInfo tex_transfer_info = {
+        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+        .size = tex_data_size,
+    };
+    SDL_GPUTransferBuffer *tex_transfer_buffer = SDL_CreateGPUTransferBuffer(app->device, &tex_transfer_info);
+    if (!tex_transfer_buffer) {
+        SDL_Log("Failed to create texture transfer buffer: %s", SDL_GetError());
+        SDL_DestroySurface(surface);
+        return -1;
+    }
+
+    // Map and copy texture data
+    unsigned char *mapped_tex = (unsigned char *)SDL_MapGPUTransferBuffer(app->device, tex_transfer_buffer, false);
+    if (!mapped_tex) {
+        SDL_Log("Failed to map texture transfer buffer: %s", SDL_GetError());
+        SDL_ReleaseGPUTransferBuffer(app->device, tex_transfer_buffer);
+        SDL_DestroySurface(surface);
+        return -1;
+    }
+    SDL_memcpy(mapped_tex, tex_data, tex_data_size);
+    SDL_UnmapGPUTransferBuffer(app->device, tex_transfer_buffer);
+
+    // Surface is no longer needed after copying to GPU
+    SDL_DestroySurface(surface);
+
+    // Upload texture data to GPU
+    SDL_GPUCommandBuffer *tex_cmdbuf = SDL_AcquireGPUCommandBuffer(app->device);
+    SDL_GPUCopyPass *tex_copy_pass = SDL_BeginGPUCopyPass(tex_cmdbuf);
+    
+    SDL_GPUTextureTransferInfo tex_transfer_src = {
+        .transfer_buffer = tex_transfer_buffer,
+        .offset = 0,
+        .pixels_per_row = (Uint32)tex_width,
+        .rows_per_layer = (Uint32)tex_height,
+    };
+    
+    SDL_GPUTextureRegion tex_region = {
+        .texture = app->floor_texture,
+        .mip_level = 0,
+        .layer = 0,
+        .x = 0,
+        .y = 0,
+        .z = 0,
+        .w = (Uint32)tex_width,
+        .h = (Uint32)tex_height,
+        .d = 1,
+    };
+    
+    SDL_UploadToGPUTexture(tex_copy_pass, &tex_transfer_src, &tex_region, false);
+    SDL_EndGPUCopyPass(tex_copy_pass);
+    SDL_SubmitGPUCommandBuffer(tex_cmdbuf);
+    SDL_ReleaseGPUTransferBuffer(app->device, tex_transfer_buffer);
+
+    // Create sampler
+    SDL_GPUSamplerCreateInfo sampler_info = {
+        .min_filter = SDL_GPU_FILTER_LINEAR,
+        .mag_filter = SDL_GPU_FILTER_LINEAR,
+        .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR,
+        .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
+        .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
+        .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
+    };
+    app->floor_sampler = SDL_CreateGPUSampler(app->device, &sampler_info);
+    if (!app->floor_sampler) {
+        SDL_Log("Failed to create floor sampler: %s", SDL_GetError());
+        return -1;
+    }
+    SDL_Log("Floor texture and sampler created successfully");
 
     GameState *state = &app->state;
     gm_init_game_state(state, g_map_data, MAP_WIDTH, MAP_HEIGHT, start_x, start_z, start_yaw);
@@ -1850,6 +1996,14 @@ static int render_game(GameApp *app) {
 
     SDL_BindGPUGraphicsPipeline(render_pass, app->scene_pipeline);
     SDL_PushGPUVertexUniformData(cmdbuf, 0, &app->scene_uniforms, sizeof(SceneUniforms));
+    SDL_PushGPUFragmentUniformData(cmdbuf, 0, &app->scene_uniforms, sizeof(SceneUniforms));
+
+    // Bind floor texture and sampler (both stages - vertex shader doesn't use it but SDL checks)
+    SDL_GPUTextureSamplerBinding texture_binding = {
+        .texture = app->floor_texture,
+        .sampler = app->floor_sampler,
+    };
+    SDL_BindGPUFragmentSamplers(render_pass, 0, &texture_binding, 1);
 
     SDL_GPUBufferBinding vertex_binding = {
         .buffer = app->scene_vertex_buffer,
@@ -1916,6 +2070,14 @@ static void shutdown_game(GameApp *app) {
     if (app->depth_texture) {
         SDL_ReleaseGPUTexture(app->device, app->depth_texture);
         app->depth_texture = NULL;
+    }
+    if (app->floor_texture) {
+        SDL_ReleaseGPUTexture(app->device, app->floor_texture);
+        app->floor_texture = NULL;
+    }
+    if (app->floor_sampler) {
+        SDL_ReleaseGPUSampler(app->device, app->floor_sampler);
+        app->floor_sampler = NULL;
     }
     if (app->device && app->window) {
         SDL_ReleaseWindowFromGPUDevice(app->device, app->window);

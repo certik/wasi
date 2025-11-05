@@ -168,6 +168,28 @@ static size_t wasm_strlen(const char* str) {
     return len;
 }
 
+bool SDL_JSGetImageInfo(const char* path, uint32_t* out_width, uint32_t* out_height) {
+    uint32_t path_len = (uint32_t)wasm_strlen(path);
+    uint32_t result = sdl_host_get_asset_image_info(
+        (uint32_t)(uintptr_t)path,
+        path_len,
+        (uint32_t)(uintptr_t)out_width,
+        (uint32_t)(uintptr_t)out_height
+    );
+    return result != 0;
+}
+
+bool SDL_JSGetImagePixelsRGBA(const char* path, void* dest, uint32_t dest_len) {
+    uint32_t path_len = (uint32_t)wasm_strlen(path);
+    uint32_t result = sdl_host_copy_asset_image_rgba(
+        (uint32_t)(uintptr_t)path,
+        path_len,
+        (uint32_t)(uintptr_t)dest,
+        dest_len
+    );
+    return result != 0;
+}
+
 // SDL3 API implementations
 bool SDL_Init(Uint32 flags) {
     return sdl_host_init(flags) != 0;
@@ -682,4 +704,141 @@ int SDL_snprintf(char *str, size_t size, const char *format, ...) {
 
 Uint32 SDL_GetTicks(void) {
     return sdl_host_get_ticks();
+}
+
+// IOStream implementation
+struct SDL_IOStream {
+    const void* mem;
+    size_t size;
+    const char* path;  // For WASM, stores the file path to look up pre-decoded images
+};
+
+SDL_IOStream* SDL_IOFromConstMem(const void* mem, size_t size) {
+    extern void* buddy_alloc(size_t size);
+
+    SDL_IOStream* stream = (SDL_IOStream*)buddy_alloc(sizeof(SDL_IOStream));
+    if (!stream) {
+        return NULL;
+    }
+
+    stream->mem = mem;
+    stream->size = size;
+    stream->path = NULL;
+
+    return stream;
+}
+
+SDL_IOStream* SDL_IOFromFile(const char* file, const char* mode) {
+    extern void* buddy_alloc(size_t size);
+    (void)mode; // Ignored for WASM
+
+    SDL_IOStream* stream = (SDL_IOStream*)buddy_alloc(sizeof(SDL_IOStream));
+    if (!stream) {
+        return NULL;
+    }
+
+    stream->mem = NULL;
+    stream->size = 0;
+    stream->path = file;  // Store the file path for WASM
+
+    return stream;
+}
+
+// SDL_Image implementation for WASM
+#include <SDL3_image/SDL_image.h>
+
+SDL_Surface* IMG_Load(const char* file) {
+    extern void* buddy_alloc(size_t size);
+    extern void buddy_free(void* ptr);
+
+    if (!file) {
+        SDL_Log("IMG_Load: null file path");
+        return NULL;
+    }
+
+    uint32_t width = 0;
+    uint32_t height = 0;
+    if (!SDL_JSGetImageInfo(file, &width, &height)) {
+        SDL_Log("IMG_Load: failed to get image info for %s", file);
+        return NULL;
+    }
+
+    SDL_Surface* surface = (SDL_Surface*)buddy_alloc(sizeof(SDL_Surface));
+    if (!surface) {
+        SDL_Log("IMG_Load: failed to allocate surface");
+        return NULL;
+    }
+
+    uint32_t pixel_size = width * height * 4;
+    void* pixels = buddy_alloc(pixel_size);
+    if (!pixels) {
+        SDL_Log("IMG_Load: failed to allocate pixel buffer");
+        buddy_free(surface);
+        return NULL;
+    }
+
+    if (!SDL_JSGetImagePixelsRGBA(file, pixels, pixel_size)) {
+        SDL_Log("IMG_Load: failed to load pixels for %s", file);
+        buddy_free(pixels);
+        buddy_free(surface);
+        return NULL;
+    }
+
+    surface->w = (int)width;
+    surface->h = (int)height;
+    surface->format = SDL_PIXELFORMAT_RGBA32;
+    surface->pitch = (int)(width * 4);
+    surface->pixels = pixels;
+
+    SDL_Log("IMG_Load: loaded %s (%ux%u)", file, width, height);
+    return surface;
+}
+
+SDL_Surface* IMG_Load_IO(SDL_IOStream* src, bool closeio) {
+    extern void buddy_free(void* ptr);
+
+    if (!src) {
+        return NULL;
+    }
+
+    const char* path = src->path;
+    if (!path && src->mem) {
+        path = (const char*)src->mem;
+    }
+
+    SDL_Surface* surface = NULL;
+    if (path) {
+        surface = IMG_Load(path);
+    } else {
+        SDL_Log("IMG_Load_IO: no path provided in IOStream");
+    }
+
+    // Close IOStream if requested
+    if (closeio && src) {
+        buddy_free(src);
+    }
+
+    return surface;
+}
+
+void SDL_DestroySurface(SDL_Surface* surface) {
+    extern void buddy_free(void* ptr);
+
+    if (!surface) {
+        return;
+    }
+
+    if (surface->pixels) {
+        buddy_free(surface->pixels);
+    }
+
+    buddy_free(surface);
+}
+
+SDL_Surface* SDL_ConvertSurface(SDL_Surface* surface, SDL_PixelFormat format) {
+    // Not implemented for WASM - should never be called since WASM always returns RGBA32
+    (void)surface;
+    (void)format;
+    SDL_Log("SDL_ConvertSurface: Not implemented for WASM");
+    return NULL;
 }

@@ -114,6 +114,112 @@ export function createWasmSDLHost(device, canvas) {
                 dst[len] = 0; // null terminator
             }
 
+            function mimeTypeForPath(path) {
+                const lower = path.toLowerCase();
+                if (lower.endsWith('.png')) return 'image/png';
+                if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+                if (lower.endsWith('.webp')) return 'image/webp';
+                return null;
+            }
+
+            function isImagePath(path) {
+                return mimeTypeForPath(path) !== null;
+            }
+
+            function loadImageElementFromBlob(blob) {
+                return new Promise((resolve, reject) => {
+                    const url = URL.createObjectURL(blob);
+                    const img = new Image();
+                    img.onload = () => {
+                        URL.revokeObjectURL(url);
+                        resolve(img);
+                    };
+                    img.onerror = (err) => {
+                        URL.revokeObjectURL(url);
+                        reject(err);
+                    };
+                    img.src = url;
+                });
+            }
+
+            async function decodeImageAsset(path, bytes) {
+                const mimeType = mimeTypeForPath(path);
+                if (!mimeType) {
+                    throw new Error(`Unsupported image type for ${path}`);
+                }
+
+                const slice = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+                const blob = new Blob([slice], { type: mimeType });
+                let source;
+                if (typeof createImageBitmap === 'function') {
+                    source = await createImageBitmap(blob);
+                } else {
+                    source = await loadImageElementFromBlob(blob);
+                }
+
+                const width = source.width || source.naturalWidth;
+                const height = source.height || source.naturalHeight;
+                let canvas;
+                if (typeof OffscreenCanvas !== 'undefined') {
+                    canvas = new OffscreenCanvas(width, height);
+                } else {
+                    canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                }
+
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    if (source.close) {
+                        source.close();
+                    }
+                    throw new Error(`Failed to obtain 2D context for ${path}`);
+                }
+
+                ctx.drawImage(source, 0, 0);
+                const imageData = ctx.getImageData(0, 0, width, height);
+                if (source.close) {
+                    source.close();
+                }
+
+                return {
+                    width,
+                    height,
+                    pixels: new Uint8Array(imageData.data.buffer.slice(0)),
+                };
+            }
+
+            async function preloadImageAssetsFromBundle(bundleMap) {
+                if (!bundleMap) {
+                    return;
+                }
+
+                const tasks = [];
+                for (const [path, rawBytes] of bundleMap.entries()) {
+                    if (!isImagePath(path)) {
+                        continue;
+                    }
+                    if (imageAssets.has(path)) {
+                        continue;
+                    }
+                    const bytes = rawBytes instanceof Uint8Array ? rawBytes : new Uint8Array(rawBytes);
+                    tasks.push((async () => {
+                        try {
+                            const decoded = await decodeImageAsset(path, bytes);
+                            imageAssets.set(path, decoded);
+                            console.log(`[SDL] Pre-decoded image ${path}: ${decoded.width}x${decoded.height}`);
+                        } catch (err) {
+                            console.error(`[SDL] Failed to decode image ${path}:`, err);
+                            throw err;
+                        }
+                    })());
+                }
+
+                if (tasks.length > 0) {
+                    await Promise.all(tasks);
+                }
+            }
+
             function getAssetImage(path) {
                 const asset = imageAssets.get(path);
                 if (!asset) {
@@ -1572,6 +1678,9 @@ export function createWasmSDLHost(device, canvas) {
                     wasmBuddyAlloc = allocFn;
                     wasmBuddyFree = freeFn;
                     console.log('[SDL] Buddy allocator functions registered');
+                },
+                async preloadAssetsFromBundle(bundleMap) {
+                    await preloadImageAssetsFromBundle(bundleMap);
                 },
             };
         }

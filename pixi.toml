@@ -187,6 +187,9 @@ clang \
 
 test_game_wasm = { cmd="echo 'WASM build successful: game.wasm'", depends-on=["build_game_wasm"] }
 
+
+bundle_shaders = { cmd="./bundler shaders_manifest.txt shaders.bundle", depends-on=["build_bundler"] }
+
 serve = { cmd="python server.py", depends-on=["test_game_wasm", "bundle_shaders"] }
 
 [feature.wasm.dependencies]
@@ -293,6 +296,7 @@ clang \
     -I native \
     -I . \
     -lSDL3 \
+    -lSDL3_image \
     -lm \
     -Wno-macro-redefined \
     -o game_linux \
@@ -315,9 +319,10 @@ clang \
 
 test_game_linux = { cmd="./game_linux", depends-on=["build_game_linux"] }
 
-[feature.linux.dependencies]
+[feature.linux.target.linux-64.dependencies]
 clang = ">=20.1.4,<21"
-sdl3 = ">=3.2.24,<4"
+sdl3 = "==3.3.3"
+sdl3_image = "==3.3.0"
 
 [feature.macos.tasks]
 build_macos = """
@@ -425,6 +430,7 @@ clang \
     -I native \
     -I . \
     -lSDL3 \
+    -lSDL3_image \
     -lSystem \
     -framework Metal -framework CoreGraphics -framework AppKit \
     -Wno-macro-redefined \
@@ -448,10 +454,14 @@ clang \
 
 test_game_macos = { cmd="./game_macos", depends-on=["build_game_macos"] }
 
-[feature.macos.dependencies]
+[target.osx-arm64.dependencies]
+python = ">=3.12"
+
+[feature.macos.target.osx-arm64.dependencies]
 # Use the system Clang on macOS
 #clang = ">=20.1.4,<21"
-sdl3 = ">=3.2.24,<4"
+sdl3 = "==3.3.3"
+sdl3_image = "==3.3.0"
 
 [feature.windows.tasks]
 build_windows = """
@@ -673,6 +683,7 @@ link \
     base_math.obj \
     wasi_windows.obj \
     SDL3.lib \
+    SDL3_image.lib \
     shell32.lib \
     d3d12.lib \
     dxgi.lib \
@@ -682,18 +693,20 @@ link \
 
 test_game_windows = { cmd="./game_windows", depends-on=["build_game_windows"] }
 
-[feature.windows.dependencies]
+[target.win-64.dependencies]
+python = ">=3.12"
+
+[feature.windows.target.win-64.dependencies]
 # Note: MSVC is not available through conda-forge, so we rely on system installation
 # Users need to have Visual Studio or Build Tools for Visual Studio installed
 # The cl.exe and link.exe commands should be available in PATH
 # SDL3 is included from prefix.dev as priority
 cmake = ">=3.20"
 ninja = ">=1.10"
-sdl3 = ">=3.2.24,<4"
+sdl3 = "==3.3.3"
+sdl3_image = "==3.3.0"
 
 [tasks]
-build_bundler = "clang -o bundler bundler.c"
-bundle_shaders = { cmd="./bundler shaders_manifest.txt shaders.bundle", depends-on=["build_bundler"] }
 all = { depends-on=["test_wasm", "test_linux"] }
 all_with_macos = { depends-on=["test_wasm", "test_linux", "test_macos"] }
 all_with_windows = { depends-on=["test_wasm", "test_linux", "test_windows"] }
@@ -716,5 +729,11 @@ windows = { features = ["windows"], solve-group = "windows" }
 
 # Platform-specific task overrides
 # On macOS, use system clang to avoid LTO library issues with conda clang
-[target.osx-arm64.tasks]
+[feature.wasm.target.osx-arm64.tasks]
 build_bundler = "/usr/bin/clang -o bundler bundler.c"
+
+[feature.wasm.target.linux-64.tasks]
+build_bundler = "clang -o bundler bundler.c"
+
+[feature.wasm.target.win-64.tasks]
+build_bundler = "clang -o bundler bundler.c"

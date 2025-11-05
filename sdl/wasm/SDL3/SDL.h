@@ -22,6 +22,7 @@ typedef struct SDL_GPUCopyPass SDL_GPUCopyPass;
 typedef struct SDL_GPUBuffer SDL_GPUBuffer;
 typedef struct SDL_GPUTransferBuffer SDL_GPUTransferBuffer;
 typedef struct SDL_GPUSampler SDL_GPUSampler;
+typedef struct SDL_IOStream SDL_IOStream;
 
 // Color type
 typedef struct SDL_FColor {
@@ -30,6 +31,21 @@ typedef struct SDL_FColor {
     float b;
     float a;
 } SDL_FColor;
+
+// Pixel format
+typedef enum {
+    SDL_PIXELFORMAT_RGBA32 = 0x16462004,
+    SDL_PIXELFORMAT_ABGR32 = 0x16762004,
+} SDL_PixelFormat;
+
+// Surface type
+typedef struct SDL_Surface {
+    SDL_PixelFormat format;
+    int w;
+    int h;
+    int pitch;
+    void* pixels;
+} SDL_Surface;
 
 // Event types
 typedef enum {
@@ -382,6 +398,12 @@ size_t SDL_strlen(const char* str);
 void* SDL_memcpy(void* dst, const void* src, size_t len);
 int SDL_snprintf(char *str, size_t size, const char *format, ...);
 Uint32 SDL_GetTicks(void);
+
+// IOStream API for loading images
+SDL_IOStream* SDL_IOFromConstMem(const void* mem, size_t size);
+SDL_IOStream* SDL_IOFromFile(const char* file, const char* mode);
+void SDL_DestroySurface(SDL_Surface* surface);
+SDL_Surface* SDL_ConvertSurface(SDL_Surface* surface, SDL_PixelFormat format);
 
 // Managed main callback prototypes (implemented by the app when using SDL_MAIN_USE_CALLBACKS)
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]);
