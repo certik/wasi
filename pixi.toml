@@ -320,7 +320,8 @@ test_game_linux = { cmd="./game_linux", depends-on=["build_game_linux"] }
 
 [feature.linux.target.linux-64.dependencies]
 clang = ">=20.1.4,<21"
-sdl3 = ">=3.2.24,<4"
+sdl3 = "==3.3.3"
+sdl3_image = "==3.3.0"
 
 [feature.macos.tasks]
 build_macos = """
