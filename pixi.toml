@@ -187,7 +187,8 @@ clang \
 
 test_game_wasm = { cmd="echo 'WASM build successful: game.wasm'", depends-on=["build_game_wasm"] }
 
-build_bundler = "clang -o bundler bundler.c"
+
+bundle_shaders = { cmd="./bundler shaders_manifest.txt shaders.bundle", depends-on=["build_bundler"] }
 
 serve = { cmd="python server.py", depends-on=["test_game_wasm", "bundle_shaders"] }
 
@@ -706,7 +707,6 @@ sdl3 = "==3.3.3"
 sdl3_image = "==3.3.0"
 
 [tasks]
-bundle_shaders = { cmd="./bundler shaders_manifest.txt shaders.bundle", depends-on=["build_bundler"] }
 all = { depends-on=["test_wasm", "test_linux"] }
 all_with_macos = { depends-on=["test_wasm", "test_linux", "test_macos"] }
 all_with_windows = { depends-on=["test_wasm", "test_linux", "test_windows"] }
@@ -729,5 +729,11 @@ windows = { features = ["windows"], solve-group = "windows" }
 
 # Platform-specific task overrides
 # On macOS, use system clang to avoid LTO library issues with conda clang
-[target.osx-arm64.tasks]
+[feature.wasm.target.osx-arm64.tasks]
 build_bundler = "/usr/bin/clang -o bundler bundler.c"
+
+[feature.wasm.target.linux-64.tasks]
+build_bundler = "clang -o bundler bundler.c"
+
+[feature.wasm.target.win-64.tasks]
+build_bundler = "clang -o bundler bundler.c"
