@@ -4,9 +4,9 @@
 set -ex
 
 cd scripts
-cargo build --release
+cargo build # --release
 cd ..
 
 for shader in shaders/WGSL/*.wgsl; do
-    scripts/target/release/shader_compiler "$shader"
+    scripts/target/debug/shader_compiler "$shader"
 done

@@ -21,11 +21,10 @@ cbuffer SceneUniforms : register(b0, space3) {
     float4 cameraPos;
     float4 fogColor;
 }
-Texture2D<float4> floorTexture : register(t0, space3);
-SamplerState nagaSamplerHeap[2048]: register(s0, space0);
-SamplerComparisonState nagaComparisonSamplerHeap[2048]: register(s0, space1);
-StructuredBuffer<uint> nagaGroup1SamplerIndexArray : register(t1, space255);
-static const SamplerState floorSampler = nagaSamplerHeap[nagaGroup1SamplerIndexArray[1]];
+Texture2D<float4> floorTexture : register(t0, space2);
+SamplerState floorSampler : register(s0, space2);
+Texture2D<float4> wallTexture : register(t1, space2);
+SamplerState wallSampler : register(s1, space2);
 
 struct FragmentInput_main {
     float surfaceType : TEXCOORD0;
@@ -52,33 +51,33 @@ float4 main(FragmentInput_main fragmentinput_main) : SV_Target0
     float3 baseColor = (float3)0;
     float3 color = (float3)0;
 
-    float4 texColor = floorTexture.Sample(floorSampler, input.uv);
+    float4 floorColor = floorTexture.Sample(floorSampler, input.uv);
+    float4 wallColor = wallTexture.Sample(wallSampler, input.uv);
     if ((input.surfaceType < 0.5)) {
-        baseColor = texColor.xyz;
+        baseColor = floorColor.xyz;
     } else {
         if ((input.surfaceType < 1.5)) {
-            const float _e18 = checker(input.uv);
-            baseColor = (float3(0.9, 0.2, 0.2) * _e18);
+            baseColor = wallColor.xyz;
         } else {
             if ((input.surfaceType < 2.5)) {
-                const float _e28 = checker(input.uv);
-                baseColor = (float3(0.9, 0.9, 0.2) * _e28);
+                const float _e26 = checker(input.uv);
+                baseColor = (float3(0.9, 0.9, 0.2) * _e26);
             } else {
-                const float _e35 = checker(input.uv);
-                baseColor = (float3(0.7, 0.5, 0.3) * _e35);
+                const float _e33 = checker(input.uv);
+                baseColor = (float3(0.7, 0.5, 0.3) * _e33);
             }
         }
     }
     float3 n = normalize(input.normal);
     float3 lightDir = normalize(float3(0.35, 1.0, 0.45));
     float diff = max(dot(n, lightDir), 0.15);
-    float4 _e50 = cameraPos;
-    float fogFactor = exp((-(distance(input.worldPos, _e50.xyz)) * 0.08));
-    float3 _e57 = baseColor;
-    color = (_e57 * diff);
-    float4 _e62 = fogColor;
+    float4 _e48 = cameraPos;
+    float fogFactor = exp((-(distance(input.worldPos, _e48.xyz)) * 0.08));
+    float3 _e55 = baseColor;
+    color = (_e55 * diff);
+    float4 _e60 = fogColor;
+    float3 _e62 = color;
+    color = lerp(_e60.xyz, _e62, fogFactor);
     float3 _e64 = color;
-    color = lerp(_e62.xyz, _e64, fogFactor);
-    float3 _e66 = color;
-    return float4(_e66, 1.0);
+    return float4(_e64, 1.0);
 }

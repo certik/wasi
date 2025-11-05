@@ -45,37 +45,39 @@ fragment main_Output main_fragment(
 , constant SceneUniforms& uniforms [[buffer(0)]]
 , metal::texture2d<float, metal::access::sample> floorTexture [[texture(0)]]
 , metal::sampler floorSampler [[sampler(0)]]
+, metal::texture2d<float, metal::access::sample> wallTexture [[texture(1)]]
+, metal::sampler wallSampler [[sampler(1)]]
 ) {
     const VertexOutput input = { position, varyings.surfaceType, {}, varyings.uv, varyings.normal, varyings.worldPos };
     metal::float3 baseColor = {};
     metal::float3 color = {};
-    metal::float4 texColor = floorTexture.sample(floorSampler, input.uv);
+    metal::float4 floorColor = floorTexture.sample(floorSampler, input.uv);
+    metal::float4 wallColor = wallTexture.sample(wallSampler, input.uv);
     if (input.surfaceType < 0.5) {
-        baseColor = texColor.xyz;
+        baseColor = floorColor.xyz;
     } else {
         if (input.surfaceType < 1.5) {
-            float _e18 = checker(input.uv);
-            baseColor = metal::float3(0.9, 0.2, 0.2) * _e18;
+            baseColor = wallColor.xyz;
         } else {
             if (input.surfaceType < 2.5) {
-                float _e28 = checker(input.uv);
-                baseColor = metal::float3(0.9, 0.9, 0.2) * _e28;
+                float _e26 = checker(input.uv);
+                baseColor = metal::float3(0.9, 0.9, 0.2) * _e26;
             } else {
-                float _e35 = checker(input.uv);
-                baseColor = metal::float3(0.7, 0.5, 0.3) * _e35;
+                float _e33 = checker(input.uv);
+                baseColor = metal::float3(0.7, 0.5, 0.3) * _e33;
             }
         }
     }
     metal::float3 n = metal::normalize(input.normal);
     metal::float3 lightDir = metal::normalize(metal::float3(0.35, 1.0, 0.45));
     float diff = metal::max(metal::dot(n, lightDir), 0.15);
-    metal::float4 _e50 = uniforms.cameraPos;
-    float fogFactor = metal::exp(-(metal::distance(input.worldPos, _e50.xyz)) * 0.08);
-    metal::float3 _e57 = baseColor;
-    color = _e57 * diff;
-    metal::float4 _e62 = uniforms.fogColor;
+    metal::float4 _e48 = uniforms.cameraPos;
+    float fogFactor = metal::exp(-(metal::distance(input.worldPos, _e48.xyz)) * 0.08);
+    metal::float3 _e55 = baseColor;
+    color = _e55 * diff;
+    metal::float4 _e60 = uniforms.fogColor;
+    metal::float3 _e62 = color;
+    color = metal::mix(_e60.xyz, _e62, fogFactor);
     metal::float3 _e64 = color;
-    color = metal::mix(_e62.xyz, _e64, fogFactor);
-    metal::float3 _e66 = color;
-    return main_Output { metal::float4(_e66, 1.0) };
+    return main_Output { metal::float4(_e64, 1.0) };
 }

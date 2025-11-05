@@ -15,6 +15,8 @@ struct VertexOutput {
 @group(0) @binding(0) var<uniform> uniforms: SceneUniforms;
 @group(1) @binding(0) var floorTexture: texture_2d<f32>;
 @group(1) @binding(1) var floorSampler: sampler;
+@group(1) @binding(2) var wallTexture: texture_2d<f32>;
+@group(1) @binding(3) var wallSampler: sampler;
 
 fn checker(uv: vec2f) -> f32 {
     let scaled = floor(uv * 4.0);
@@ -24,15 +26,16 @@ fn checker(uv: vec2f) -> f32 {
 
 @fragment
 fn main(input: VertexOutput) -> @location(0) vec4f {
-    // Sample texture unconditionally (required for uniform control flow)
-    let texColor = textureSample(floorTexture, floorSampler, input.uv);
-    
+    // Sample textures unconditionally (required for uniform control flow)
+    let floorColor = textureSample(floorTexture, floorSampler, input.uv);
+    let wallColor = textureSample(wallTexture, wallSampler, input.uv);
+
     var baseColor: vec3f;
     if (input.surfaceType < 0.5) {
         // Floor: use sampled texture
-        baseColor = texColor.rgb;
+        baseColor = floorColor.rgb;
     } else if (input.surfaceType < 1.5) {
-        baseColor = vec3f(0.9, 0.2, 0.2) * checker(input.uv);
+        baseColor = wallColor.rgb;
     } else if (input.surfaceType < 2.5) {
         baseColor = vec3f(0.9, 0.9, 0.2) * checker(input.uv);
     } else {
@@ -47,4 +50,3 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
     color = mix(uniforms.fogColor.xyz, color, fogFactor);
     return vec4f(color, 1.0);
 }
-
