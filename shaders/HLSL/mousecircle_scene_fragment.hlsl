@@ -51,6 +51,7 @@ float4 main(FragmentInput_main fragmentinput_main) : SV_Target0
 {
     VertexOutput input = { fragmentinput_main.position, fragmentinput_main.surfaceType, fragmentinput_main.uv_1, fragmentinput_main.normal, fragmentinput_main.worldPos };
     float3 baseColor = (float3)0;
+    float diff = (float)0;
     float3 color = (float3)0;
 
     float4 floorColor = floorTexture.Sample(floorSampler, input.uv);
@@ -72,14 +73,18 @@ float4 main(FragmentInput_main fragmentinput_main) : SV_Target0
     }
     float3 n = normalize(input.normal);
     float3 lightDir = normalize(float3(0.35, 1.0, 0.45));
-    float diff = max(dot(n, lightDir), 0.15);
-    float4 _e46 = cameraPos;
-    float fogFactor = exp((-(distance(input.worldPos, _e46.xyz)) * 0.08));
-    float3 _e53 = baseColor;
-    color = (_e53 * diff);
-    float4 _e58 = fogColor;
-    float3 _e60 = color;
-    color = lerp(_e58.xyz, _e60, fogFactor);
-    float3 _e62 = color;
-    return float4(_e62, 1.0);
+    diff = max(dot(n, lightDir), 0.15);
+    if (((input.surfaceType >= 1.5) && (input.surfaceType < 2.5))) {
+        diff = 1.0;
+    }
+    float4 _e55 = cameraPos;
+    float fogFactor = exp((-(distance(input.worldPos, _e55.xyz)) * 0.08));
+    float3 _e62 = baseColor;
+    float _e63 = diff;
+    color = (_e62 * _e63);
+    float4 _e68 = fogColor;
+    float3 _e70 = color;
+    color = lerp(_e68.xyz, _e70, fogFactor);
+    float3 _e72 = color;
+    return float4(_e72, 1.0);
 }

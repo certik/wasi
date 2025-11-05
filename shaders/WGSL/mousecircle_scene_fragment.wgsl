@@ -47,7 +47,13 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
 
     let n = normalize(input.normal);
     let lightDir = normalize(vec3f(0.35, 1.0, 0.45));
-    let diff = max(dot(n, lightDir), 0.15);
+    var diff = max(dot(n, lightDir), 0.15);
+    
+    // Make ceiling brighter - it should be well-lit
+    if (input.surfaceType >= 1.5 && input.surfaceType < 2.5) {
+        diff = 1.0;  // Full brightness for ceiling
+    }
+    
     let fogFactor = exp(-distance(input.worldPos, uniforms.cameraPos.xyz) * 0.08);
     var color = baseColor * diff;
     color = mix(uniforms.fogColor.xyz, color, fogFactor);
