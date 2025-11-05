@@ -215,43 +215,73 @@ fn generate_hlsl(
     header_comment: &str,
 ) -> Result<(), String> {
     // Build binding map for D3D12 descriptor spaces
-    // SDL3 uses: space1 for vertex shader resources, space3 for fragment shader resources
+    // SDL3 uses: space2 for textures/samplers (to avoid conflicts with uniforms in space3)
     let mut binding_map = BTreeMap::new();
 
     for (ep_index, entry_point) in module.entry_points.iter().enumerate() {
         let ep_info = module_info.get_entry_point(ep_index);
 
-        // Determine space based on shader stage
-        // SDL3 uses: space1 for vertex, space3 for fragment
-        let space = match entry_point.stage {
-            naga::ShaderStage::Vertex => 1,
-            naga::ShaderStage::Fragment => 3,
-            naga::ShaderStage::Compute => 2,
-            naga::ShaderStage::Task => 4,
-            naga::ShaderStage::Mesh => 5,
-        };
+        // Track separate register counters per resource type for this entry point
+        let mut texture_register = 0u32;
+        let mut sampler_register = 0u32;
 
-        // Map all resources used by this entry point to the appropriate space
-        for (handle, global_var) in module.global_variables.iter() {
-            if !ep_info[handle].is_empty() {
-                if let Some(ref binding) = global_var.binding {
-                    let resource_binding = ResourceBinding {
-                        group: binding.group,
-                        binding: binding.binding,
-                    };
+        // Collect all bindings for this entry point and sort by binding number
+        let mut bindings_to_process: Vec<_> = module.global_variables
+            .iter()
+            .filter(|(handle, _)| !ep_info[*handle].is_empty())
+            .filter_map(|(handle, global_var)| {
+                global_var.binding.as_ref().map(|binding| (handle, global_var, binding))
+            })
+            .collect();
+        
+        // Sort by group, then binding number to ensure consistent ordering
+        bindings_to_process.sort_by_key(|(_, _, binding)| (binding.group, binding.binding));
 
-                    // Map to D3D12 register and space
-                    let bind_target = hlsl::BindTarget {
-                        space,
-                        register: binding.binding,
-                        binding_array_size: None,
-                        dynamic_storage_buffer_offsets_index: None,
-                        restrict_indexing: true,
-                    };
+        // Map all resources used by this entry point
+        for (_handle, global_var, binding) in bindings_to_process {
+            let resource_binding = ResourceBinding {
+                group: binding.group,
+                binding: binding.binding,
+            };
 
-                    binding_map.insert(resource_binding, bind_target);
+            // Determine resource type and assign appropriate register
+            let ty = &module.types[global_var.ty];
+            let (register, space) = match ty.inner {
+                // Textures and images use t-registers in space2
+                TypeInner::Image { .. } => {
+                    let reg = texture_register;
+                    texture_register += 1;
+                    (reg, 2) // Use space2 for textures
                 }
-            }
+                // Samplers use s-registers, also in space2
+                // Each sampler gets its own sequential s-register
+                TypeInner::Sampler { .. } => {
+                    let reg = sampler_register;
+                    sampler_register += 1;
+                    (reg, 2) // Use space2 for samplers (same space as textures)
+                }
+                // Buffers and uniforms keep their original binding number
+                _ => {
+                    let space = match entry_point.stage {
+                        naga::ShaderStage::Vertex => 1,
+                        naga::ShaderStage::Fragment => 3,
+                        naga::ShaderStage::Compute => 2,
+                        naga::ShaderStage::Task => 4,
+                        naga::ShaderStage::Mesh => 5,
+                    };
+                    (binding.binding, space)
+                }
+            };
+
+            let bind_target = hlsl::BindTarget {
+                space,
+                register,
+                binding_array_size: None,
+                dynamic_storage_buffer_offsets_index: None,
+                restrict_indexing: true,
+            };
+
+            binding_map.insert(resource_binding, bind_target);
         }
     }
 
@@ -296,41 +326,43 @@ fn generate_hlsl(
 
 fn fix_hlsl_for_sdl3(hlsl_source: &str) -> String {
     let mut result = hlsl_source.to_string();
-    
+
     // 1. Replace LOC0-9 semantics with TEXCOORD0-9 (SDL3 expects TEXCOORD)
     for i in 0..10 {
         result = result.replace(&format!(" : LOC{}", i), &format!(" : TEXCOORD{}", i));
     }
-    
+
     // 2. Convert Naga sampler heap to direct sampler bindings
-    // Naga generates sampler heap pattern which doesn't work with some DXC versions
+    // Naga still generates sampler heap despite binding_map, so we need to fix it
     result = fix_sampler_heap_to_direct(&result);
-    
+
     // 3. Fix cbuffer syntax from Naga's nested form to flattened form
     // Pattern: cbuffer uniforms : register(...) { StructName uniforms; }
     // Target: cbuffer StructName : register(...) { struct fields }
     result = fix_cbuffer_syntax(&result);
-    
+
     // 4. Remove "uniforms." prefix since cbuffer fields are now directly accessible
     result = result.replace("uniforms.mvp", "mvp");
     result = result.replace("uniforms.cameraPos", "cameraPos");
     result = result.replace("uniforms.fogColor", "fogColor");
-    
+
     // 5. Remove unnecessary wrapper structs and simplify main function
     // Naga generates VertexOutput_main wrapper structs that aren't needed for SDL3
     result = simplify_stage_io(&result);
-    
+
     result
 }
 
 fn fix_sampler_heap_to_direct(hlsl: &str) -> String {
-    // Naga sometimes generates sampler heap pattern like:
+    // Naga generates sampler heap pattern for all samplers:
     // SamplerState nagaSamplerHeap[2048]: register(s0, space0);
     // StructuredBuffer<uint> nagaGroup1SamplerIndexArray : register(t1, space255);
-    // static const SamplerState floorSampler = nagaSamplerHeap[nagaGroup1SamplerIndexArray[1]];
+    // static const SamplerState floorSampler = nagaSamplerHeap[nagaGroup1SamplerIndexArray[0]];
+    // static const SamplerState wallSampler = nagaSamplerHeap[nagaGroup1SamplerIndexArray[1]];
     //
-    // This doesn't work with some DXC versions, so convert to direct bindings:
+    // Convert to direct bindings that work with DXC:
     // SamplerState floorSampler : register(s0, space2);
+    // SamplerState wallSampler : register(s1, space2);
     
     let result = hlsl.to_string();
     
@@ -339,7 +371,22 @@ fn fix_sampler_heap_to_direct(hlsl: &str) -> String {
         return result;  // No heap pattern, return as-is
     }
     
-    // Remove the heap declarations
+    // First pass: collect all sampler names and their indices
+    let mut samplers = Vec::new();
+    for line in result.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("static const SamplerState ") {
+            if let Some(name_start) = trimmed.find("SamplerState ") {
+                let after_type = &trimmed[name_start + "SamplerState ".len()..];
+                if let Some(name_end) = after_type.find(" =") {
+                    let sampler_name = &after_type[..name_end];
+                    samplers.push(sampler_name.to_string());
+                }
+            }
+        }
+    }
+    
+    // Second pass: remove heap declarations and convert sampler declarations
     let lines: Vec<&str> = result.lines().collect();
     let mut new_lines = Vec::new();
     
@@ -355,24 +402,14 @@ fn fix_sampler_heap_to_direct(hlsl: &str) -> String {
         
         // Convert static const sampler declarations to direct register bindings
         if trimmed.starts_with("static const SamplerState ") {
-            // Extract sampler name from: static const SamplerState floorSampler = ...
             if let Some(name_start) = trimmed.find("SamplerState ") {
                 let after_type = &trimmed[name_start + "SamplerState ".len()..];
                 if let Some(name_end) = after_type.find(" =") {
                     let sampler_name = &after_type[..name_end];
-                    
-                    // Extract the index from nagaGroup1SamplerIndexArray[1]
-                    if let Some(idx_start) = trimmed.rfind('[') {
-                        if let Some(idx_end) = trimmed[idx_start..].find(']') {
-                            let index_str = &trimmed[idx_start + 1..idx_start + idx_end];
-                            if let Ok(index) = index_str.parse::<u32>() {
-                                // Map to direct sampler register
-                                // Use space2 for SDL3 compatibility
-                                let register = index / 2;  // Each texture-sampler pair uses sequential indices
-                                new_lines.push(format!("SamplerState {} : register(s{}, space2);", sampler_name, register));
-                                continue;
-                            }
-                        }
+                    // Find the index of this sampler in our collected list
+                    if let Some(index) = samplers.iter().position(|s| s == sampler_name) {
+                        new_lines.push(format!("SamplerState {} : register(s{}, space2);", sampler_name, index));
+                        continue;
                     }
                 }
             }

@@ -21,10 +21,9 @@ cbuffer SceneUniforms : register(b0, space3) {
     float4 cameraPos;
     float4 fogColor;
 }
-
-Texture2D floorTexture : register(t0, space2);
+Texture2D<float4> floorTexture : register(t0, space2);
 SamplerState floorSampler : register(s0, space2);
-Texture2D wallTexture : register(t1, space2);
+Texture2D<float4> wallTexture : register(t1, space2);
 SamplerState wallSampler : register(s1, space2);
 
 struct FragmentInput_main {

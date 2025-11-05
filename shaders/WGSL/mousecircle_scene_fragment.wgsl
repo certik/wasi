@@ -29,7 +29,7 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
     // Sample textures unconditionally (required for uniform control flow)
     let floorColor = textureSample(floorTexture, floorSampler, input.uv);
     let wallColor = textureSample(wallTexture, wallSampler, input.uv);
-    
+
     var baseColor: vec3f;
     if (input.surfaceType < 0.5) {
         // Floor: use sampled texture
