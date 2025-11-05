@@ -22,11 +22,12 @@ cbuffer SceneUniforms : register(b0, space3) {
     float4 fogColor;
 }
 Texture2D<float4> floorTexture : register(t0, space3);
-Texture2D<float4> wallTexture : register(t1, space3);
 SamplerState nagaSamplerHeap[2048]: register(s0, space0);
 SamplerComparisonState nagaComparisonSamplerHeap[2048]: register(s0, space1);
 StructuredBuffer<uint> nagaGroup1SamplerIndexArray : register(t1, space255);
-static const SamplerState surfaceSampler = nagaSamplerHeap[nagaGroup1SamplerIndexArray[2]];
+static const SamplerState floorSampler = nagaSamplerHeap[nagaGroup1SamplerIndexArray[1]];
+Texture2D<float4> wallTexture : register(t2, space3);
+static const SamplerState wallSampler = nagaSamplerHeap[nagaGroup1SamplerIndexArray[3]];
 
 struct FragmentInput_main {
     float surfaceType : TEXCOORD0;
@@ -53,8 +54,8 @@ float4 main(FragmentInput_main fragmentinput_main) : SV_Target0
     float3 baseColor = (float3)0;
     float3 color = (float3)0;
 
-    float4 floorColor = floorTexture.Sample(surfaceSampler, input.uv);
-    float4 wallColor = wallTexture.Sample(surfaceSampler, input.uv);
+    float4 floorColor = floorTexture.Sample(floorSampler, input.uv);
+    float4 wallColor = wallTexture.Sample(wallSampler, input.uv);
     if ((input.surfaceType < 0.5)) {
         baseColor = floorColor.xyz;
     } else {
