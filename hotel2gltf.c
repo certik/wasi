@@ -135,7 +135,7 @@ static bool has_geometry(char c) {
 
 // Write binary buffer to file
 static bool write_buffer(const char *filename, const void *data, size_t size) {
-    wasi_fd_t fd = wasi_path_open(filename, strlen(filename),
+    wasi_fd_t fd = wasi_path_open(filename, base_strlen(filename),
                                     WASI_RIGHTS_WRITE,
                                     WASI_O_CREAT | WASI_O_TRUNC);
     if (fd < 0) return false;
@@ -149,7 +149,7 @@ static bool write_buffer(const char *filename, const void *data, size_t size) {
 
 // Write string to file
 static bool write_string(const char *filename, const char *str) {
-    return write_buffer(filename, str, strlen(str));
+    return write_buffer(filename, str, base_strlen(str));
 }
 
 // Simple integer to string without using format
@@ -182,7 +182,7 @@ static void float_to_str_simple(char *buf, size_t bufsize, float value, int deci
     if (frac < 0) frac = -frac;
 
     int_to_str_simple(buf, bufsize, int_part);
-    int len = strlen(buf);
+    int len = base_strlen(buf);
     if (len + 2 < (int)bufsize) {
         buf[len++] = '.';
         for (int i = 0; i < decimals && len < (int)bufsize - 1; i++) {
@@ -258,7 +258,7 @@ static void generate_gltf(MeshBuilder *mb, const char *bin_filename, const char 
     }
 
     // Write indices
-    memcpy(buffer + pos_size + norm_size, mb->indices, idx_size);
+    base_memcpy(buffer + pos_size + norm_size, mb->indices, idx_size);
 
     // Calculate bounds
     float min_x=pos_ptr[0], max_x=pos_ptr[0];
@@ -325,7 +325,7 @@ int main(void) {
 
     // Create grid array
     char *grid = arena_alloc_array(arena, char, rows * cols);
-    memset(grid, ' ', rows * cols);
+    base_memset(grid, ' ', rows * cols);
 
     uint32_t row = 0, col = 0;
     for (uint64_t i = start_idx; i < hotel_text.size; i++) {
