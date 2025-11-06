@@ -1278,8 +1278,18 @@ static bool export_mesh_to_obj(MeshData *mesh, const char *filename) {
     SDL_Log("Exporting mesh to OBJ: %s", filename);
     SDL_Log("Vertices: %u, Indices: %u", mesh->vertex_count, mesh->index_count);
 
-    // Allocate a large buffer for the OBJ content (using static buffer for simplicity)
-    static char obj_buffer[16 * 1024 * 1024];  // 16MB buffer
+    // Allocate a buffer for the OBJ content using buddy allocator
+    // Estimate: ~100 bytes per vertex (v, vt, vn) + ~50 bytes per face
+    size_t estimated_size = mesh->vertex_count * 100 + mesh->index_count * 50 / 3;
+    if (estimated_size < 64 * 1024) estimated_size = 64 * 1024;  // Minimum 64KB
+
+    ensure_runtime_heap();
+    char *obj_buffer = (char *)buddy_alloc(estimated_size);
+    if (!obj_buffer) {
+        SDL_Log("Failed to allocate memory for OBJ export (needed %zu bytes)", estimated_size);
+        return false;
+    }
+
     int pos = 0;
 
     // Write MTL reference
@@ -1295,7 +1305,7 @@ static bool export_mesh_to_obj(MeshData *mesh, const char *filename) {
             basename_start = i + 1;
         }
     }
-    for (int i = basename_start; filename[i] && pos < sizeof(obj_buffer) - 100; i++) {
+    for (int i = basename_start; filename[i] && pos < (int)estimated_size - 100; i++) {
         obj_buffer[pos++] = filename[i];
     }
     // Replace .obj with .mtl
@@ -1313,7 +1323,7 @@ static bool export_mesh_to_obj(MeshData *mesh, const char *filename) {
     obj_buffer[pos++] = '\n';
 
     // Write vertices
-    for (uint32_t i = 0; i < mesh->vertex_count && pos < sizeof(obj_buffer) - 200; i++) {
+    for (uint32_t i = 0; i < mesh->vertex_count && pos < (int)estimated_size - 200; i++) {
         obj_buffer[pos++] = 'v';
         obj_buffer[pos++] = ' ';
 
@@ -1335,7 +1345,7 @@ static bool export_mesh_to_obj(MeshData *mesh, const char *filename) {
     obj_buffer[pos++] = '\n';
 
     // Write texture coordinates
-    for (uint32_t i = 0; i < mesh->vertex_count && pos < sizeof(obj_buffer) - 200; i++) {
+    for (uint32_t i = 0; i < mesh->vertex_count && pos < (int)estimated_size - 200; i++) {
         obj_buffer[pos++] = 'v';
         obj_buffer[pos++] = 't';
         obj_buffer[pos++] = ' ';
@@ -1354,7 +1364,7 @@ static bool export_mesh_to_obj(MeshData *mesh, const char *filename) {
     obj_buffer[pos++] = '\n';
 
     // Write normals
-    for (uint32_t i = 0; i < mesh->vertex_count && pos < sizeof(obj_buffer) - 200; i++) {
+    for (uint32_t i = 0; i < mesh->vertex_count && pos < (int)estimated_size - 200; i++) {
         obj_buffer[pos++] = 'v';
         obj_buffer[pos++] = 'n';
         obj_buffer[pos++] = ' ';
@@ -1381,7 +1391,7 @@ static bool export_mesh_to_obj(MeshData *mesh, const char *filename) {
     const char *use_floor = "usemtl floor\n";
     for (int i = 0; use_floor[i]; i++) obj_buffer[pos++] = use_floor[i];
 
-    for (uint32_t i = 0; i < mesh->index_count && pos < sizeof(obj_buffer) - 300; i += 3) {
+    for (uint32_t i = 0; i < mesh->index_count && pos < (int)estimated_size - 300; i += 3) {
         uint16_t i0 = mesh->indices[i + 0];
         uint16_t i1 = mesh->indices[i + 1];
         uint16_t i2 = mesh->indices[i + 2];
@@ -1435,7 +1445,7 @@ static bool export_mesh_to_obj(MeshData *mesh, const char *filename) {
     const char *use_wall = "usemtl wall\n";
     for (int i = 0; use_wall[i]; i++) obj_buffer[pos++] = use_wall[i];
 
-    for (uint32_t i = 0; i < mesh->index_count && pos < sizeof(obj_buffer) - 300; i += 3) {
+    for (uint32_t i = 0; i < mesh->index_count && pos < (int)estimated_size - 300; i += 3) {
         uint16_t i0 = mesh->indices[i + 0];
         uint16_t i1 = mesh->indices[i + 1];
         uint16_t i2 = mesh->indices[i + 2];
@@ -1485,7 +1495,7 @@ static bool export_mesh_to_obj(MeshData *mesh, const char *filename) {
     const char *use_ceiling = "usemtl ceiling\n";
     for (int i = 0; use_ceiling[i]; i++) obj_buffer[pos++] = use_ceiling[i];
 
-    for (uint32_t i = 0; i < mesh->index_count && pos < sizeof(obj_buffer) - 300; i += 3) {
+    for (uint32_t i = 0; i < mesh->index_count && pos < (int)estimated_size - 300; i += 3) {
         uint16_t i0 = mesh->indices[i + 0];
         uint16_t i1 = mesh->indices[i + 1];
         uint16_t i2 = mesh->indices[i + 2];
@@ -1539,6 +1549,10 @@ static bool export_mesh_to_obj(MeshData *mesh, const char *filename) {
     if (success) {
         SDL_Log("Successfully exported OBJ file: %s", filename);
     }
+
+    // Free the allocated buffer
+    buddy_free(obj_buffer);
+
     return success;
 }
 
