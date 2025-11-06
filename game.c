@@ -2664,7 +2664,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         }
 
         SDL_Log("Export completed successfully");
-        return SDL_APP_FAILURE;  // Exit without running the game
+        return SDL_APP_SUCCESS;  // Exit successfully without running the game
     }
 
     int init_status = init_game(&g_App);
