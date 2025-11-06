@@ -31,6 +31,8 @@ typedef __builtin_va_list __gnuc_va_list;
 #include <base/base_math.h>
 #include <base/base_string.h>
 #include <base/io.h>
+#include <base/wasi.h>
+#include <base/base_io.h>
 
 #include "gm_font_data.h"
 
@@ -192,6 +194,9 @@ typedef struct {
 
     int test_frames_max;      // Max frames to run (0 = unlimited)
     int test_frames_count;    // Current frame counter
+
+    bool export_obj_mode;     // If true, export OBJ and exit
+    char export_obj_path[256]; // Output path for OBJ file
 } GameApp;
 
 static GameApp g_App;
@@ -1111,6 +1116,444 @@ static int find_start_position(int *map, int width, int height,
         }
     }
     return 0;
+}
+
+// ============================================================================
+// OBJ export functions
+// ============================================================================
+
+// Helper function to write string to file
+static bool write_string_to_file(const char *filename, const char *data, size_t length) {
+    wasi_fd_t fd = wasi_path_open(filename, base_strlen(filename),
+                                    WASI_RIGHTS_WRITE,
+                                    WASI_O_CREAT | WASI_O_TRUNC);
+    if (fd < 0) {
+        SDL_Log("Failed to open file for writing: %s", filename);
+        return false;
+    }
+
+    ciovec_t iov = { .buf = data, .buf_len = length };
+    size_t written;
+    uint32_t result = wasi_fd_write(fd, &iov, 1, &written);
+    wasi_fd_close(fd);
+
+    if (result != 0 || written != length) {
+        SDL_Log("Failed to write to file: %s", filename);
+        return false;
+    }
+    return true;
+}
+
+// Simple float to string conversion (enough for OBJ format)
+static int float_to_str(float value, char *buf, int buf_size) {
+    // Handle negative values
+    int pos = 0;
+    if (value < 0) {
+        buf[pos++] = '-';
+        value = -value;
+    }
+
+    // Integer part
+    int int_part = (int)value;
+    float frac_part = value - (float)int_part;
+
+    // Convert integer part
+    char temp[32];
+    int temp_pos = 0;
+    if (int_part == 0) {
+        temp[temp_pos++] = '0';
+    } else {
+        while (int_part > 0 && temp_pos < 32) {
+            temp[temp_pos++] = '0' + (int_part % 10);
+            int_part /= 10;
+        }
+    }
+    // Reverse temp into buf
+    for (int i = temp_pos - 1; i >= 0; i--) {
+        if (pos < buf_size - 1) buf[pos++] = temp[i];
+    }
+
+    // Decimal point and fractional part (6 digits)
+    if (pos < buf_size - 1) buf[pos++] = '.';
+    for (int i = 0; i < 6 && pos < buf_size - 1; i++) {
+        frac_part *= 10.0f;
+        int digit = (int)frac_part;
+        buf[pos++] = '0' + digit;
+        frac_part -= (float)digit;
+    }
+
+    buf[pos] = '\0';
+    return pos;
+}
+
+// Simple integer to string conversion
+static int int_to_str(int value, char *buf, int buf_size) {
+    int pos = 0;
+    if (value == 0) {
+        buf[pos++] = '0';
+        buf[pos] = '\0';
+        return pos;
+    }
+
+    if (value < 0) {
+        buf[pos++] = '-';
+        value = -value;
+    }
+
+    char temp[32];
+    int temp_pos = 0;
+    while (value > 0 && temp_pos < 32) {
+        temp[temp_pos++] = '0' + (value % 10);
+        value /= 10;
+    }
+
+    // Reverse into buf
+    for (int i = temp_pos - 1; i >= 0 && pos < buf_size - 1; i--) {
+        buf[pos++] = temp[i];
+    }
+    buf[pos] = '\0';
+    return pos;
+}
+
+// Export MTL material file
+static bool export_mtl_file(const char *obj_filename) {
+    // Create MTL filename from OBJ filename
+    char mtl_filename[512];
+    int i = 0;
+    while (obj_filename[i] && i < 500) {
+        mtl_filename[i] = obj_filename[i];
+        i++;
+    }
+    // Replace .obj with .mtl
+    if (i >= 4 && mtl_filename[i-4] == '.') {
+        mtl_filename[i-3] = 'm';
+        mtl_filename[i-2] = 't';
+        mtl_filename[i-1] = 'l';
+    } else {
+        mtl_filename[i++] = '.';
+        mtl_filename[i++] = 'm';
+        mtl_filename[i++] = 't';
+        mtl_filename[i++] = 'l';
+    }
+    mtl_filename[i] = '\0';
+
+    // Build MTL content
+    char mtl_content[2048];
+    int pos = 0;
+
+    // Floor material
+    const char *floor_mtl = "newmtl floor\nKd 1.0 1.0 1.0\nmap_Kd " FLOOR_TEXTURE_PATH "\n\n";
+    for (int j = 0; floor_mtl[j] && pos < sizeof(mtl_content) - 1; j++) {
+        mtl_content[pos++] = floor_mtl[j];
+    }
+
+    // Wall material
+    const char *wall_mtl = "newmtl wall\nKd 1.0 1.0 1.0\nmap_Kd " WALL_TEXTURE_PATH "\n\n";
+    for (int j = 0; wall_mtl[j] && pos < sizeof(mtl_content) - 1; j++) {
+        mtl_content[pos++] = wall_mtl[j];
+    }
+
+    // Ceiling material
+    const char *ceiling_mtl = "newmtl ceiling\nKd 1.0 1.0 1.0\nmap_Kd " CEILING_TEXTURE_PATH "\n";
+    for (int j = 0; ceiling_mtl[j] && pos < sizeof(mtl_content) - 1; j++) {
+        mtl_content[pos++] = ceiling_mtl[j];
+    }
+
+    mtl_content[pos] = '\0';
+
+    bool success = write_string_to_file(mtl_filename, mtl_content, pos);
+    if (success) {
+        SDL_Log("Exported MTL file: %s", mtl_filename);
+    }
+    return success;
+}
+
+// Export mesh to OBJ file
+static bool export_mesh_to_obj(MeshData *mesh, const char *filename) {
+    if (!mesh || !filename) {
+        SDL_Log("export_mesh_to_obj: invalid arguments");
+        return false;
+    }
+
+    SDL_Log("Exporting mesh to OBJ: %s", filename);
+    SDL_Log("Vertices: %u, Indices: %u", mesh->vertex_count, mesh->index_count);
+
+    // Allocate a buffer for the OBJ content using buddy allocator
+    // Estimate: ~100 bytes per vertex (v, vt, vn) + ~50 bytes per face
+    size_t estimated_size = mesh->vertex_count * 100 + mesh->index_count * 50 / 3;
+    if (estimated_size < 64 * 1024) estimated_size = 64 * 1024;  // Minimum 64KB
+
+    ensure_runtime_heap();
+    char *obj_buffer = (char *)buddy_alloc(estimated_size);
+    if (!obj_buffer) {
+        SDL_Log("Failed to allocate memory for OBJ export (needed %zu bytes)", estimated_size);
+        return false;
+    }
+
+    int pos = 0;
+
+    // Write MTL reference
+    const char *mtllib = "# Generated by game.c\nmtllib ";
+    for (int i = 0; mtllib[i]; i++) {
+        obj_buffer[pos++] = mtllib[i];
+    }
+
+    // Extract basename from filename for mtl reference
+    int basename_start = 0;
+    for (int i = 0; filename[i]; i++) {
+        if (filename[i] == '/' || filename[i] == '\\') {
+            basename_start = i + 1;
+        }
+    }
+    for (int i = basename_start; filename[i] && pos < (int)estimated_size - 100; i++) {
+        obj_buffer[pos++] = filename[i];
+    }
+    // Replace .obj with .mtl
+    if (pos >= 4 && obj_buffer[pos-4] == '.') {
+        obj_buffer[pos-3] = 'm';
+        obj_buffer[pos-2] = 't';
+        obj_buffer[pos-1] = 'l';
+    } else {
+        obj_buffer[pos++] = '.';
+        obj_buffer[pos++] = 'm';
+        obj_buffer[pos++] = 't';
+        obj_buffer[pos++] = 'l';
+    }
+    obj_buffer[pos++] = '\n';
+    obj_buffer[pos++] = '\n';
+
+    // Write vertices
+    for (uint32_t i = 0; i < mesh->vertex_count && pos < (int)estimated_size - 200; i++) {
+        obj_buffer[pos++] = 'v';
+        obj_buffer[pos++] = ' ';
+
+        char num_buf[64];
+        int len;
+
+        len = float_to_str(mesh->positions[i * 3 + 0], num_buf, sizeof(num_buf));
+        for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+        obj_buffer[pos++] = ' ';
+
+        len = float_to_str(mesh->positions[i * 3 + 1], num_buf, sizeof(num_buf));
+        for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+        obj_buffer[pos++] = ' ';
+
+        len = float_to_str(mesh->positions[i * 3 + 2], num_buf, sizeof(num_buf));
+        for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+        obj_buffer[pos++] = '\n';
+    }
+    obj_buffer[pos++] = '\n';
+
+    // Write texture coordinates
+    for (uint32_t i = 0; i < mesh->vertex_count && pos < (int)estimated_size - 200; i++) {
+        obj_buffer[pos++] = 'v';
+        obj_buffer[pos++] = 't';
+        obj_buffer[pos++] = ' ';
+
+        char num_buf[64];
+        int len;
+
+        len = float_to_str(mesh->uvs[i * 2 + 0], num_buf, sizeof(num_buf));
+        for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+        obj_buffer[pos++] = ' ';
+
+        len = float_to_str(mesh->uvs[i * 2 + 1], num_buf, sizeof(num_buf));
+        for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+        obj_buffer[pos++] = '\n';
+    }
+    obj_buffer[pos++] = '\n';
+
+    // Write normals
+    for (uint32_t i = 0; i < mesh->vertex_count && pos < (int)estimated_size - 200; i++) {
+        obj_buffer[pos++] = 'v';
+        obj_buffer[pos++] = 'n';
+        obj_buffer[pos++] = ' ';
+
+        char num_buf[64];
+        int len;
+
+        len = float_to_str(mesh->normals[i * 3 + 0], num_buf, sizeof(num_buf));
+        for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+        obj_buffer[pos++] = ' ';
+
+        len = float_to_str(mesh->normals[i * 3 + 1], num_buf, sizeof(num_buf));
+        for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+        obj_buffer[pos++] = ' ';
+
+        len = float_to_str(mesh->normals[i * 3 + 2], num_buf, sizeof(num_buf));
+        for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+        obj_buffer[pos++] = '\n';
+    }
+    obj_buffer[pos++] = '\n';
+
+    // Write faces (grouped by material based on surface_type)
+    // First pass: floor faces (surface_type = 0.0)
+    const char *use_floor = "usemtl floor\n";
+    for (int i = 0; use_floor[i]; i++) obj_buffer[pos++] = use_floor[i];
+
+    for (uint32_t i = 0; i < mesh->index_count && pos < (int)estimated_size - 300; i += 3) {
+        uint16_t i0 = mesh->indices[i + 0];
+        uint16_t i1 = mesh->indices[i + 1];
+        uint16_t i2 = mesh->indices[i + 2];
+
+        // Check if this face is floor
+        float st0 = mesh->surface_types[i0];
+        if (st0 < 0.5f) {  // floor
+            obj_buffer[pos++] = 'f';
+            obj_buffer[pos++] = ' ';
+
+            char num_buf[64];
+            int len;
+
+            // Vertex 0 (OBJ indices are 1-based)
+            len = int_to_str(i0 + 1, num_buf, sizeof(num_buf));
+            for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+            obj_buffer[pos++] = '/';
+            len = int_to_str(i0 + 1, num_buf, sizeof(num_buf));
+            for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+            obj_buffer[pos++] = '/';
+            len = int_to_str(i0 + 1, num_buf, sizeof(num_buf));
+            for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+            obj_buffer[pos++] = ' ';
+
+            // Vertex 1
+            len = int_to_str(i1 + 1, num_buf, sizeof(num_buf));
+            for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+            obj_buffer[pos++] = '/';
+            len = int_to_str(i1 + 1, num_buf, sizeof(num_buf));
+            for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+            obj_buffer[pos++] = '/';
+            len = int_to_str(i1 + 1, num_buf, sizeof(num_buf));
+            for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+            obj_buffer[pos++] = ' ';
+
+            // Vertex 2
+            len = int_to_str(i2 + 1, num_buf, sizeof(num_buf));
+            for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+            obj_buffer[pos++] = '/';
+            len = int_to_str(i2 + 1, num_buf, sizeof(num_buf));
+            for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+            obj_buffer[pos++] = '/';
+            len = int_to_str(i2 + 1, num_buf, sizeof(num_buf));
+            for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+            obj_buffer[pos++] = '\n';
+        }
+    }
+    obj_buffer[pos++] = '\n';
+
+    // Second pass: wall faces (surface_type = 1.0)
+    const char *use_wall = "usemtl wall\n";
+    for (int i = 0; use_wall[i]; i++) obj_buffer[pos++] = use_wall[i];
+
+    for (uint32_t i = 0; i < mesh->index_count && pos < (int)estimated_size - 300; i += 3) {
+        uint16_t i0 = mesh->indices[i + 0];
+        uint16_t i1 = mesh->indices[i + 1];
+        uint16_t i2 = mesh->indices[i + 2];
+
+        float st0 = mesh->surface_types[i0];
+        if (st0 >= 0.5f && st0 < 1.5f) {  // wall
+            obj_buffer[pos++] = 'f';
+            obj_buffer[pos++] = ' ';
+
+            char num_buf[64];
+            int len;
+
+            len = int_to_str(i0 + 1, num_buf, sizeof(num_buf));
+            for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+            obj_buffer[pos++] = '/';
+            len = int_to_str(i0 + 1, num_buf, sizeof(num_buf));
+            for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+            obj_buffer[pos++] = '/';
+            len = int_to_str(i0 + 1, num_buf, sizeof(num_buf));
+            for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+            obj_buffer[pos++] = ' ';
+
+            len = int_to_str(i1 + 1, num_buf, sizeof(num_buf));
+            for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+            obj_buffer[pos++] = '/';
+            len = int_to_str(i1 + 1, num_buf, sizeof(num_buf));
+            for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+            obj_buffer[pos++] = '/';
+            len = int_to_str(i1 + 1, num_buf, sizeof(num_buf));
+            for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+            obj_buffer[pos++] = ' ';
+
+            len = int_to_str(i2 + 1, num_buf, sizeof(num_buf));
+            for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+            obj_buffer[pos++] = '/';
+            len = int_to_str(i2 + 1, num_buf, sizeof(num_buf));
+            for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+            obj_buffer[pos++] = '/';
+            len = int_to_str(i2 + 1, num_buf, sizeof(num_buf));
+            for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+            obj_buffer[pos++] = '\n';
+        }
+    }
+    obj_buffer[pos++] = '\n';
+
+    // Third pass: ceiling faces (surface_type = 2.0)
+    const char *use_ceiling = "usemtl ceiling\n";
+    for (int i = 0; use_ceiling[i]; i++) obj_buffer[pos++] = use_ceiling[i];
+
+    for (uint32_t i = 0; i < mesh->index_count && pos < (int)estimated_size - 300; i += 3) {
+        uint16_t i0 = mesh->indices[i + 0];
+        uint16_t i1 = mesh->indices[i + 1];
+        uint16_t i2 = mesh->indices[i + 2];
+
+        float st0 = mesh->surface_types[i0];
+        if (st0 >= 1.5f) {  // ceiling
+            obj_buffer[pos++] = 'f';
+            obj_buffer[pos++] = ' ';
+
+            char num_buf[64];
+            int len;
+
+            len = int_to_str(i0 + 1, num_buf, sizeof(num_buf));
+            for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+            obj_buffer[pos++] = '/';
+            len = int_to_str(i0 + 1, num_buf, sizeof(num_buf));
+            for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+            obj_buffer[pos++] = '/';
+            len = int_to_str(i0 + 1, num_buf, sizeof(num_buf));
+            for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+            obj_buffer[pos++] = ' ';
+
+            len = int_to_str(i1 + 1, num_buf, sizeof(num_buf));
+            for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+            obj_buffer[pos++] = '/';
+            len = int_to_str(i1 + 1, num_buf, sizeof(num_buf));
+            for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+            obj_buffer[pos++] = '/';
+            len = int_to_str(i1 + 1, num_buf, sizeof(num_buf));
+            for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+            obj_buffer[pos++] = ' ';
+
+            len = int_to_str(i2 + 1, num_buf, sizeof(num_buf));
+            for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+            obj_buffer[pos++] = '/';
+            len = int_to_str(i2 + 1, num_buf, sizeof(num_buf));
+            for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+            obj_buffer[pos++] = '/';
+            len = int_to_str(i2 + 1, num_buf, sizeof(num_buf));
+            for (int j = 0; j < len; j++) obj_buffer[pos++] = num_buf[j];
+            obj_buffer[pos++] = '\n';
+        }
+    }
+
+    obj_buffer[pos] = '\0';
+
+    SDL_Log("Generated OBJ content: %d bytes", pos);
+
+    // Write to file
+    bool success = write_string_to_file(filename, obj_buffer, pos);
+    if (success) {
+        SDL_Log("Successfully exported OBJ file: %s", filename);
+    }
+
+    // Free the allocated buffer
+    buddy_free(obj_buffer);
+
+    return success;
 }
 
 // ============================================================================
@@ -2158,12 +2601,70 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     // Parse command-line arguments
     g_App.test_frames_max = 0;    // 0 = unlimited
     g_App.test_frames_count = 0;
+    g_App.export_obj_mode = false;
+    g_App.export_obj_path[0] = '\0';
 
     for (int i = 1; i < argc; i++) {
         if (base_strcmp(argv[i], "--test-frames") == 0 && i + 1 < argc) {
             g_App.test_frames_max = simple_atoi(argv[i + 1]);
             i++;  // Skip the next argument since we consumed it
+        } else if (base_strcmp(argv[i], "--export-obj") == 0 && i + 1 < argc) {
+            g_App.export_obj_mode = true;
+            // Copy the filename
+            int j = 0;
+            while (argv[i + 1][j] && j < 255) {
+                g_App.export_obj_path[j] = argv[i + 1][j];
+                j++;
+            }
+            g_App.export_obj_path[j] = '\0';
+            i++;  // Skip the next argument since we consumed it
+        } else if (argv[i][0] == '-') {
+            // Unknown argument starting with '-'
+            SDL_Log("Error: Unknown command line argument '%s'", argv[i]);
+            SDL_Log("Usage: %s [--test-frames N] [--export-obj FILENAME]", argv[0]);
+            return SDL_APP_FAILURE;
+        } else {
+            // Positional argument (not expected)
+            SDL_Log("Error: Unexpected argument '%s'", argv[i]);
+            SDL_Log("Usage: %s [--test-frames N] [--export-obj FILENAME]", argv[0]);
+            return SDL_APP_FAILURE;
         }
+    }
+
+    // Handle export mode: generate mesh and export to OBJ, then exit
+    if (g_App.export_obj_mode) {
+        SDL_Log("Export mode enabled, output: %s", g_App.export_obj_path);
+
+        // Initialize map data (same as in init_game)
+        for (int z = 0; z < MAP_HEIGHT; z++) {
+            for (int x = 0; x < MAP_WIDTH; x++) {
+                g_map_data[z * MAP_WIDTH + x] = g_default_map[z][x];
+            }
+        }
+
+        // Generate the mesh
+        MeshData *mesh = generate_mesh(g_map_data, MAP_WIDTH, MAP_HEIGHT);
+        if (!mesh) {
+            SDL_Log("Failed to generate mesh");
+            return SDL_APP_FAILURE;
+        }
+
+        // Export to OBJ file
+        bool obj_success = export_mesh_to_obj(mesh, g_App.export_obj_path);
+        if (!obj_success) {
+            SDL_Log("Failed to export OBJ file");
+            return SDL_APP_FAILURE;
+        }
+
+        // Export MTL file
+        bool mtl_success = export_mtl_file(g_App.export_obj_path);
+        if (!mtl_success) {
+            SDL_Log("Failed to export MTL file");
+            return SDL_APP_FAILURE;
+        }
+
+        SDL_Log("Export completed successfully");
+        return SDL_APP_SUCCESS;  // Exit successfully without running the game
     }
 
     int init_status = init_game(&g_App);

@@ -28,6 +28,7 @@ jobs:
               echo "test input data" | pixi run -e macos ./arena_macos --test-input
               pixi run -e macos test_wordfreq_macos
               pixi run -e macos test_game_macos --test-frames 5
+              pixi run -e macos test_game_macos --export-obj model.obj
           - platform: windows
             os: windows-latest
             pixi-command: |
