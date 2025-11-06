@@ -2163,6 +2163,16 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         if (base_strcmp(argv[i], "--test-frames") == 0 && i + 1 < argc) {
             g_App.test_frames_max = simple_atoi(argv[i + 1]);
             i++;  // Skip the next argument since we consumed it
+        } else if (argv[i][0] == '-') {
+            // Unknown argument starting with '-'
+            SDL_Log("Error: Unknown command line argument '%s'", argv[i]);
+            SDL_Log("Usage: %s [--test-frames N]", argv[0]);
+            return SDL_APP_FAILURE;
+        } else {
+            // Positional argument (not expected)
+            SDL_Log("Error: Unexpected argument '%s'", argv[i]);
+            SDL_Log("Usage: %s [--test-frames N]", argv[0]);
+            return SDL_APP_FAILURE;
         }
     }
 
