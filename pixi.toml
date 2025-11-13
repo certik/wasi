@@ -323,6 +323,7 @@ test_game_linux = { cmd="./game_linux", depends-on=["build_game_linux"] }
 clang = ">=20.1.4,<21"
 sdl3 = "==3.3.3"
 sdl3_image = "==3.3.0"
+spirv-tools = ">=2025.4,<2026"
 
 [feature.macos.tasks]
 build_macos = """
