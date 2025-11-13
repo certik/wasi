@@ -340,7 +340,9 @@ static Uint32 shader_code_size(string source) {
     if (source.size == 0) {
         return 0;
     }
-    return (Uint32)(source.size - 1);
+    // Return full size for binary shader files (SPIRV, DXIL, etc.)
+    // Don't subtract 1 like we would for null-terminated text
+    return (Uint32)source.size;
 }
 
 // ============================================================================
