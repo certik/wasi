@@ -1,0 +1,6 @@
+# Material for Equirectangular projection
+newmtl WorldMap
+Ka 1.0 1.0 1.0
+Kd 0.8 0.8 0.8
+Ks 0.0 0.0 0.0
+map_Kd Land_ocean_ice_2048.jpg
