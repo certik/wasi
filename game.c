@@ -800,51 +800,49 @@ static MeshData* generate_mesh(int *map, int width, int height) {
         }
     }
 
-    // Load sphere mesh and add it to window cells
-    MeshData *sphere_mesh = load_obj_file(SPHERE_OBJ_PATH);
-    if (sphere_mesh) {
-        SDL_Log("Adding spheres to window cells");
+    // TEMPORARILY DISABLED: Load sphere mesh and add it to window cells
+    // MeshData *sphere_mesh = load_obj_file(SPHERE_OBJ_PATH);
+    // if (sphere_mesh) {
+    //     SDL_Log("Adding spheres to window cells");
 
-        // Find all window cells (value 2 or 3) and place spheres
-        for (int z = 0; z < height; z++) {
-            for (int x = 0; x < width; x++) {
-                int cell = map[z * width + x];
-                if (cell == 2 || cell == 3) {
-                    // Center of cell
-                    float cx = (float)x + 0.5f;
-                    float cy = WALL_HEIGHT * 0.5f;  // Middle height of wall
-                    float cz = (float)z + 0.5f;
-                    float scale = 0.3f;  // Scale sphere to fit in window
+    //     // Find all window cells (value 2 or 3) and place spheres
+    //     for (int z = 0; z < height; z++) {
+    //         for (int x = 0; x < width; x++) {
+    //             int cell = map[z * width + x];
+    //             if (cell == 2 || cell == 3) {
+    //                 // Center of cell
+    //                 float cx = (float)x + 0.5f;
+    //                 float cy = WALL_HEIGHT * 0.5f;  // Middle height of wall
+    //                 float cz = (float)z + 0.5f;
+    //                 float scale = 0.3f;  // Scale sphere to fit in window
 
-                    uint16_t base_vertex = ctx.index_offset;
+    //                 uint16_t base_vertex = (uint16_t)ctx.surface_idx;
 
-                    // Add all sphere vertices with translation and scaling
-                    for (uint32_t i = 0; i < sphere_mesh->vertex_count; i++) {
-                        push_position(&ctx,
-                            sphere_mesh->positions[i * 3 + 0] * scale + cx,
-                            sphere_mesh->positions[i * 3 + 1] * scale + cy,
-                            sphere_mesh->positions[i * 3 + 2] * scale + cz);
-                        push_uv(&ctx,
-                            sphere_mesh->uvs[i * 2 + 0],
-                            sphere_mesh->uvs[i * 2 + 1]);
-                        push_normal(&ctx,
-                            sphere_mesh->normals[i * 3 + 0],
-                            sphere_mesh->normals[i * 3 + 1],
-                            sphere_mesh->normals[i * 3 + 2]);
-                        push_surface_type(&ctx, 4.0f);  // Sphere surface type
-                        push_triangle_id(&ctx, 0.0f);
-                    }
+    //                 // Add all sphere vertices with translation and scaling
+    //                 for (uint32_t i = 0; i < sphere_mesh->vertex_count; i++) {
+    //                     push_position(&ctx,
+    //                         sphere_mesh->positions[i * 3 + 0] * scale + cx,
+    //                         sphere_mesh->positions[i * 3 + 1] * scale + cy,
+    //                         sphere_mesh->positions[i * 3 + 2] * scale + cz);
+    //                     push_uv(&ctx,
+    //                         sphere_mesh->uvs[i * 2 + 0],
+    //                         sphere_mesh->uvs[i * 2 + 1]);
+    //                     push_normal(&ctx,
+    //                         sphere_mesh->normals[i * 3 + 0],
+    //                         sphere_mesh->normals[i * 3 + 1],
+    //                         sphere_mesh->normals[i * 3 + 2]);
+    //                     push_surface_type(&ctx, 4.0f);  // Sphere surface type
+    //                     push_triangle_id(&ctx, 0.0f);
+    //                 }
 
-                    // Add sphere indices
-                    for (uint32_t i = 0; i < sphere_mesh->index_count; i++) {
-                        push_index(&ctx, base_vertex + sphere_mesh->indices[i]);
-                    }
-
-                    ctx.index_offset += sphere_mesh->vertex_count;
-                }
-            }
-        }
-    }
+    //                 // Add sphere indices
+    //                 for (uint32_t i = 0; i < sphere_mesh->index_count; i++) {
+    //                     push_index(&ctx, base_vertex + sphere_mesh->indices[i]);
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
 
     g_mesh_data_storage.positions = g_positions_storage;
     g_mesh_data_storage.uvs = g_uvs_storage;
