@@ -1058,28 +1058,26 @@ static bool parse_face_vertex(const char **cursor, const char *end, ObjVertexRef
 
 static MeshData* load_obj_file(const char *path) {
     Scratch scratch = scratch_begin();
+    MeshData *result = NULL;
 
     SDL_IOStream *file = SDL_IOFromFile(path, "rb");
     if (!file) {
         SDL_Log("Failed to open OBJ file: %s", path);
-        scratch_end(scratch);
-        return NULL;
+        goto cleanup;
     }
 
     Sint64 file_size = SDL_GetIOSize(file);
     if (file_size <= 0) {
         SDL_Log("Failed to get OBJ file size: %s", path);
         SDL_CloseIO(file);
-        scratch_end(scratch);
-        return NULL;
+        goto cleanup;
     }
 
     char *file_data = (char *)arena_alloc(scratch.arena, (size_t)file_size + 1);
     if (!file_data) {
         SDL_Log("Failed to allocate memory for OBJ file");
         SDL_CloseIO(file);
-        scratch_end(scratch);
-        return NULL;
+        goto cleanup;
     }
 
     size_t bytes_read = SDL_ReadIO(file, file_data, (size_t)file_size);
@@ -1087,8 +1085,7 @@ static MeshData* load_obj_file(const char *path) {
 
     if (bytes_read != (size_t)file_size) {
         SDL_Log("Failed to read OBJ file completely");
-        scratch_end(scratch);
-        return NULL;
+        goto cleanup;
     }
     file_data[file_size] = '\0';
 
@@ -1107,96 +1104,106 @@ static MeshData* load_obj_file(const char *path) {
             line_end++;
         }
 
+        bool ok = true;
         if (line_end > line_start && line_start[0] != '#') {
             if (line_start[0] == 'v' && line_start[1] == ' ') {
                 if (pos_count >= OBJ_MAX_TEMP_VERTICES) {
                     SDL_Log("OBJ loader error: too many vertex positions in %s (max %d)", path, OBJ_MAX_TEMP_VERTICES);
-                    scratch_end(scratch);
-                    return NULL;
+                    ok = false;
+                } else {
+                    const char *cursor = line_start + 2;
+                    float vec[3];
+                    ok = parse_vec_components(&cursor, line_end, vec, 3);
+                    if (!ok) {
+                        SDL_Log("OBJ loader error: malformed vertex position in %s", path);
+                    } else {
+                        g_temp_obj_positions[pos_count * 3 + 0] = vec[0];
+                        g_temp_obj_positions[pos_count * 3 + 1] = vec[1];
+                        g_temp_obj_positions[pos_count * 3 + 2] = vec[2];
+                        pos_count++;
+                    }
                 }
-                const char *cursor = line_start + 2;
-                float vec[3];
-                if (!parse_vec_components(&cursor, line_end, vec, 3)) {
-                    SDL_Log("OBJ loader error: malformed vertex position in %s", path);
-                    scratch_end(scratch);
-                    return NULL;
-                }
-                g_temp_obj_positions[pos_count * 3 + 0] = vec[0];
-                g_temp_obj_positions[pos_count * 3 + 1] = vec[1];
-                g_temp_obj_positions[pos_count * 3 + 2] = vec[2];
-                pos_count++;
             } else if (line_start[0] == 'v' && line_start[1] == 't' && line_start[2] == ' ') {
                 if (uv_count >= OBJ_MAX_TEMP_VERTICES) {
                     SDL_Log("OBJ loader error: too many UVs in %s (max %d)", path, OBJ_MAX_TEMP_VERTICES);
-                    scratch_end(scratch);
-                    return NULL;
+                    ok = false;
+                } else {
+                    const char *cursor = line_start + 3;
+                    float uv[2];
+                    ok = parse_vec_components(&cursor, line_end, uv, 2);
+                    if (!ok) {
+                        SDL_Log("OBJ loader error: malformed UV in %s", path);
+                    } else {
+                        g_temp_obj_uvs[uv_count * 2 + 0] = uv[0];
+                        g_temp_obj_uvs[uv_count * 2 + 1] = uv[1];
+                        uv_count++;
+                    }
                 }
-                const char *cursor = line_start + 3;
-                float uv[2];
-                if (!parse_vec_components(&cursor, line_end, uv, 2)) {
-                    SDL_Log("OBJ loader error: malformed UV in %s", path);
-                    scratch_end(scratch);
-                    return NULL;
-                }
-                g_temp_obj_uvs[uv_count * 2 + 0] = uv[0];
-                g_temp_obj_uvs[uv_count * 2 + 1] = uv[1];
-                uv_count++;
             } else if (line_start[0] == 'v' && line_start[1] == 'n' && line_start[2] == ' ') {
                 if (normal_count >= OBJ_MAX_TEMP_VERTICES) {
                     SDL_Log("OBJ loader error: too many normals in %s (max %d)", path, OBJ_MAX_TEMP_VERTICES);
-                    scratch_end(scratch);
-                    return NULL;
+                    ok = false;
+                } else {
+                    const char *cursor = line_start + 3;
+                    float normal[3];
+                    ok = parse_vec_components(&cursor, line_end, normal, 3);
+                    if (!ok) {
+                        SDL_Log("OBJ loader error: malformed normal in %s", path);
+                    } else {
+                        g_temp_obj_normals[normal_count * 3 + 0] = normal[0];
+                        g_temp_obj_normals[normal_count * 3 + 1] = normal[1];
+                        g_temp_obj_normals[normal_count * 3 + 2] = normal[2];
+                        normal_count++;
+                    }
                 }
-                const char *cursor = line_start + 3;
-                float normal[3];
-                if (!parse_vec_components(&cursor, line_end, normal, 3)) {
-                    SDL_Log("OBJ loader error: malformed normal in %s", path);
-                    scratch_end(scratch);
-                    return NULL;
-                }
-                g_temp_obj_normals[normal_count * 3 + 0] = normal[0];
-                g_temp_obj_normals[normal_count * 3 + 1] = normal[1];
-                g_temp_obj_normals[normal_count * 3 + 2] = normal[2];
-                normal_count++;
             } else if (line_start[0] == 'f' && line_start[1] == ' ') {
                 const char *cursor = line_start + 2;
                 ObjVertexRef face[3];
                 for (int i = 0; i < 3; i++) {
                     if (!parse_face_vertex(&cursor, line_end, &face[i])) {
                         SDL_Log("OBJ loader error: malformed face in %s", path);
-                        scratch_end(scratch);
-                        return NULL;
+                        ok = false;
+                        break;
                     }
                 }
-                cursor = skip_spaces(cursor, line_end);
-                if (cursor < line_end) {
-                    SDL_Log("OBJ loader error: only triangle faces are supported in %s", path);
-                    scratch_end(scratch);
-                    return NULL;
-                }
-
-                for (int i = 0; i < 3; i++) {
-                    if (vertex_count >= OBJ_MAX_VERTICES || index_count >= OBJ_MAX_INDICES) {
-                        SDL_Log("OBJ loader error: too many vertices/indices in %s (max vertices %d)", path, OBJ_MAX_VERTICES);
-                        scratch_end(scratch);
-                        return NULL;
+                if (ok) {
+                    cursor = skip_spaces(cursor, line_end);
+                    if (cursor < line_end) {
+                        SDL_Log("OBJ loader error: only triangle faces are supported in %s", path);
+                        ok = false;
                     }
-                    const ObjVertexRef *ref = &face[i];
-                    g_obj_positions[vertex_count * 3 + 0] = g_temp_obj_positions[ref->position * 3 + 0];
-                    g_obj_positions[vertex_count * 3 + 1] = g_temp_obj_positions[ref->position * 3 + 1];
-                    g_obj_positions[vertex_count * 3 + 2] = g_temp_obj_positions[ref->position * 3 + 2];
-
-                    g_obj_uvs[vertex_count * 2 + 0] = g_temp_obj_uvs[ref->uv * 2 + 0];
-                    g_obj_uvs[vertex_count * 2 + 1] = g_temp_obj_uvs[ref->uv * 2 + 1];
-
-                    g_obj_normals[vertex_count * 3 + 0] = g_temp_obj_normals[ref->normal * 3 + 0];
-                    g_obj_normals[vertex_count * 3 + 1] = g_temp_obj_normals[ref->normal * 3 + 1];
-                    g_obj_normals[vertex_count * 3 + 2] = g_temp_obj_normals[ref->normal * 3 + 2];
-
-                    g_obj_surface_types[vertex_count] = 4.0f;
-                    g_obj_indices[index_count++] = (uint16_t)vertex_count;
-                    vertex_count++;
                 }
+                if (ok) {
+                    for (int i = 0; i < 3; i++) {
+                        if (vertex_count >= OBJ_MAX_VERTICES || index_count >= OBJ_MAX_INDICES) {
+                            SDL_Log("OBJ loader error: too many vertices/indices in %s (max vertices %d)", path, OBJ_MAX_VERTICES);
+                            ok = false;
+                            break;
+                        }
+                        const ObjVertexRef *ref = &face[i];
+                        g_obj_positions[vertex_count * 3 + 0] = g_temp_obj_positions[ref->position * 3 + 0];
+                        g_obj_positions[vertex_count * 3 + 1] = g_temp_obj_positions[ref->position * 3 + 1];
+                        g_obj_positions[vertex_count * 3 + 2] = g_temp_obj_positions[ref->position * 3 + 2];
+
+                        g_obj_uvs[vertex_count * 2 + 0] = g_temp_obj_uvs[ref->uv * 2 + 0];
+                        g_obj_uvs[vertex_count * 2 + 1] = g_temp_obj_uvs[ref->uv * 2 + 1];
+
+                        g_obj_normals[vertex_count * 3 + 0] = g_temp_obj_normals[ref->normal * 3 + 0];
+                        g_obj_normals[vertex_count * 3 + 1] = g_temp_obj_normals[ref->normal * 3 + 1];
+                        g_obj_normals[vertex_count * 3 + 2] = g_temp_obj_normals[ref->normal * 3 + 2];
+
+                        g_obj_surface_types[vertex_count] = 4.0f;
+                        g_obj_indices[index_count++] = (uint16_t)vertex_count;
+                        vertex_count++;
+                    }
+                }
+                if (!ok) {
+                    goto cleanup;
+                }
+            }
+
+            if (!ok) {
+                goto cleanup;
             }
         }
 
@@ -1229,9 +1236,11 @@ static MeshData* load_obj_file(const char *path) {
     g_obj_mesh_data.normal_count = vertex_count;
     g_obj_mesh_data.vertex_count = vertex_count;
     g_obj_mesh_data.index_count = index_count;
+    result = &g_obj_mesh_data;
 
+cleanup:
     scratch_end(scratch);
-    return &g_obj_mesh_data;
+    return result;
 }
 
 static float mesh_min_y(const MeshData *mesh) {
@@ -3129,7 +3138,13 @@ static int simple_atoi(const char *str) {
 // SDL callbacks
 // ============================================================================
 
+void ensure_heap_initialized();
+void buddy_init();
+
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
+    ensure_heap_initialized();
+    buddy_init();
+
     // Parse command-line arguments
     g_App.test_frames_max = 0;    // 0 = unlimited
     g_App.test_frames_count = 0;
