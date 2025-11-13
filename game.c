@@ -2763,6 +2763,11 @@ static int render_game(GameApp *app) {
     SDL_PushGPUVertexUniformData(cmdbuf, 0, &app->scene_uniforms, sizeof(SceneUniforms));
     SDL_PushGPUFragmentUniformData(cmdbuf, 0, &app->scene_uniforms, sizeof(SceneUniforms));
 
+    // Debug: Check sphere texture is valid
+    if (!app->sphere_texture) {
+        SDL_Log("ERROR: sphere_texture is NULL!");
+    }
+
     // Bind scene textures and sampler (shared sampler for all textures)
     SDL_GPUTextureSamplerBinding texture_bindings[4] = {
         {
