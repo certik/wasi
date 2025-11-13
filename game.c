@@ -656,6 +656,10 @@ static void push_east_segment(MeshGenContext *ctx, float x, float z, float y0, f
 }
 
 static MeshData* load_obj_file(const char *path);
+static float mesh_min_y(const MeshData *mesh);
+static void add_mesh_instance(MeshGenContext *ctx, const MeshData *mesh,
+                              float scale, float tx, float ty, float tz,
+                              float surface_type);
 
 static float g_positions_storage[MAX_GENERATED_VERTICES * 3];
 static float g_uvs_storage[MAX_GENERATED_VERTICES * 2];
@@ -834,44 +838,20 @@ static MeshData* generate_mesh(int *map, int width, int height, float spawn_x, f
         SDL_Log("Sphere mesh: vertex_count=%u, index_count=%u",
                 sphere_mesh->vertex_count, sphere_mesh->index_count);
 
-        // Find all window cells (value 2 or 3) and place spheres
         int sphere_count = 0;
         for (int z = 0; z < height; z++) {
             for (int x = 0; x < width; x++) {
                 int cell = map[z * width + x];
                 if (cell == 2 || cell == 3) {
-                    // Center of cell
                     float cx = (float)x + 0.5f;
-                    float cy = WALL_HEIGHT * 0.5f;  // Middle height of wall
+                    float cy = WALL_HEIGHT * 0.5f;
                     float cz = (float)z + 0.5f;
-                    float scale = 0.3f;  // Scale sphere to fit in window
-
-                    uint16_t base_vertex = (uint16_t)ctx.surface_idx;
+                    float scale = 0.3f;
 
                     SDL_Log("Sphere %d at cell(%d,%d): base_vertex=%u, surface_idx before=%u",
-                            sphere_count, x, z, base_vertex, ctx.surface_idx);
+                            sphere_count, x, z, (uint16_t)ctx.surface_idx, ctx.surface_idx);
 
-                    // Add all sphere vertices with translation and scaling
-                    for (uint32_t i = 0; i < sphere_mesh->vertex_count; i++) {
-                        push_position(&ctx,
-                            sphere_mesh->positions[i * 3 + 0] * scale + cx,
-                            sphere_mesh->positions[i * 3 + 1] * scale + cy,
-                            sphere_mesh->positions[i * 3 + 2] * scale + cz);
-                        push_uv(&ctx,
-                            sphere_mesh->uvs[i * 2 + 0],
-                            sphere_mesh->uvs[i * 2 + 1]);
-                        push_normal(&ctx,
-                            sphere_mesh->normals[i * 3 + 0],
-                            sphere_mesh->normals[i * 3 + 1],
-                            sphere_mesh->normals[i * 3 + 2]);
-                        push_surface_type(&ctx, 4.0f);  // Sphere surface type
-                        push_triangle_id(&ctx, 0.0f);
-                    }
-
-                    // Add sphere indices
-                    for (uint32_t i = 0; i < sphere_mesh->index_count; i++) {
-                        push_index(&ctx, base_vertex + sphere_mesh->indices[i]);
-                    }
+                    add_mesh_instance(&ctx, sphere_mesh, scale, cx, cy, cz, 4.0f);
 
                     SDL_Log("Sphere %d: surface_idx after=%u, index_idx after=%u",
                             sphere_count, ctx.surface_idx, ctx.index_idx);
@@ -888,73 +868,23 @@ static MeshData* generate_mesh(int *map, int width, int height, float spawn_x, f
     MeshData *book_mesh = load_obj_file(BOOK_OBJ_PATH);
     if (book_mesh) {
         SDL_Log("Adding book at spawn position (%.2f, %.2f)", spawn_x, spawn_z);
-        float min_y = 0.0f;
-        if (book_mesh->vertex_count > 0) {
-            min_y = book_mesh->positions[1];
-            for (uint32_t i = 0; i < book_mesh->vertex_count; i++) {
-                float y = book_mesh->positions[i * 3 + 1];
-                if (y < min_y) {
-                    min_y = y;
-                }
-            }
-        }
+        float min_y = mesh_min_y(book_mesh);
         const float book_scale = 2.0f;
         const float floor_y = 0.0f;
         float book_y = floor_y - min_y * book_scale + 0.01f;
-        uint16_t base_vertex = (uint16_t)ctx.surface_idx;
-        for (uint32_t i = 0; i < book_mesh->vertex_count; i++) {
-            push_position(&ctx,
-                book_mesh->positions[i * 3 + 0] * book_scale + spawn_x,
-                book_mesh->positions[i * 3 + 1] * book_scale + book_y,
-                book_mesh->positions[i * 3 + 2] * book_scale + spawn_z);
-            push_uv(&ctx, book_mesh->uvs[i * 2 + 0], book_mesh->uvs[i * 2 + 1]);
-            push_normal(&ctx,
-                book_mesh->normals[i * 3 + 0],
-                book_mesh->normals[i * 3 + 1],
-                book_mesh->normals[i * 3 + 2]);
-            push_surface_type(&ctx, 5.0f);  // Book surface type
-            push_triangle_id(&ctx, 0.0f);
-        }
-        for (uint32_t i = 0; i < book_mesh->index_count; i++) {
-            push_index(&ctx, base_vertex + book_mesh->indices[i]);
-        }
+        add_mesh_instance(&ctx, book_mesh, book_scale, spawn_x, book_y, spawn_z, 5.0f);
     }
 
     MeshData *chair_mesh = load_obj_file(CHAIR_OBJ_PATH);
     if (chair_mesh) {
         SDL_Log("Adding chair near spawn position (%.2f, %.2f)", spawn_x, spawn_z);
-        float min_y = 0.0f;
-        if (chair_mesh->vertex_count > 0) {
-            min_y = chair_mesh->positions[1];
-            for (uint32_t i = 0; i < chair_mesh->vertex_count; i++) {
-                float y = chair_mesh->positions[i * 3 + 1];
-                if (y < min_y) {
-                    min_y = y;
-                }
-            }
-        }
+        float min_y = mesh_min_y(chair_mesh);
         const float chair_scale = 0.75f;
         const float floor_y = 0.0f;
         float chair_y = floor_y - min_y * chair_scale + 0.01f;
         float chair_x = spawn_x + 0.9f;
         float chair_z = spawn_z - 0.2f;
-        uint16_t base_vertex = (uint16_t)ctx.surface_idx;
-        for (uint32_t i = 0; i < chair_mesh->vertex_count; i++) {
-            push_position(&ctx,
-                chair_mesh->positions[i * 3 + 0] * chair_scale + chair_x,
-                chair_mesh->positions[i * 3 + 1] * chair_scale + chair_y,
-                chair_mesh->positions[i * 3 + 2] * chair_scale + chair_z);
-            push_uv(&ctx, chair_mesh->uvs[i * 2 + 0], chair_mesh->uvs[i * 2 + 1]);
-            push_normal(&ctx,
-                chair_mesh->normals[i * 3 + 0],
-                chair_mesh->normals[i * 3 + 1],
-                chair_mesh->normals[i * 3 + 2]);
-            push_surface_type(&ctx, 6.0f);  // Chair surface type
-            push_triangle_id(&ctx, 0.0f);
-        }
-        for (uint32_t i = 0; i < chair_mesh->index_count; i++) {
-            push_index(&ctx, base_vertex + chair_mesh->indices[i]);
-        }
+        add_mesh_instance(&ctx, chair_mesh, chair_scale, chair_x, chair_y, chair_z, 6.0f);
     }
 
     g_mesh_data_storage.positions = g_positions_storage;
@@ -1297,6 +1227,50 @@ static MeshData* load_obj_file(const char *path) {
     g_obj_mesh_data.index_count = index_count;
 
     return &g_obj_mesh_data;
+}
+
+static float mesh_min_y(const MeshData *mesh) {
+    if (!mesh || mesh->vertex_count == 0) {
+        return 0.0f;
+    }
+    float min_y = mesh->positions[1];
+    for (uint32_t i = 0; i < mesh->vertex_count; i++) {
+        float y = mesh->positions[i * 3 + 1];
+        if (y < min_y) {
+            min_y = y;
+        }
+    }
+    return min_y;
+}
+
+static void add_mesh_instance(MeshGenContext *ctx, const MeshData *mesh,
+                              float scale, float tx, float ty, float tz,
+                              float surface_type) {
+    if (!mesh) {
+        return;
+    }
+
+    uint16_t base_vertex = (uint16_t)ctx->surface_idx;
+    for (uint32_t i = 0; i < mesh->vertex_count; i++) {
+        const float *pos = &mesh->positions[i * 3];
+        push_position(ctx,
+            pos[0] * scale + tx,
+            pos[1] * scale + ty,
+            pos[2] * scale + tz);
+        push_uv(ctx,
+            mesh->uvs[i * 2 + 0],
+            mesh->uvs[i * 2 + 1]);
+        push_normal(ctx,
+            mesh->normals[i * 3 + 0],
+            mesh->normals[i * 3 + 1],
+            mesh->normals[i * 3 + 2]);
+        push_surface_type(ctx, surface_type);
+        push_triangle_id(ctx, 0.0f);
+    }
+
+    for (uint32_t i = 0; i < mesh->index_count; i++) {
+        push_index(ctx, base_vertex + mesh->indices[i]);
+    }
 }
 
 static int is_walkable(const GameState *state, float x, float z) {
@@ -2674,64 +2648,31 @@ static int complete_gpu_setup(GameApp *app) {
         return -1;
     }
 
-    app->floor_texture = load_texture_from_path(app, FLOOR_TEXTURE_PATH, "floor");
-    if (!app->floor_texture) {
-        return -1;
-    }
+    typedef struct {
+        const char *path;
+        const char *label;
+        SDL_GPUTexture **slot;
+    } TextureRequest;
 
-    app->wall_texture = load_texture_from_path(app, WALL_TEXTURE_PATH, "wall");
-    if (!app->wall_texture) {
-        SDL_ReleaseGPUTexture(app->device, app->floor_texture);
-        app->floor_texture = NULL;
-        return -1;
-    }
+    TextureRequest texture_requests[] = {
+        {FLOOR_TEXTURE_PATH, "floor", &app->floor_texture},
+        {WALL_TEXTURE_PATH, "wall", &app->wall_texture},
+        {CEILING_TEXTURE_PATH, "ceiling", &app->ceiling_texture},
+        {SPHERE_TEXTURE_PATH, "sphere", &app->sphere_texture},
+        {BOOK_TEXTURE_PATH, "book", &app->book_texture},
+        {CHAIR_TEXTURE_PATH, "chair", &app->chair_texture},
+    };
 
-    app->ceiling_texture = load_texture_from_path(app, CEILING_TEXTURE_PATH, "ceiling");
-    if (!app->ceiling_texture) {
-        SDL_ReleaseGPUTexture(app->device, app->wall_texture);
-        app->wall_texture = NULL;
-        SDL_ReleaseGPUTexture(app->device, app->floor_texture);
-        app->floor_texture = NULL;
-        return -1;
-    }
-
-    app->sphere_texture = load_texture_from_path(app, SPHERE_TEXTURE_PATH, "sphere");
-    if (!app->sphere_texture) {
-        SDL_ReleaseGPUTexture(app->device, app->ceiling_texture);
-        app->ceiling_texture = NULL;
-        SDL_ReleaseGPUTexture(app->device, app->wall_texture);
-        app->wall_texture = NULL;
-        SDL_ReleaseGPUTexture(app->device, app->floor_texture);
-        app->floor_texture = NULL;
-        return -1;
-    }
-
-    app->book_texture = load_texture_from_path(app, BOOK_TEXTURE_PATH, "book");
-    if (!app->book_texture) {
-        SDL_ReleaseGPUTexture(app->device, app->sphere_texture);
-        app->sphere_texture = NULL;
-        SDL_ReleaseGPUTexture(app->device, app->ceiling_texture);
-        app->ceiling_texture = NULL;
-        SDL_ReleaseGPUTexture(app->device, app->wall_texture);
-        app->wall_texture = NULL;
-        SDL_ReleaseGPUTexture(app->device, app->floor_texture);
-        app->floor_texture = NULL;
-        return -1;
-    }
-
-    app->chair_texture = load_texture_from_path(app, CHAIR_TEXTURE_PATH, "chair");
-    if (!app->chair_texture) {
-        SDL_ReleaseGPUTexture(app->device, app->book_texture);
-        app->book_texture = NULL;
-        SDL_ReleaseGPUTexture(app->device, app->sphere_texture);
-        app->sphere_texture = NULL;
-        SDL_ReleaseGPUTexture(app->device, app->ceiling_texture);
-        app->ceiling_texture = NULL;
-        SDL_ReleaseGPUTexture(app->device, app->wall_texture);
-        app->wall_texture = NULL;
-        SDL_ReleaseGPUTexture(app->device, app->floor_texture);
-        app->floor_texture = NULL;
-        return -1;
+    for (size_t i = 0; i < SDL_arraysize(texture_requests); i++) {
+        SDL_GPUTexture *texture = load_texture_from_path(app, texture_requests[i].path, texture_requests[i].label);
+        if (!texture) {
+            for (size_t j = 0; j < i; j++) {
+                SDL_ReleaseGPUTexture(app->device, *texture_requests[j].slot);
+                *texture_requests[j].slot = NULL;
+            }
+            return -1;
+        }
+        *texture_requests[i].slot = texture;
     }
 
     // Create 6 separate samplers (one for each texture slot)
@@ -2743,29 +2684,32 @@ static int complete_gpu_setup(GameApp *app) {
         .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
         .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
     };
-    app->floor_sampler = SDL_CreateGPUSampler(app->device, &sampler_info);
-    app->wall_sampler = SDL_CreateGPUSampler(app->device, &sampler_info);
-    app->ceiling_sampler = SDL_CreateGPUSampler(app->device, &sampler_info);
-    app->sphere_sampler = SDL_CreateGPUSampler(app->device, &sampler_info);
-    app->book_sampler = SDL_CreateGPUSampler(app->device, &sampler_info);
-    app->chair_sampler = SDL_CreateGPUSampler(app->device, &sampler_info);
-
-    if (!app->sphere_sampler || !app->wall_sampler || !app->ceiling_sampler ||
-        !app->floor_sampler || !app->book_sampler || !app->chair_sampler) {
-        SDL_Log("Failed to create texture samplers: %s", SDL_GetError());
-        SDL_ReleaseGPUTexture(app->device, app->ceiling_texture);
-        app->ceiling_texture = NULL;
-        SDL_ReleaseGPUTexture(app->device, app->wall_texture);
-        app->wall_texture = NULL;
-        SDL_ReleaseGPUTexture(app->device, app->floor_texture);
-        app->floor_texture = NULL;
-        SDL_ReleaseGPUTexture(app->device, app->sphere_texture);
-        app->sphere_texture = NULL;
-        SDL_ReleaseGPUTexture(app->device, app->book_texture);
-        app->book_texture = NULL;
-        SDL_ReleaseGPUTexture(app->device, app->chair_texture);
-        app->chair_texture = NULL;
-        return -1;
+    SDL_GPUSampler **samplers[] = {
+        &app->floor_sampler,
+        &app->wall_sampler,
+        &app->ceiling_sampler,
+        &app->sphere_sampler,
+        &app->book_sampler,
+        &app->chair_sampler,
+    };
+    for (size_t i = 0; i < SDL_arraysize(samplers); i++) {
+        *samplers[i] = SDL_CreateGPUSampler(app->device, &sampler_info);
+        if (!*samplers[i]) {
+            SDL_Log("Failed to create texture samplers: %s", SDL_GetError());
+            for (size_t j = 0; j <= i; j++) {
+                if (*samplers[j]) {
+                    SDL_ReleaseGPUSampler(app->device, *samplers[j]);
+                    *samplers[j] = NULL;
+                }
+            }
+            for (size_t j = 0; j < SDL_arraysize(texture_requests); j++) {
+                if (*texture_requests[j].slot) {
+                    SDL_ReleaseGPUTexture(app->device, *texture_requests[j].slot);
+                    *texture_requests[j].slot = NULL;
+                }
+            }
+            return -1;
+        }
     }
     SDL_Log("Scene textures and samplers created successfully");
 
