@@ -214,7 +214,7 @@ static string g_scene_fragment_shader = {0};
 static string g_overlay_vertex_shader = {0};
 static string g_overlay_fragment_shader = {0};
 
-static const char *shader_entrypoint = "main";
+static const char *shader_entrypoint = "main_";
 
 static void ensure_runtime_heap(void) {
     if (!g_buddy_initialized) {

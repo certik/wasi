@@ -9,7 +9,7 @@ struct VertexOutput {
 };
 
 @vertex
-fn main(input: VertexInput) -> VertexOutput {
+fn main_(input: VertexInput) -> VertexOutput {
     var output: VertexOutput;
     output.position = vec4f(input.position, 0.0, 1.0);
     output.color = input.color;
