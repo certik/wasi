@@ -1077,8 +1077,6 @@ static MeshData* load_obj_file(const char *path) {
         goto cleanup;
     }
 
-    writeln_int(WASI_STDERR_FD, "[obj] scratch.arena=", (int)(uintptr_t)scratch.arena);
-    writeln_int(WASI_STDERR_FD, "[obj] file_size=", (int)file_size);
     char *file_data = (char *)arena_alloc(scratch.arena, (size_t)file_size + 1);
     if (!file_data) {
         SDL_Log("Failed to allocate memory for OBJ file");
