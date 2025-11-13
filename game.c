@@ -655,7 +655,6 @@ static void push_east_segment(MeshGenContext *ctx, float x, float z, float y0, f
     push_east_segment_range(ctx, x + 1.0f, z, z + 1.0f, y0, y1, 0, 1.0f);
 }
 
-// Forward declaration for OBJ loader
 static MeshData* load_obj_file(const char *path);
 
 static float g_positions_storage[MAX_GENERATED_VERTICES * 3];
@@ -1007,9 +1006,126 @@ static float g_temp_obj_positions[OBJ_MAX_TEMP_VERTICES * 3];
 static float g_temp_obj_uvs[OBJ_MAX_TEMP_VERTICES * 2];
 static float g_temp_obj_normals[OBJ_MAX_TEMP_VERTICES * 3];
 
+typedef struct {
+    uint32_t position;
+    uint32_t uv;
+    uint32_t normal;
+} ObjVertexRef;
+
+static inline int is_digit_char(char c) {
+    return c >= '0' && c <= '9';
+}
+
+static const char *skip_spaces(const char *p, const char *end) {
+    while (p < end && (*p == ' ' || *p == '\t')) {
+        p++;
+    }
+    return p;
+}
+
+static bool parse_float_token(const char **cursor, const char *end, float *out_value) {
+    const char *p = skip_spaces(*cursor, end);
+    if (p >= end) {
+        return false;
+    }
+
+    int sign = 1;
+    if (*p == '-' || *p == '+') {
+        if (*p == '-') {
+            sign = -1;
+        }
+        p++;
+    }
+
+    float value = 0.0f;
+    int has_digits = 0;
+    while (p < end && is_digit_char(*p)) {
+        has_digits = 1;
+        value = value * 10.0f + (float)(*p - '0');
+        p++;
+    }
+
+    if (p < end && *p == '.') {
+        p++;
+        float frac = 0.1f;
+        while (p < end && is_digit_char(*p)) {
+            has_digits = 1;
+            value += (float)(*p - '0') * frac;
+            frac *= 0.1f;
+            p++;
+        }
+    }
+
+    if (!has_digits) {
+        return false;
+    }
+
+    *out_value = value * (float)sign;
+    *cursor = p;
+    return true;
+}
+
+static bool parse_vec_components(const char **cursor, const char *end, float *dst, int count) {
+    for (int i = 0; i < count; i++) {
+        if (!parse_float_token(cursor, end, &dst[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool parse_uint_token(const char **cursor, const char *end, uint32_t *out_value) {
+    const char *p = skip_spaces(*cursor, end);
+    if (p >= end || !is_digit_char(*p)) {
+        return false;
+    }
+
+    uint32_t value = 0;
+    while (p < end && is_digit_char(*p)) {
+        value = value * 10u + (uint32_t)(*p - '0');
+        p++;
+    }
+
+    *out_value = value;
+    *cursor = p;
+    return true;
+}
+
+static bool parse_face_vertex(const char **cursor, const char *end, ObjVertexRef *out) {
+    const char *p = skip_spaces(*cursor, end);
+    uint32_t v_idx = 0;
+    if (!parse_uint_token(&p, end, &v_idx)) {
+        return false;
+    }
+
+    uint32_t vt_idx = 0;
+    uint32_t vn_idx = 0;
+
+    if (p < end && *p == '/') {
+        p++;
+        if (p < end && is_digit_char(*p)) {
+            if (!parse_uint_token(&p, end, &vt_idx)) {
+                return false;
+            }
+        }
+        if (p < end && *p == '/') {
+            p++;
+            if (p < end && is_digit_char(*p)) {
+                if (!parse_uint_token(&p, end, &vn_idx)) {
+                    return false;
+                }
+            }
+        }
+    }
+
+    out->position = v_idx > 0 ? v_idx - 1 : 0;
+    out->uv = vt_idx > 0 ? vt_idx - 1 : 0;
+    out->normal = vn_idx > 0 ? vn_idx - 1 : 0;
+    *cursor = p;
+    return true;
+}
+
 static MeshData* load_obj_file(const char *path) {
-    // Don't use arena for file reading - too much memory
-    // Just parse the file directly using SDL's file I/O
     SDL_IOStream *file = SDL_IOFromFile(path, "rb");
     if (!file) {
         SDL_Log("Failed to open OBJ file: %s", path);
@@ -1040,61 +1156,38 @@ static MeshData* load_obj_file(const char *path) {
     }
     file_data[file_size] = '\0';
 
-    // Temporary storage for parsed data (using static arrays)
-    float *temp_positions = g_temp_obj_positions;
-    float *temp_uvs = g_temp_obj_uvs;
-    float *temp_normals = g_temp_obj_normals;
     uint32_t pos_count = 0;
     uint32_t uv_count = 0;
     uint32_t normal_count = 0;
     uint32_t vertex_count = 0;
     uint32_t index_count = 0;
 
-    // Parse OBJ file line by line
     const char *line_start = file_data;
     const char *end = file_data + file_size;
 
     while (line_start < end) {
-        // Find end of line
         const char *line_end = line_start;
         while (line_end < end && *line_end != '\n' && *line_end != '\r') {
             line_end++;
         }
 
-        // Skip empty lines and comments
-            if (line_end > line_start && line_start[0] != '#') {
-                if (line_start[0] == 'v' && line_start[1] == ' ') {
-                    if (pos_count >= OBJ_MAX_TEMP_VERTICES) {
-                        SDL_Log("OBJ loader error: too many vertex positions in %s (max %d)", path, OBJ_MAX_TEMP_VERTICES);
-                        SDL_free(file_data);
-                        return NULL;
-                    }
-                    // Vertex position
-                    const char *p = line_start + 2;
-                    float x = 0, y = 0, z = 0;
-                // Simple float parser
-                int sign = 1;
-                if (*p == '-') { sign = -1; p++; }
-                while (*p == ' ') p++;
-                while (*p >= '0' && *p <= '9') x = x * 10 + (*p++ - '0');
-                if (*p == '.') { p++; float frac = 0.1f; while (*p >= '0' && *p <= '9') { x += (*p++ - '0') * frac; frac *= 0.1f; } }
-                x *= sign;
-
-                while (*p == ' ') p++;
-                sign = 1; if (*p == '-') { sign = -1; p++; }
-                while (*p >= '0' && *p <= '9') y = y * 10 + (*p++ - '0');
-                if (*p == '.') { p++; float frac = 0.1f; while (*p >= '0' && *p <= '9') { y += (*p++ - '0') * frac; frac *= 0.1f; } }
-                y *= sign;
-
-                while (*p == ' ') p++;
-                sign = 1; if (*p == '-') { sign = -1; p++; }
-                while (*p >= '0' && *p <= '9') z = z * 10 + (*p++ - '0');
-                if (*p == '.') { p++; float frac = 0.1f; while (*p >= '0' && *p <= '9') { z += (*p++ - '0') * frac; frac *= 0.1f; } }
-                z *= sign;
-
-                temp_positions[pos_count * 3 + 0] = x;
-                temp_positions[pos_count * 3 + 1] = y;
-                temp_positions[pos_count * 3 + 2] = z;
+        if (line_end > line_start && line_start[0] != '#') {
+            if (line_start[0] == 'v' && line_start[1] == ' ') {
+                if (pos_count >= OBJ_MAX_TEMP_VERTICES) {
+                    SDL_Log("OBJ loader error: too many vertex positions in %s (max %d)", path, OBJ_MAX_TEMP_VERTICES);
+                    SDL_free(file_data);
+                    return NULL;
+                }
+                const char *cursor = line_start + 2;
+                float vec[3];
+                if (!parse_vec_components(&cursor, line_end, vec, 3)) {
+                    SDL_Log("OBJ loader error: malformed vertex position in %s", path);
+                    SDL_free(file_data);
+                    return NULL;
+                }
+                g_temp_obj_positions[pos_count * 3 + 0] = vec[0];
+                g_temp_obj_positions[pos_count * 3 + 1] = vec[1];
+                g_temp_obj_positions[pos_count * 3 + 2] = vec[2];
                 pos_count++;
             } else if (line_start[0] == 'v' && line_start[1] == 't' && line_start[2] == ' ') {
                 if (uv_count >= OBJ_MAX_TEMP_VERTICES) {
@@ -1102,25 +1195,15 @@ static MeshData* load_obj_file(const char *path) {
                     SDL_free(file_data);
                     return NULL;
                 }
-                // Texture coordinate
-                const char *p = line_start + 3;
-                float u = 0, v = 0;
-
-                int sign = 1;
-                if (*p == '-') { sign = -1; p++; }
-                while (*p == ' ') p++;
-                while (*p >= '0' && *p <= '9') u = u * 10 + (*p++ - '0');
-                if (*p == '.') { p++; float frac = 0.1f; while (*p >= '0' && *p <= '9') { u += (*p++ - '0') * frac; frac *= 0.1f; } }
-                u *= sign;
-
-                while (*p == ' ') p++;
-                sign = 1; if (*p == '-') { sign = -1; p++; }
-                while (*p >= '0' && *p <= '9') v = v * 10 + (*p++ - '0');
-                if (*p == '.') { p++; float frac = 0.1f; while (*p >= '0' && *p <= '9') { v += (*p++ - '0') * frac; frac *= 0.1f; } }
-                v *= sign;
-
-                temp_uvs[uv_count * 2 + 0] = u;
-                temp_uvs[uv_count * 2 + 1] = v;
+                const char *cursor = line_start + 3;
+                float uv[2];
+                if (!parse_vec_components(&cursor, line_end, uv, 2)) {
+                    SDL_Log("OBJ loader error: malformed UV in %s", path);
+                    SDL_free(file_data);
+                    return NULL;
+                }
+                g_temp_obj_uvs[uv_count * 2 + 0] = uv[0];
+                g_temp_obj_uvs[uv_count * 2 + 1] = uv[1];
                 uv_count++;
             } else if (line_start[0] == 'v' && line_start[1] == 'n' && line_start[2] == ' ') {
                 if (normal_count >= OBJ_MAX_TEMP_VERTICES) {
@@ -1128,116 +1211,70 @@ static MeshData* load_obj_file(const char *path) {
                     SDL_free(file_data);
                     return NULL;
                 }
-                // Normal
-                const char *p = line_start + 3;
-                float x = 0, y = 0, z = 0;
-
-                int sign = 1;
-                if (*p == '-') { sign = -1; p++; }
-                while (*p == ' ') p++;
-                while (*p >= '0' && *p <= '9') x = x * 10 + (*p++ - '0');
-                if (*p == '.') { p++; float frac = 0.1f; while (*p >= '0' && *p <= '9') { x += (*p++ - '0') * frac; frac *= 0.1f; } }
-                x *= sign;
-
-                while (*p == ' ') p++;
-                sign = 1; if (*p == '-') { sign = -1; p++; }
-                while (*p >= '0' && *p <= '9') y = y * 10 + (*p++ - '0');
-                if (*p == '.') { p++; float frac = 0.1f; while (*p >= '0' && *p <= '9') { y += (*p++ - '0') * frac; frac *= 0.1f; } }
-                y *= sign;
-
-                while (*p == ' ') p++;
-                sign = 1; if (*p == '-') { sign = -1; p++; }
-                while (*p >= '0' && *p <= '9') z = z * 10 + (*p++ - '0');
-                if (*p == '.') { p++; float frac = 0.1f; while (*p >= '0' && *p <= '9') { z += (*p++ - '0') * frac; frac *= 0.1f; } }
-                z *= sign;
-
-                temp_normals[normal_count * 3 + 0] = x;
-                temp_normals[normal_count * 3 + 1] = y;
-                temp_normals[normal_count * 3 + 2] = z;
+                const char *cursor = line_start + 3;
+                float normal[3];
+                if (!parse_vec_components(&cursor, line_end, normal, 3)) {
+                    SDL_Log("OBJ loader error: malformed normal in %s", path);
+                    SDL_free(file_data);
+                    return NULL;
+                }
+                g_temp_obj_normals[normal_count * 3 + 0] = normal[0];
+                g_temp_obj_normals[normal_count * 3 + 1] = normal[1];
+                g_temp_obj_normals[normal_count * 3 + 2] = normal[2];
                 normal_count++;
             } else if (line_start[0] == 'f' && line_start[1] == ' ') {
-                // Face - expect exactly 3 vertices (triangles only)
-                const char *p = line_start + 2;
-                uint32_t face_indices[3][3];  // [vertex][pos/uv/normal]
-                int parsed_vertices = 0;
-
-                for (; parsed_vertices < 3; parsed_vertices++) {
-                    while (*p == ' ') p++;
-                    uint32_t v_idx = 0, vt_idx = 0, vn_idx = 0;
-                    bool has_digits = false;
-                    while (*p >= '0' && *p <= '9') {
-                        has_digits = true;
-                        v_idx = v_idx * 10 + (*p++ - '0');
+                const char *cursor = line_start + 2;
+                ObjVertexRef face[3];
+                for (int i = 0; i < 3; i++) {
+                    if (!parse_face_vertex(&cursor, line_end, &face[i])) {
+                        SDL_Log("OBJ loader error: malformed face in %s", path);
+                        SDL_free(file_data);
+                        return NULL;
                     }
-                    if (!has_digits) {
-                        break;
-                    }
-                    if (*p == '/') p++;
-                    while (*p >= '0' && *p <= '9') {
-                        vt_idx = vt_idx * 10 + (*p++ - '0');
-                    }
-                    if (*p == '/') p++;
-                    while (*p >= '0' && *p <= '9') {
-                        vn_idx = vn_idx * 10 + (*p++ - '0');
-                    }
-
-                    face_indices[parsed_vertices][0] = v_idx - 1;   // OBJ indices are 1-based
-                    face_indices[parsed_vertices][1] = vt_idx - 1;
-                    face_indices[parsed_vertices][2] = vn_idx - 1;
                 }
-
-                while (*p == ' ') p++;
-                bool has_extra_vertices = (*p != '\0' && *p != '\n' && *p != '\r');
-
-                if (parsed_vertices != 3 || has_extra_vertices) {
+                cursor = skip_spaces(cursor, line_end);
+                if (cursor < line_end) {
                     SDL_Log("OBJ loader error: only triangle faces are supported in %s", path);
                     SDL_free(file_data);
                     return NULL;
                 }
 
-                // Add vertices for this face
                 for (int i = 0; i < 3; i++) {
                     if (vertex_count >= OBJ_MAX_VERTICES || index_count >= OBJ_MAX_INDICES) {
                         SDL_Log("OBJ loader error: too many vertices/indices in %s (max vertices %d)", path, OBJ_MAX_VERTICES);
                         SDL_free(file_data);
                         return NULL;
                     }
-                    uint32_t v_idx = face_indices[i][0];
-                    uint32_t vt_idx = face_indices[i][1];
-                    uint32_t vn_idx = face_indices[i][2];
+                    const ObjVertexRef *ref = &face[i];
+                    g_obj_positions[vertex_count * 3 + 0] = g_temp_obj_positions[ref->position * 3 + 0];
+                    g_obj_positions[vertex_count * 3 + 1] = g_temp_obj_positions[ref->position * 3 + 1];
+                    g_obj_positions[vertex_count * 3 + 2] = g_temp_obj_positions[ref->position * 3 + 2];
 
-                    g_obj_positions[vertex_count * 3 + 0] = temp_positions[v_idx * 3 + 0];
-                    g_obj_positions[vertex_count * 3 + 1] = temp_positions[v_idx * 3 + 1];
-                    g_obj_positions[vertex_count * 3 + 2] = temp_positions[v_idx * 3 + 2];
+                    g_obj_uvs[vertex_count * 2 + 0] = g_temp_obj_uvs[ref->uv * 2 + 0];
+                    g_obj_uvs[vertex_count * 2 + 1] = g_temp_obj_uvs[ref->uv * 2 + 1];
 
-                    g_obj_uvs[vertex_count * 2 + 0] = temp_uvs[vt_idx * 2 + 0];
-                    g_obj_uvs[vertex_count * 2 + 1] = temp_uvs[vt_idx * 2 + 1];
+                    g_obj_normals[vertex_count * 3 + 0] = g_temp_obj_normals[ref->normal * 3 + 0];
+                    g_obj_normals[vertex_count * 3 + 1] = g_temp_obj_normals[ref->normal * 3 + 1];
+                    g_obj_normals[vertex_count * 3 + 2] = g_temp_obj_normals[ref->normal * 3 + 2];
 
-                    g_obj_normals[vertex_count * 3 + 0] = temp_normals[vn_idx * 3 + 0];
-                    g_obj_normals[vertex_count * 3 + 1] = temp_normals[vn_idx * 3 + 1];
-                    g_obj_normals[vertex_count * 3 + 2] = temp_normals[vn_idx * 3 + 2];
-
-                    g_obj_surface_types[vertex_count] = 4.0f;  // Sphere surface type
-
+                    g_obj_surface_types[vertex_count] = 4.0f;
                     g_obj_indices[index_count++] = (uint16_t)vertex_count;
                     vertex_count++;
                 }
             }
         }
 
-        // Move to next line
         line_start = line_end;
         while (line_start < end && (*line_start == '\n' || *line_start == '\r')) {
             line_start++;
         }
     }
 
-    SDL_free(file_data);  // Free the file data after parsing
+    SDL_free(file_data);
 
     SDL_Log("Loaded OBJ: %u vertices, %u indices", vertex_count, index_count);
 
-    // Debug: Check UV range
-    float min_u = 1e9, max_u = -1e9, min_v = 1e9, max_v = -1e9;
+    float min_u = 1e9f, max_u = -1e9f, min_v = 1e9f, max_v = -1e9f;
     for (uint32_t i = 0; i < vertex_count; i++) {
         float u = g_obj_uvs[i * 2 + 0];
         float v = g_obj_uvs[i * 2 + 1];
