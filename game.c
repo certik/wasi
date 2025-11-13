@@ -1905,23 +1905,72 @@ static bool create_scene_pipeline(GameApp *app, SDL_GPUShader *vertex_shader, SD
     SDL_GPUDepthStencilState depth_state = {
         .enable_depth_test = true,
         .enable_depth_write = true,
+        .enable_stencil_test = false,
         .compare_op = SDL_GPU_COMPAREOP_LESS,
+        .back_stencil_state = {
+            .fail_op = SDL_GPU_STENCILOP_KEEP,
+            .pass_op = SDL_GPU_STENCILOP_KEEP,
+            .depth_fail_op = SDL_GPU_STENCILOP_KEEP,
+            .compare_op = SDL_GPU_COMPAREOP_ALWAYS,
+        },
+        .front_stencil_state = {
+            .fail_op = SDL_GPU_STENCILOP_KEEP,
+            .pass_op = SDL_GPU_STENCILOP_KEEP,
+            .depth_fail_op = SDL_GPU_STENCILOP_KEEP,
+            .compare_op = SDL_GPU_COMPAREOP_ALWAYS,
+        },
+        .compare_mask = 0,
+        .write_mask = 0,
+    };
+
+    SDL_GPURasterizerState rasterizer_state = {
+        .fill_mode = SDL_GPU_FILLMODE_FILL,
+        .cull_mode = SDL_GPU_CULLMODE_BACK,
+        .front_face = SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE,
+        .depth_bias_constant_factor = 0.0f,
+        .depth_bias_clamp = 0.0f,
+        .depth_bias_slope_factor = 0.0f,
+        .enable_depth_bias = false,
+        .enable_depth_clip = false,
+    };
+
+    SDL_GPUMultisampleState multisample_state = {
+        .sample_count = SDL_GPU_SAMPLECOUNT_1,
+        .sample_mask = 0,
+        .enable_mask = false,
+        .enable_alpha_to_coverage = false,
     };
 
     SDL_GPUGraphicsPipelineCreateInfo info = {
         .vertex_shader = vertex_shader,
         .fragment_shader = fragment_shader,
         .vertex_input_state = vertex_state,
+        .primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
+        .rasterizer_state = rasterizer_state,
+        .multisample_state = multisample_state,
         .depth_stencil_state = depth_state,
         .target_info = {
             .num_color_targets = 1,
             .color_target_descriptions = (SDL_GPUColorTargetDescription[]){
-                {.format = SDL_GetGPUSwapchainTextureFormat(app->device, app->window)}
+                {
+                    .format = SDL_GetGPUSwapchainTextureFormat(app->device, app->window),
+                    .blend_state = {
+                        .enable_blend = false,
+                        .enable_color_write_mask = false,
+                        .color_write_mask = 0,
+                        .src_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE,
+                        .dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ZERO,
+                        .color_blend_op = SDL_GPU_BLENDOP_ADD,
+                        .src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE,
+                        .dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ZERO,
+                        .alpha_blend_op = SDL_GPU_BLENDOP_ADD,
+                    },
+                }
             },
             .depth_stencil_format = SDL_GPU_TEXTUREFORMAT_D16_UNORM,
             .has_depth_stencil_target = true,
         },
-        .primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
+        .props = 0,
     };
 
     app->scene_pipeline = SDL_CreateGPUGraphicsPipeline(app->device, &info);
@@ -1950,23 +1999,72 @@ static bool create_overlay_pipeline(GameApp *app, SDL_GPUShader *vertex_shader, 
     SDL_GPUDepthStencilState depth_state = {
         .enable_depth_test = false,
         .enable_depth_write = false,
+        .enable_stencil_test = false,
         .compare_op = SDL_GPU_COMPAREOP_LESS,
+        .back_stencil_state = {
+            .fail_op = SDL_GPU_STENCILOP_KEEP,
+            .pass_op = SDL_GPU_STENCILOP_KEEP,
+            .depth_fail_op = SDL_GPU_STENCILOP_KEEP,
+            .compare_op = SDL_GPU_COMPAREOP_ALWAYS,
+        },
+        .front_stencil_state = {
+            .fail_op = SDL_GPU_STENCILOP_KEEP,
+            .pass_op = SDL_GPU_STENCILOP_KEEP,
+            .depth_fail_op = SDL_GPU_STENCILOP_KEEP,
+            .compare_op = SDL_GPU_COMPAREOP_ALWAYS,
+        },
+        .compare_mask = 0,
+        .write_mask = 0,
+    };
+
+    SDL_GPURasterizerState rasterizer_state = {
+        .fill_mode = SDL_GPU_FILLMODE_FILL,
+        .cull_mode = SDL_GPU_CULLMODE_NONE,
+        .front_face = SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE,
+        .depth_bias_constant_factor = 0.0f,
+        .depth_bias_clamp = 0.0f,
+        .depth_bias_slope_factor = 0.0f,
+        .enable_depth_bias = false,
+        .enable_depth_clip = false,
+    };
+
+    SDL_GPUMultisampleState multisample_state = {
+        .sample_count = SDL_GPU_SAMPLECOUNT_1,
+        .sample_mask = 0,
+        .enable_mask = false,
+        .enable_alpha_to_coverage = false,
     };
 
     SDL_GPUGraphicsPipelineCreateInfo info = {
         .vertex_shader = vertex_shader,
         .fragment_shader = fragment_shader,
         .vertex_input_state = vertex_state,
+        .primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
+        .rasterizer_state = rasterizer_state,
+        .multisample_state = multisample_state,
         .depth_stencil_state = depth_state,
         .target_info = {
             .num_color_targets = 1,
             .color_target_descriptions = (SDL_GPUColorTargetDescription[]){
-                {.format = SDL_GetGPUSwapchainTextureFormat(app->device, app->window)}
+                {
+                    .format = SDL_GetGPUSwapchainTextureFormat(app->device, app->window),
+                    .blend_state = {
+                        .enable_blend = true,
+                        .enable_color_write_mask = false,
+                        .color_write_mask = 0,
+                        .src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA,
+                        .dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+                        .color_blend_op = SDL_GPU_BLENDOP_ADD,
+                        .src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE,
+                        .dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ZERO,
+                        .alpha_blend_op = SDL_GPU_BLENDOP_ADD,
+                    },
+                }
             },
             .depth_stencil_format = SDL_GPU_TEXTUREFORMAT_D16_UNORM,
             .has_depth_stencil_target = true,
         },
-        .primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
+        .props = 0,
     };
 
     app->overlay_pipeline = SDL_CreateGPUGraphicsPipeline(app->device, &info);
@@ -1996,6 +2094,7 @@ static int complete_gpu_setup(GameApp *app) {
     }
 
     string scene_vs_code = load_shader_source(&g_scene_vertex_shader, app->scene_vertex_path);
+    SDL_Log("Loaded scene vertex shader: %zu bytes from %s", scene_vs_code.size, app->scene_vertex_path);
     SDL_GPUShaderCreateInfo shader_info = {
         .code = (const Uint8 *)scene_vs_code.str,
         .code_size = shader_code_size(scene_vs_code),
@@ -2013,6 +2112,7 @@ static int complete_gpu_setup(GameApp *app) {
         SDL_Log("Failed to create scene vertex shader: %s", SDL_GetError());
         return -1;
     }
+    SDL_Log("Created scene vertex shader successfully");
 
     string scene_fs_code = load_shader_source(&g_scene_fragment_shader, app->scene_fragment_path);
     shader_info.code = (const Uint8 *)scene_fs_code.str;
