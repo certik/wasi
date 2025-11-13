@@ -58,7 +58,9 @@ typedef __builtin_va_list __gnuc_va_list;
 #define MAP_SCALE 6.0f
 #define PERF_SMOOTHING 0.9f
 
-#define MAX_SCENE_VERTICES 16384
+#define MAX_SCENE_VERTICES 20000
+#define MAX_GENERATED_VERTICES 20000
+#define MAX_GENERATED_INDICES 24000
 #define MAX_OVERLAY_VERTICES 48000
 #define KEY_SHIFT 16
 #define KEY_CTRL 17
@@ -166,10 +168,12 @@ typedef struct {
     SDL_GPUTexture *wall_texture;
     SDL_GPUTexture *ceiling_texture;
     SDL_GPUTexture *sphere_texture;
-    SDL_GPUSampler *sphere_sampler;  // slot 0
+    SDL_GPUTexture *book_texture;
+    SDL_GPUSampler *floor_sampler;   // slot 0
     SDL_GPUSampler *wall_sampler;    // slot 1
     SDL_GPUSampler *ceiling_sampler; // slot 2
-    SDL_GPUSampler *floor_sampler;   // slot 3
+    SDL_GPUSampler *sphere_sampler;  // slot 3
+    SDL_GPUSampler *book_sampler;    // slot 4
 
     uint32_t scene_vertex_count;
     uint32_t scene_index_count;
@@ -211,7 +215,9 @@ static Arena *g_shader_arena = NULL;
 #define WALL_TEXTURE_PATH "assets/Concrete046_1K-JPG_Color.jpg"
 #define CEILING_TEXTURE_PATH "assets/OfficeCeiling001_1K-JPG_Color.jpg"
 #define SPHERE_TEXTURE_PATH "assets/Land_ocean_ice_2048.jpg"
+#define BOOK_TEXTURE_PATH "assets/checker_board_4k.png"
 #define SPHERE_OBJ_PATH "assets/equirectangular_sphere.obj"
+#define BOOK_OBJ_PATH "assets/book.obj"
 
 static string g_scene_vertex_shader = {0};
 static string g_scene_fragment_shader = {0};
@@ -645,16 +651,16 @@ static void push_east_segment(MeshGenContext *ctx, float x, float z, float y0, f
 // Forward declaration for OBJ loader
 static MeshData* load_obj_file(const char *path);
 
-static float g_positions_storage[40000];   // 12928 vertices * 3 = 38784 needed
-static float g_uvs_storage[26000];         // 12928 vertices * 2 = 25856 needed
-static float g_normals_storage[40000];     // 12928 vertices * 3 = 38784 needed
-static float g_surface_storage[13000];     // 12928 vertices needed
-static float g_triangle_storage[13000];    // 12928 vertices needed
-static uint16_t g_index_storage[14000];    // 13248 indices needed
+static float g_positions_storage[MAX_GENERATED_VERTICES * 3];
+static float g_uvs_storage[MAX_GENERATED_VERTICES * 2];
+static float g_normals_storage[MAX_GENERATED_VERTICES * 3];
+static float g_surface_storage[MAX_GENERATED_VERTICES];
+static float g_triangle_storage[MAX_GENERATED_VERTICES];
+static uint16_t g_index_storage[MAX_GENERATED_INDICES];
 static MeshData g_mesh_data_storage;
 static MapVertex g_temp_vertices[MAX_SCENE_VERTICES];
 
-static MeshData* generate_mesh(int *map, int width, int height) {
+static MeshData* generate_mesh(int *map, int width, int height, float spawn_x, float spawn_z) {
     MeshGenContext ctx = {0};
     ctx.positions = g_positions_storage;
     ctx.uvs = g_uvs_storage;
@@ -872,6 +878,41 @@ static MeshData* generate_mesh(int *map, int width, int height) {
 
     SDL_Log("After spheres: position_idx=%u, surface_idx=%u, index_idx=%u",
             ctx.position_idx, ctx.surface_idx, ctx.index_idx);
+
+    MeshData *book_mesh = load_obj_file(BOOK_OBJ_PATH);
+    if (book_mesh) {
+        SDL_Log("Adding book at spawn position (%.2f, %.2f)", spawn_x, spawn_z);
+        float min_y = 0.0f;
+        if (book_mesh->vertex_count > 0) {
+            min_y = book_mesh->positions[1];
+            for (uint32_t i = 0; i < book_mesh->vertex_count; i++) {
+                float y = book_mesh->positions[i * 3 + 1];
+                if (y < min_y) {
+                    min_y = y;
+                }
+            }
+        }
+        const float book_scale = 2.0f;
+        const float floor_y = 0.0f;
+        float book_y = floor_y - min_y * book_scale + 0.01f;
+        uint16_t base_vertex = (uint16_t)ctx.surface_idx;
+        for (uint32_t i = 0; i < book_mesh->vertex_count; i++) {
+            push_position(&ctx,
+                book_mesh->positions[i * 3 + 0] * book_scale + spawn_x,
+                book_mesh->positions[i * 3 + 1] * book_scale + book_y,
+                book_mesh->positions[i * 3 + 2] * book_scale + spawn_z);
+            push_uv(&ctx, book_mesh->uvs[i * 2 + 0], book_mesh->uvs[i * 2 + 1]);
+            push_normal(&ctx,
+                book_mesh->normals[i * 3 + 0],
+                book_mesh->normals[i * 3 + 1],
+                book_mesh->normals[i * 3 + 2]);
+            push_surface_type(&ctx, 5.0f);  // Book surface type
+            push_triangle_id(&ctx, 0.0f);
+        }
+        for (uint32_t i = 0; i < book_mesh->index_count; i++) {
+            push_index(&ctx, base_vertex + book_mesh->indices[i]);
+        }
+    }
 
     g_mesh_data_storage.positions = g_positions_storage;
     g_mesh_data_storage.uvs = g_uvs_storage;
@@ -2324,7 +2365,7 @@ static int complete_gpu_setup(GameApp *app) {
     shader_info.code_size = shader_code_size(scene_fs_code);
     shader_info.entrypoint = shader_entrypoint;
     shader_info.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
-    shader_info.num_samplers = 4;
+    shader_info.num_samplers = 5;
     shader_info.num_uniform_buffers = 1;
     shader_info.num_storage_buffers = 0;
     shader_info.num_storage_textures = 0;
@@ -2400,7 +2441,7 @@ static int complete_gpu_setup(GameApp *app) {
     float start_yaw = 0.0f;
     find_start_position(g_map_data, MAP_WIDTH, MAP_HEIGHT, &start_x, &start_z, &start_yaw);
 
-    MeshData *mesh = generate_mesh(g_map_data, MAP_WIDTH, MAP_HEIGHT);
+    MeshData *mesh = generate_mesh(g_map_data, MAP_WIDTH, MAP_HEIGHT, start_x, start_z);
     app->scene_vertex_count = mesh->vertex_count;
     app->scene_index_count = mesh->index_count;
 
@@ -2544,7 +2585,20 @@ static int complete_gpu_setup(GameApp *app) {
         return -1;
     }
 
-    // Create 4 separate samplers (one for each texture slot)
+    app->book_texture = load_texture_from_path(app, BOOK_TEXTURE_PATH, "book");
+    if (!app->book_texture) {
+        SDL_ReleaseGPUTexture(app->device, app->sphere_texture);
+        app->sphere_texture = NULL;
+        SDL_ReleaseGPUTexture(app->device, app->ceiling_texture);
+        app->ceiling_texture = NULL;
+        SDL_ReleaseGPUTexture(app->device, app->wall_texture);
+        app->wall_texture = NULL;
+        SDL_ReleaseGPUTexture(app->device, app->floor_texture);
+        app->floor_texture = NULL;
+        return -1;
+    }
+
+    // Create 5 separate samplers (one for each texture slot)
     SDL_GPUSamplerCreateInfo sampler_info = {
         .min_filter = SDL_GPU_FILTER_LINEAR,
         .mag_filter = SDL_GPU_FILTER_LINEAR,
@@ -2553,12 +2607,14 @@ static int complete_gpu_setup(GameApp *app) {
         .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
         .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
     };
-    app->sphere_sampler = SDL_CreateGPUSampler(app->device, &sampler_info);
+    app->floor_sampler = SDL_CreateGPUSampler(app->device, &sampler_info);
     app->wall_sampler = SDL_CreateGPUSampler(app->device, &sampler_info);
     app->ceiling_sampler = SDL_CreateGPUSampler(app->device, &sampler_info);
-    app->floor_sampler = SDL_CreateGPUSampler(app->device, &sampler_info);
+    app->sphere_sampler = SDL_CreateGPUSampler(app->device, &sampler_info);
+    app->book_sampler = SDL_CreateGPUSampler(app->device, &sampler_info);
 
-    if (!app->sphere_sampler || !app->wall_sampler || !app->ceiling_sampler || !app->floor_sampler) {
+    if (!app->sphere_sampler || !app->wall_sampler || !app->ceiling_sampler ||
+        !app->floor_sampler || !app->book_sampler) {
         SDL_Log("Failed to create texture samplers: %s", SDL_GetError());
         SDL_ReleaseGPUTexture(app->device, app->ceiling_texture);
         app->ceiling_texture = NULL;
@@ -2566,6 +2622,10 @@ static int complete_gpu_setup(GameApp *app) {
         app->wall_texture = NULL;
         SDL_ReleaseGPUTexture(app->device, app->floor_texture);
         app->floor_texture = NULL;
+        SDL_ReleaseGPUTexture(app->device, app->sphere_texture);
+        app->sphere_texture = NULL;
+        SDL_ReleaseGPUTexture(app->device, app->book_texture);
+        app->book_texture = NULL;
         return -1;
     }
     SDL_Log("Scene textures and samplers created successfully");
@@ -2784,12 +2844,11 @@ static int render_game(GameApp *app) {
         SDL_Log("ERROR: sphere_texture is NULL!");
     }
 
-    // Bind textures: slot 0=sphere, 1=wall, 2=ceiling, 3=floor
-    // Each texture has its own sampler (4 total)
-    SDL_GPUTextureSamplerBinding texture_bindings[4] = {
+    // Bind textures: slot 0=floor, 1=wall, 2=ceiling, 3=sphere, 4=book
+    SDL_GPUTextureSamplerBinding texture_bindings[5] = {
         {
-            .texture = app->sphere_texture,
-            .sampler = app->sphere_sampler,
+            .texture = app->floor_texture,
+            .sampler = app->floor_sampler,
         },
         {
             .texture = app->wall_texture,
@@ -2800,8 +2859,12 @@ static int render_game(GameApp *app) {
             .sampler = app->ceiling_sampler,
         },
         {
-            .texture = app->floor_texture,
-            .sampler = app->floor_sampler,
+            .texture = app->sphere_texture,
+            .sampler = app->sphere_sampler,
+        },
+        {
+            .texture = app->book_texture,
+            .sampler = app->book_sampler,
         },
     };
 
@@ -2809,7 +2872,7 @@ static int render_game(GameApp *app) {
     static int logged = 0;
     if (!logged) {
         SDL_Log("Binding %d texture/sampler pairs:", (int)SDL_arraysize(texture_bindings));
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < (int)SDL_arraysize(texture_bindings); i++) {
             SDL_Log("  [%d] texture=%p, sampler=%p", i,
                     (void*)texture_bindings[i].texture,
                     (void*)texture_bindings[i].sampler);
@@ -2902,6 +2965,10 @@ static void shutdown_game(GameApp *app) {
         SDL_ReleaseGPUTexture(app->device, app->sphere_texture);
         app->sphere_texture = NULL;
     }
+    if (app->book_texture) {
+        SDL_ReleaseGPUTexture(app->device, app->book_texture);
+        app->book_texture = NULL;
+    }
     if (app->sphere_sampler) {
         SDL_ReleaseGPUSampler(app->device, app->sphere_sampler);
         app->sphere_sampler = NULL;
@@ -2917,6 +2984,10 @@ static void shutdown_game(GameApp *app) {
     if (app->floor_sampler) {
         SDL_ReleaseGPUSampler(app->device, app->floor_sampler);
         app->floor_sampler = NULL;
+    }
+    if (app->book_sampler) {
+        SDL_ReleaseGPUSampler(app->device, app->book_sampler);
+        app->book_sampler = NULL;
     }
     if (app->device && app->window) {
         SDL_ReleaseWindowFromGPUDevice(app->device, app->window);
@@ -3004,7 +3075,12 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         }
 
         // Generate the mesh
-        MeshData *mesh = generate_mesh(g_map_data, MAP_WIDTH, MAP_HEIGHT);
+        float start_x = 1.5f;
+        float start_z = 1.5f;
+        float start_yaw = 0.0f;
+        find_start_position(g_map_data, MAP_WIDTH, MAP_HEIGHT, &start_x, &start_z, &start_yaw);
+
+        MeshData *mesh = generate_mesh(g_map_data, MAP_WIDTH, MAP_HEIGHT, start_x, start_z);
         if (!mesh) {
             SDL_Log("Failed to generate mesh");
             return SDL_APP_FAILURE;

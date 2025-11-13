@@ -21,6 +21,8 @@ struct VertexOutput {
 @group(1) @binding(5) var ceilingSampler: sampler;
 @group(1) @binding(6) var sphereTexture: texture_2d<f32>;
 @group(1) @binding(7) var sphereSampler: sampler;
+@group(1) @binding(8) var bookTexture: texture_2d<f32>;
+@group(1) @binding(9) var bookSampler: sampler;
 
 fn checker(uv: vec2f) -> f32 {
     let scaled = floor(uv * 4.0);
@@ -35,6 +37,7 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
     let wallColor = textureSample(wallTexture, wallSampler, input.uv);
     let ceilingColor = textureSample(ceilingTexture, ceilingSampler, input.uv);
     let sphereColor = textureSample(sphereTexture, sphereSampler, input.uv);
+    let bookColor = textureSample(bookTexture, bookSampler, input.uv);
 
     var baseColor: vec3f;
     if (input.surfaceType < 0.5) {
@@ -46,9 +49,12 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
         baseColor = ceilingColor.rgb;
     } else if (input.surfaceType < 3.5) {
         baseColor = vec3f(0.7, 0.5, 0.3) * checker(input.uv);
-    } else {
+    } else if (input.surfaceType < 4.5) {
         // Sphere: use sphere texture
         baseColor = sphereColor.rgb;
+    } else {
+        // Book mesh
+        baseColor = bookColor.rgb;
     }
 
     let n = normalize(input.normal);
@@ -59,7 +65,10 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
     if (input.surfaceType >= 1.5 && input.surfaceType < 2.5) {
         diff = 1.0;  // Full brightness for ceiling
     }
-    
+    // Full brightness for spheres to debug texture
+    if (input.surfaceType >= 3.5 && input.surfaceType < 4.5) {
+        diff = 1.0;
+    }
     let fogFactor = exp(-distance(input.worldPos, uniforms.cameraPos.xyz) * 0.08);
     var color = baseColor * diff;
     color = mix(uniforms.fogColor.xyz, color, fogFactor);
