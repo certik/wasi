@@ -5,3 +5,9 @@ shaders/WGSL/mousecircle_overlay_fragment.wgsl
 assets/WoodFloor007_1K-JPG_Color.jpg
 assets/Concrete046_1K-JPG_Color.jpg
 assets/OfficeCeiling001_1K-JPG_Color.jpg
+assets/Land_ocean_ice_2048.jpg
+assets/checker_board_4k.png
+assets/chair_02_diff_1k.jpg
+assets/equirectangular_sphere.obj
+assets/book.obj
+assets/chair.obj
