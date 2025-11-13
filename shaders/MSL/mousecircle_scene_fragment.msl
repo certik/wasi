@@ -50,7 +50,6 @@ fragment main_Output main_(
 , metal::texture2d<float, metal::access::sample> ceilingTexture [[texture(2)]]
 , metal::sampler ceilingSampler [[sampler(2)]]
 , metal::texture2d<float, metal::access::sample> sphereTexture [[texture(3)]]
-, metal::sampler sphereSampler [[sampler(3)]]
 ) {
     const VertexOutput input = { position, varyings.surfaceType, {}, varyings.uv, varyings.normal, varyings.worldPos };
     metal::float3 baseColor = {};
@@ -59,7 +58,7 @@ fragment main_Output main_(
     metal::float4 floorColor = floorTexture.sample(floorSampler, input.uv);
     metal::float4 wallColor = wallTexture.sample(wallSampler, input.uv);
     metal::float4 ceilingColor = ceilingTexture.sample(ceilingSampler, input.uv);
-    metal::float4 sphereColor = sphereTexture.sample(sphereSampler, input.uv);
+    metal::float4 sphereColor = sphereTexture.sample(floorSampler, input.uv);
     if (input.surfaceType < 0.5) {
         baseColor = floorColor.xyz;
     } else {
