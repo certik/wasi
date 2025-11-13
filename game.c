@@ -2580,12 +2580,15 @@ static int render_game(GameApp *app) {
     SDL_GPURenderPass *render_pass = SDL_BeginGPURenderPass(cmdbuf, &color_target, 1, &depth_target);
     SDL_Log("render_game: Render pass started");
 
-    // TEMPORARY: Skip all drawing to test if the issue is in draw commands
-    #if 0
+    SDL_Log("render_game: Binding scene pipeline");
     SDL_BindGPUGraphicsPipeline(render_pass, app->scene_pipeline);
+    SDL_Log("render_game: Pushing uniform data");
     SDL_PushGPUVertexUniformData(cmdbuf, 0, &app->scene_uniforms, sizeof(SceneUniforms));
     SDL_PushGPUFragmentUniformData(cmdbuf, 0, &app->scene_uniforms, sizeof(SceneUniforms));
+    SDL_Log("render_game: Pipeline and uniforms set");
 
+    // TODO: Add back texture binding, buffers, and drawing one at a time
+    #if 0
     // Bind scene textures and sampler (shared sampler for all textures)
     SDL_Log("render_game: About to bind textures");
     if (!app->floor_texture || !app->wall_texture || !app->ceiling_texture || !app->floor_sampler) {
@@ -2641,6 +2644,7 @@ static int render_game(GameApp *app) {
     SDL_Log("render_game: Drawing scene (index_count=%u)", app->scene_index_count);
     SDL_DrawGPUIndexedPrimitives(render_pass, app->scene_index_count, 1, 0, 0, 0);
     SDL_Log("render_game: Scene drawn");
+    #endif
 
     // Temporarily disable overlay to test scene stability
     if (false && app->overlay_vertex_count > 0) {
@@ -2661,7 +2665,6 @@ static int render_game(GameApp *app) {
         SDL_DrawGPUPrimitives(render_pass, app->overlay_vertex_count, 1, 0, 0);
         SDL_Log("render_game: Overlay drawn");
     }
-    #endif  // End of temporarily disabled drawing code
 
     SDL_Log("render_game: Ending render pass");
     SDL_EndGPURenderPass(render_pass);
