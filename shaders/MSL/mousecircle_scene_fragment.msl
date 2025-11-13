@@ -55,11 +55,14 @@ fragment main_Output main_(
     metal::float3 baseColor = {};
     float diff = {};
     metal::float3 color = {};
-    // Texture binding order: 0=sphere, 1=wall, 2=ceiling, 3=floor (slot 3 doesn't work, but floor is not visible)
+    // Texture binding order: 0=sphere, 1=wall, 2=ceiling, 3=floor
+    // Floor and sphere share sampler at slot 0 (both use sharedSampler)
+    // Texture slot 3 doesn't work on Metal/SDL3, so floor goes there (not visible anyway)
     metal::float4 sphereColor = sphereTexture.sample(sharedSampler, input.uv);
     metal::float4 wallColor = wallTexture.sample(wallSampler, input.uv);
     metal::float4 ceilingColor = ceilingTexture.sample(ceilingSampler, input.uv);
     metal::float4 floorColor = floorTexture.sample(sharedSampler, input.uv);
+
     if (input.surfaceType < 0.5) {
         baseColor = floorColor.xyz;
     } else {

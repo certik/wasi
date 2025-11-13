@@ -166,7 +166,9 @@ typedef struct {
     SDL_GPUTexture *wall_texture;
     SDL_GPUTexture *ceiling_texture;
     SDL_GPUTexture *sphere_texture;
-    SDL_GPUSampler *floor_sampler;
+    SDL_GPUSampler *floor_sampler;  // Shared by floor and sphere (slot 0)
+    SDL_GPUSampler *wall_sampler;
+    SDL_GPUSampler *ceiling_sampler;
 
     uint32_t scene_vertex_count;
     uint32_t scene_index_count;
@@ -2541,7 +2543,7 @@ static int complete_gpu_setup(GameApp *app) {
         return -1;
     }
 
-    // Create sampler
+    // Create samplers (only 3 - floor/sphere share one)
     SDL_GPUSamplerCreateInfo sampler_info = {
         .min_filter = SDL_GPU_FILTER_LINEAR,
         .mag_filter = SDL_GPU_FILTER_LINEAR,
@@ -2551,8 +2553,11 @@ static int complete_gpu_setup(GameApp *app) {
         .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
     };
     app->floor_sampler = SDL_CreateGPUSampler(app->device, &sampler_info);
-    if (!app->floor_sampler) {
-        SDL_Log("Failed to create texture sampler: %s", SDL_GetError());
+    app->wall_sampler = SDL_CreateGPUSampler(app->device, &sampler_info);
+    app->ceiling_sampler = SDL_CreateGPUSampler(app->device, &sampler_info);
+
+    if (!app->floor_sampler || !app->wall_sampler || !app->ceiling_sampler) {
+        SDL_Log("Failed to create texture samplers: %s", SDL_GetError());
         SDL_ReleaseGPUTexture(app->device, app->ceiling_texture);
         app->ceiling_texture = NULL;
         SDL_ReleaseGPUTexture(app->device, app->wall_texture);
@@ -2561,7 +2566,7 @@ static int complete_gpu_setup(GameApp *app) {
         app->floor_texture = NULL;
         return -1;
     }
-    SDL_Log("Scene textures and sampler created successfully");
+    SDL_Log("Scene textures and samplers created successfully");
 
     GameState *state = &app->state;
     gm_init_game_state(state, g_map_data, MAP_WIDTH, MAP_HEIGHT, start_x, start_z, start_yaw);
@@ -2778,7 +2783,8 @@ static int render_game(GameApp *app) {
     }
 
     // Bind textures: slot 0=sphere, 1=wall, 2=ceiling, 3=floor
-    // NOTE: Slot 3 doesn't work on Metal/SDL3, so floor goes there (floor is not visible anyway)
+    // Only 3 samplers: floor/sphere share sampler slot 0
+    // Texture slot 3 doesn't work on Metal/SDL3, so put floor there (not visible anyway)
     SDL_GPUTextureSamplerBinding texture_bindings[4] = {
         {
             .texture = app->sphere_texture,
@@ -2786,15 +2792,15 @@ static int render_game(GameApp *app) {
         },
         {
             .texture = app->wall_texture,
-            .sampler = app->floor_sampler,
+            .sampler = app->wall_sampler,
         },
         {
             .texture = app->ceiling_texture,
-            .sampler = app->floor_sampler,
+            .sampler = app->ceiling_sampler,
         },
         {
             .texture = app->floor_texture,
-            .sampler = app->floor_sampler,
+            .sampler = app->floor_sampler,  // Share sampler with sphere
         },
     };
 
@@ -2898,6 +2904,14 @@ static void shutdown_game(GameApp *app) {
     if (app->floor_sampler) {
         SDL_ReleaseGPUSampler(app->device, app->floor_sampler);
         app->floor_sampler = NULL;
+    }
+    if (app->wall_sampler) {
+        SDL_ReleaseGPUSampler(app->device, app->wall_sampler);
+        app->wall_sampler = NULL;
+    }
+    if (app->ceiling_sampler) {
+        SDL_ReleaseGPUSampler(app->device, app->ceiling_sampler);
+        app->ceiling_sampler = NULL;
     }
     if (app->device && app->window) {
         SDL_ReleaseWindowFromGPUDevice(app->device, app->window);
