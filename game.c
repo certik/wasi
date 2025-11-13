@@ -197,6 +197,8 @@ typedef struct {
 
     bool export_obj_mode;     // If true, export OBJ and exit
     char export_obj_path[256]; // Output path for OBJ file
+    
+    bool minimal_mode;        // If true, skip GPU setup for testing
 } GameApp;
 
 static GameApp g_App;
@@ -2372,6 +2374,20 @@ static int init_game(GameApp *app) {
         return -1;
     }
 
+    // Minimal mode: just create window, no GPU
+    if (app->minimal_mode) {
+        SDL_Log("Minimal mode: creating window only");
+        app->window_width = 1280;
+        app->window_height = 720;
+        app->window = SDL_CreateWindow("GM SDL (Minimal)", app->window_width, app->window_height, SDL_WINDOW_RESIZABLE);
+        if (app->window == NULL) {
+            SDL_Log("SDL_CreateWindow failed: %s", SDL_GetError());
+            return -1;
+        }
+        SDL_Log("Minimal mode: window created successfully");
+        return 0;
+    }
+
     // Select shader format and backend based on platform (following SDL_gpu_examples pattern)
     SDL_GPUShaderFormat shader_format;
     const char* backend_name;
@@ -2507,20 +2523,26 @@ static void update_game(GameApp *app) {
             SDL_UnmapGPUTransferBuffer(app->device, app->overlay_transfer_buffer);
         }
     }
+    if (frame_count <= 3) {
+        SDL_Log("update_game: END frame %u", frame_count);
+    }
 }
 
 static int render_game(GameApp *app) {
+    SDL_Log("render_game: START");
     SDL_GPUCommandBuffer *cmdbuf = SDL_AcquireGPUCommandBuffer(app->device);
     if (!cmdbuf) {
         SDL_Log("SDL_AcquireGPUCommandBuffer failed: %s", SDL_GetError());
         return -1;
     }
+    SDL_Log("render_game: Got command buffer");
 
     SDL_GPUTexture *swapchain_texture;
     if (!SDL_WaitAndAcquireGPUSwapchainTexture(cmdbuf, app->window, &swapchain_texture, NULL, NULL)) {
         SDL_Log("SDL_WaitAndAcquireGPUSwapchainTexture failed: %s", SDL_GetError());
         return -1;
     }
+    SDL_Log("render_game: Got swapchain texture");
 
     // Always upload if dirty, even if vertex_count is 0 (to clear stale data)
     if (app->overlay_dirty) {
@@ -2537,8 +2559,10 @@ static int render_game(GameApp *app) {
         SDL_UploadToGPUBuffer(copy_pass, &src, &dst, true);
         SDL_EndGPUCopyPass(copy_pass);
         app->overlay_dirty = false;
+        SDL_Log("render_game: Uploaded overlay data");
     }
 
+    SDL_Log("render_game: Setting up render pass");
     SDL_GPUColorTargetInfo color_target = {
         .texture = swapchain_texture,
         .clear_color = (SDL_FColor){0.5f, 0.65f, 0.9f, 1.0f},
@@ -2554,12 +2578,22 @@ static int render_game(GameApp *app) {
     };
 
     SDL_GPURenderPass *render_pass = SDL_BeginGPURenderPass(cmdbuf, &color_target, 1, &depth_target);
+    SDL_Log("render_game: Render pass started");
 
+    // TEMPORARY: Skip all drawing to test if the issue is in draw commands
+    #if 0
     SDL_BindGPUGraphicsPipeline(render_pass, app->scene_pipeline);
     SDL_PushGPUVertexUniformData(cmdbuf, 0, &app->scene_uniforms, sizeof(SceneUniforms));
     SDL_PushGPUFragmentUniformData(cmdbuf, 0, &app->scene_uniforms, sizeof(SceneUniforms));
 
     // Bind scene textures and sampler (shared sampler for all textures)
+    SDL_Log("render_game: About to bind textures");
+    if (!app->floor_texture || !app->wall_texture || !app->ceiling_texture || !app->floor_sampler) {
+        SDL_Log("ERROR: Missing textures or sampler!");
+        SDL_EndGPURenderPass(render_pass);
+        return -1;
+    }
+    
     SDL_GPUTextureSamplerBinding texture_bindings[3] = {
         {
             .texture = app->floor_texture,
@@ -2574,35 +2608,73 @@ static int render_game(GameApp *app) {
             .sampler = app->floor_sampler,  // Use shared sampler
         },
     };
-    SDL_BindGPUVertexSamplers(render_pass, 0, texture_bindings, SDL_arraysize(texture_bindings));
+    
+    SDL_Log("render_game: Binding fragment samplers");
+    // Note: On Vulkan, vertex shaders don't typically access textures
+    // Only bind to fragment samplers
     SDL_BindGPUFragmentSamplers(render_pass, 0, texture_bindings, SDL_arraysize(texture_bindings));
+    SDL_Log("render_game: Fragment samplers bound");
 
+    if (!app->scene_vertex_buffer || !app->scene_index_buffer) {
+        SDL_Log("ERROR: Scene buffers not initialized! vertex=%p index=%p", 
+                (void*)app->scene_vertex_buffer, (void*)app->scene_index_buffer);
+        SDL_EndGPURenderPass(render_pass);
+        return -1;
+    }
+
+    SDL_Log("render_game: Binding vertex buffers (ptr=%p)", (void*)app->scene_vertex_buffer);
     SDL_GPUBufferBinding vertex_binding = {
         .buffer = app->scene_vertex_buffer,
         .offset = 0,
     };
     SDL_BindGPUVertexBuffers(render_pass, 0, &vertex_binding, 1);
+    SDL_Log("render_game: Vertex buffers bound");
 
+    SDL_Log("render_game: Binding index buffer (ptr=%p)", (void*)app->scene_index_buffer);
     SDL_GPUBufferBinding index_binding = {
         .buffer = app->scene_index_buffer,
         .offset = 0,
     };
     SDL_BindGPUIndexBuffer(render_pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
+    SDL_Log("render_game: Index buffer bound");
 
+    SDL_Log("render_game: Drawing scene (index_count=%u)", app->scene_index_count);
     SDL_DrawGPUIndexedPrimitives(render_pass, app->scene_index_count, 1, 0, 0, 0);
+    SDL_Log("render_game: Scene drawn");
 
-    if (app->overlay_vertex_count > 0) {
+    // Temporarily disable overlay to test scene stability
+    if (false && app->overlay_vertex_count > 0) {
+        SDL_Log("render_game: Binding overlay pipeline (ptr=%p)", (void*)app->overlay_pipeline);
+        if (!app->overlay_pipeline) {
+            SDL_Log("ERROR: overlay_pipeline is NULL!");
+            SDL_EndGPURenderPass(render_pass);
+            return -1;
+        }
         SDL_BindGPUGraphicsPipeline(render_pass, app->overlay_pipeline);
+        SDL_Log("render_game: Binding overlay vertex buffer");
         SDL_GPUBufferBinding overlay_binding = {
             .buffer = app->overlay_vertex_buffer,
             .offset = 0,
         };
         SDL_BindGPUVertexBuffers(render_pass, 0, &overlay_binding, 1);
+        SDL_Log("render_game: Drawing overlay (vertex_count=%u)", app->overlay_vertex_count);
         SDL_DrawGPUPrimitives(render_pass, app->overlay_vertex_count, 1, 0, 0);
+        SDL_Log("render_game: Overlay drawn");
     }
+    #endif  // End of temporarily disabled drawing code
 
+    SDL_Log("render_game: Ending render pass");
     SDL_EndGPURenderPass(render_pass);
+    SDL_Log("render_game: Submitting command buffer (ptr=%p)", (void*)cmdbuf);
     SDL_SubmitGPUCommandBuffer(cmdbuf);
+    SDL_Log("render_game: Command buffer submitted successfully");
+    
+    // Wait for GPU to finish to avoid race conditions
+    SDL_Log("render_game: Waiting for GPU");
+    SDL_WaitForGPUIdle(app->device);
+    SDL_Log("render_game: GPU idle");
+    
+    SDL_Log("render_game: END");
     return 0;
 }
 
@@ -2705,11 +2777,14 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     g_App.test_frames_count = 0;
     g_App.export_obj_mode = false;
     g_App.export_obj_path[0] = '\0';
+    g_App.minimal_mode = false;
 
     for (int i = 1; i < argc; i++) {
         if (base_strcmp(argv[i], "--test-frames") == 0 && i + 1 < argc) {
             g_App.test_frames_max = simple_atoi(argv[i + 1]);
             i++;  // Skip the next argument since we consumed it
+        } else if (base_strcmp(argv[i], "--minimal") == 0) {
+            g_App.minimal_mode = true;
         } else if (base_strcmp(argv[i], "--export-obj") == 0 && i + 1 < argc) {
             g_App.export_obj_mode = true;
             // Copy the filename
@@ -2825,14 +2900,32 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         return SDL_APP_SUCCESS;
     }
 
+    // Minimal mode: just count frames, no rendering
+    if (app->minimal_mode) {
+        if (app->test_frames_max > 0) {
+            app->test_frames_count++;
+            SDL_Log("Minimal mode frame %d/%d", app->test_frames_count, app->test_frames_max);
+            if (app->test_frames_count >= app->test_frames_max) {
+                return SDL_APP_SUCCESS;
+            }
+        }
+        SDL_Delay(16);  // ~60 FPS
+        return SDL_APP_CONTINUE;
+    }
+
     update_game(app);
-    if (render_game(app) < 0) {
+    SDL_Log("SDL_AppIterate: update_game returned");
+    
+    int render_result = render_game(app);
+    SDL_Log("SDL_AppIterate: render_game returned %d", render_result);
+    if (render_result < 0) {
         return SDL_APP_FAILURE;
     }
 
     // Check if we've reached the frame limit for testing
     if (app->test_frames_max > 0) {
         app->test_frames_count++;
+        SDL_Log("SDL_AppIterate: Frame %d/%d complete", app->test_frames_count, app->test_frames_max);
         if (app->test_frames_count >= app->test_frames_max) {
             return SDL_APP_SUCCESS;  // Exit after N frames
         }
