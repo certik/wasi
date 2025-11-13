@@ -2639,12 +2639,10 @@ static int render_game(GameApp *app) {
     SDL_BindGPUIndexBuffer(render_pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
     SDL_Log("render_game: Index buffer bound");
 
-    // TODO: Add back draw call
-    #if 0
     SDL_Log("render_game: Drawing scene (index_count=%u)", app->scene_index_count);
-    SDL_DrawGPUIndexedPrimitives(render_pass, app->scene_index_count, 1, 0, 0, 0);
+    // TEMP: Draw 0 triangles to test
+    SDL_DrawGPUIndexedPrimitives(render_pass, 0, 1, 0, 0, 0);
     SDL_Log("render_game: Scene drawn");
-    #endif
 
     // Temporarily disable overlay to test scene stability
     if (false && app->overlay_vertex_count > 0) {
@@ -2671,12 +2669,6 @@ static int render_game(GameApp *app) {
     SDL_Log("render_game: Submitting command buffer (ptr=%p)", (void*)cmdbuf);
     SDL_SubmitGPUCommandBuffer(cmdbuf);
     SDL_Log("render_game: Command buffer submitted successfully");
-    
-    // Wait for GPU to finish to avoid race conditions
-    SDL_Log("render_game: Waiting for GPU");
-    SDL_WaitForGPUIdle(app->device);
-    SDL_Log("render_game: GPU idle");
-    
     SDL_Log("render_game: END");
     return 0;
 }
