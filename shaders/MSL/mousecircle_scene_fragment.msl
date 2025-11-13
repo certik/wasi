@@ -58,6 +58,7 @@ fragment main_Output main_(
     metal::float4 floorColor = floorTexture.sample(floorSampler, input.uv);
     metal::float4 wallColor = wallTexture.sample(wallSampler, input.uv);
     metal::float4 ceilingColor = ceilingTexture.sample(ceilingSampler, input.uv);
+    // Use sampler 0 for sphere texture (reuse floorSampler)
     metal::float4 sphereColor = sphereTexture.sample(floorSampler, input.uv);
     if (input.surfaceType < 0.5) {
         baseColor = floorColor.xyz;
@@ -72,10 +73,8 @@ fragment main_Output main_(
                     float _e31 = checker(input.uv);
                     baseColor = metal::float3(0.7, 0.5, 0.3) * _e31;
                 } else {
-                    // Sphere - use texture with UV-based debug coloring as fallback
+                    // Sphere - use texture
                     baseColor = sphereColor.xyz;
-                    // Debug: Show UV coordinates as colors
-                    baseColor = metal::float3(input.uv.x, input.uv.y, 0.5);
                 }
             }
         }

@@ -304,6 +304,15 @@ static SDL_GPUTexture *load_texture_from_path(GameApp *app, const char *path, co
         return NULL;
     }
     SDL_memcpy(mapped, surface->pixels, tex_data_size);
+
+    // Debug: Check if texture has non-zero data
+    unsigned char *pixels = (unsigned char *)surface->pixels;
+    int non_zero_count = 0;
+    for (int i = 0; i < tex_data_size && i < 1000; i++) {
+        if (pixels[i] != 0) non_zero_count++;
+    }
+    SDL_Log("%s texture: checked first 1000 bytes, %d non-zero", label, non_zero_count);
+
     SDL_UnmapGPUTransferBuffer(app->device, transfer_buffer);
 
     SDL_DestroySurface(surface);
@@ -2787,6 +2796,19 @@ static int render_game(GameApp *app) {
             .sampler = app->floor_sampler,  // Use shared sampler
         },
     };
+
+    // Debug: Log binding info once
+    static int logged = 0;
+    if (!logged) {
+        SDL_Log("Binding %d texture/sampler pairs:", (int)SDL_arraysize(texture_bindings));
+        for (int i = 0; i < 4; i++) {
+            SDL_Log("  [%d] texture=%p, sampler=%p", i,
+                    (void*)texture_bindings[i].texture,
+                    (void*)texture_bindings[i].sampler);
+        }
+        logged = 1;
+    }
+
     SDL_BindGPUVertexSamplers(render_pass, 0, texture_bindings, SDL_arraysize(texture_bindings));
     SDL_BindGPUFragmentSamplers(render_pass, 0, texture_bindings, SDL_arraysize(texture_bindings));
 
