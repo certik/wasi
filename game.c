@@ -2587,8 +2587,6 @@ static int render_game(GameApp *app) {
     SDL_PushGPUFragmentUniformData(cmdbuf, 0, &app->scene_uniforms, sizeof(SceneUniforms));
     SDL_Log("render_game: Pipeline and uniforms set");
 
-    // TODO: Add back texture binding, buffers, and drawing one at a time
-    #if 0
     // Bind scene textures and sampler (shared sampler for all textures)
     SDL_Log("render_game: About to bind textures");
     if (!app->floor_texture || !app->wall_texture || !app->ceiling_texture || !app->floor_sampler) {
@@ -2618,6 +2616,8 @@ static int render_game(GameApp *app) {
     SDL_BindGPUFragmentSamplers(render_pass, 0, texture_bindings, SDL_arraysize(texture_bindings));
     SDL_Log("render_game: Fragment samplers bound");
 
+    // TODO: Add back buffers and drawing
+    #if 0
     if (!app->scene_vertex_buffer || !app->scene_index_buffer) {
         SDL_Log("ERROR: Scene buffers not initialized! vertex=%p index=%p", 
                 (void*)app->scene_vertex_buffer, (void*)app->scene_index_buffer);
