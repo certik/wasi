@@ -58,7 +58,7 @@ typedef __builtin_va_list __gnuc_va_list;
 #define MAP_SCALE 6.0f
 #define PERF_SMOOTHING 0.9f
 
-#define MAX_SCENE_VERTICES 4096
+#define MAX_SCENE_VERTICES 16384
 #define MAX_OVERLAY_VERTICES 48000
 #define KEY_SHIFT 16
 #define KEY_CTRL 17
@@ -165,6 +165,7 @@ typedef struct {
     SDL_GPUTexture *floor_texture;
     SDL_GPUTexture *wall_texture;
     SDL_GPUTexture *ceiling_texture;
+    SDL_GPUTexture *sphere_texture;
     SDL_GPUSampler *floor_sampler;
 
     uint32_t scene_vertex_count;
@@ -206,6 +207,8 @@ static Arena *g_shader_arena = NULL;
 #define FLOOR_TEXTURE_PATH "assets/WoodFloor007_1K-JPG_Color.jpg"
 #define WALL_TEXTURE_PATH "assets/Concrete046_1K-JPG_Color.jpg"
 #define CEILING_TEXTURE_PATH "assets/OfficeCeiling001_1K-JPG_Color.jpg"
+#define SPHERE_TEXTURE_PATH "assets/Land_ocean_ice_2048.jpg"
+#define SPHERE_OBJ_PATH "assets/equirectangular_sphere.obj"
 
 static string g_scene_vertex_shader = {0};
 static string g_scene_fragment_shader = {0};
@@ -627,6 +630,9 @@ static void push_east_segment(MeshGenContext *ctx, float x, float z, float y0, f
     push_east_segment_range(ctx, x + 1.0f, z, z + 1.0f, y0, y1, 0, 1.0f);
 }
 
+// Forward declaration for OBJ loader
+static MeshData* load_obj_file(const char *path);
+
 static float g_positions_storage[6000];
 static float g_uvs_storage[4000];
 static float g_normals_storage[6000];
@@ -794,6 +800,52 @@ static MeshData* generate_mesh(int *map, int width, int height) {
         }
     }
 
+    // Load sphere mesh and add it to window cells
+    MeshData *sphere_mesh = load_obj_file(SPHERE_OBJ_PATH);
+    if (sphere_mesh) {
+        SDL_Log("Adding spheres to window cells");
+
+        // Find all window cells (value 2 or 3) and place spheres
+        for (int z = 0; z < height; z++) {
+            for (int x = 0; x < width; x++) {
+                int cell = map[z * width + x];
+                if (cell == 2 || cell == 3) {
+                    // Center of cell
+                    float cx = (float)x + 0.5f;
+                    float cy = WALL_HEIGHT * 0.5f;  // Middle height of wall
+                    float cz = (float)z + 0.5f;
+                    float scale = 0.3f;  // Scale sphere to fit in window
+
+                    uint16_t base_vertex = ctx.index_offset;
+
+                    // Add all sphere vertices with translation and scaling
+                    for (uint32_t i = 0; i < sphere_mesh->vertex_count; i++) {
+                        push_position(&ctx,
+                            sphere_mesh->positions[i * 3 + 0] * scale + cx,
+                            sphere_mesh->positions[i * 3 + 1] * scale + cy,
+                            sphere_mesh->positions[i * 3 + 2] * scale + cz);
+                        push_uv(&ctx,
+                            sphere_mesh->uvs[i * 2 + 0],
+                            sphere_mesh->uvs[i * 2 + 1]);
+                        push_normal(&ctx,
+                            sphere_mesh->normals[i * 3 + 0],
+                            sphere_mesh->normals[i * 3 + 1],
+                            sphere_mesh->normals[i * 3 + 2]);
+                        push_surface_type(&ctx, 4.0f);  // Sphere surface type
+                        push_triangle_id(&ctx, 0.0f);
+                    }
+
+                    // Add sphere indices
+                    for (uint32_t i = 0; i < sphere_mesh->index_count; i++) {
+                        push_index(&ctx, base_vertex + sphere_mesh->indices[i]);
+                    }
+
+                    ctx.index_offset += sphere_mesh->vertex_count;
+                }
+            }
+        }
+    }
+
     g_mesh_data_storage.positions = g_positions_storage;
     g_mesh_data_storage.uvs = g_uvs_storage;
     g_mesh_data_storage.normals = g_normals_storage;
@@ -828,6 +880,222 @@ static inline float clampf(float v, float min, float max) {
     if (v < min) return min;
     if (v > max) return max;
     return v;
+}
+
+// OBJ loader for sphere mesh
+static float g_obj_positions[10000];
+static float g_obj_uvs[10000];
+static float g_obj_normals[10000];
+static float g_obj_surface_types[5000];
+static uint16_t g_obj_indices[10000];
+static MeshData g_obj_mesh_data;
+
+// Temporary storage for OBJ parsing (static to avoid stack overflow)
+static float g_temp_obj_positions[3500 * 3];
+static float g_temp_obj_uvs[3500 * 2];
+static float g_temp_obj_normals[3500 * 3];
+
+static MeshData* load_obj_file(const char *path) {
+    // Don't use arena for file reading - too much memory
+    // Just parse the file directly using SDL's file I/O
+    SDL_IOStream *file = SDL_IOFromFile(path, "rb");
+    if (!file) {
+        SDL_Log("Failed to open OBJ file: %s", path);
+        return NULL;
+    }
+
+    Sint64 file_size = SDL_GetIOSize(file);
+    if (file_size <= 0) {
+        SDL_Log("Failed to get OBJ file size: %s", path);
+        SDL_CloseIO(file);
+        return NULL;
+    }
+
+    char *file_data = (char *)SDL_malloc((size_t)file_size + 1);
+    if (!file_data) {
+        SDL_Log("Failed to allocate memory for OBJ file");
+        SDL_CloseIO(file);
+        return NULL;
+    }
+
+    size_t bytes_read = SDL_ReadIO(file, file_data, (size_t)file_size);
+    SDL_CloseIO(file);
+
+    if (bytes_read != (size_t)file_size) {
+        SDL_Log("Failed to read OBJ file completely");
+        SDL_free(file_data);
+        return NULL;
+    }
+    file_data[file_size] = '\0';
+
+    // Temporary storage for parsed data (using static arrays)
+    float *temp_positions = g_temp_obj_positions;
+    float *temp_uvs = g_temp_obj_uvs;
+    float *temp_normals = g_temp_obj_normals;
+    uint32_t pos_count = 0;
+    uint32_t uv_count = 0;
+    uint32_t normal_count = 0;
+    uint32_t vertex_count = 0;
+    uint32_t index_count = 0;
+
+    // Parse OBJ file line by line
+    const char *line_start = file_data;
+    const char *end = file_data + file_size;
+
+    while (line_start < end) {
+        // Find end of line
+        const char *line_end = line_start;
+        while (line_end < end && *line_end != '\n' && *line_end != '\r') {
+            line_end++;
+        }
+
+        // Skip empty lines and comments
+        if (line_end > line_start && line_start[0] != '#') {
+            if (line_start[0] == 'v' && line_start[1] == ' ') {
+                // Vertex position
+                const char *p = line_start + 2;
+                float x = 0, y = 0, z = 0;
+                // Simple float parser
+                int sign = 1;
+                if (*p == '-') { sign = -1; p++; }
+                while (*p == ' ') p++;
+                while (*p >= '0' && *p <= '9') x = x * 10 + (*p++ - '0');
+                if (*p == '.') { p++; float frac = 0.1f; while (*p >= '0' && *p <= '9') { x += (*p++ - '0') * frac; frac *= 0.1f; } }
+                x *= sign;
+
+                while (*p == ' ') p++;
+                sign = 1; if (*p == '-') { sign = -1; p++; }
+                while (*p >= '0' && *p <= '9') y = y * 10 + (*p++ - '0');
+                if (*p == '.') { p++; float frac = 0.1f; while (*p >= '0' && *p <= '9') { y += (*p++ - '0') * frac; frac *= 0.1f; } }
+                y *= sign;
+
+                while (*p == ' ') p++;
+                sign = 1; if (*p == '-') { sign = -1; p++; }
+                while (*p >= '0' && *p <= '9') z = z * 10 + (*p++ - '0');
+                if (*p == '.') { p++; float frac = 0.1f; while (*p >= '0' && *p <= '9') { z += (*p++ - '0') * frac; frac *= 0.1f; } }
+                z *= sign;
+
+                temp_positions[pos_count * 3 + 0] = x;
+                temp_positions[pos_count * 3 + 1] = y;
+                temp_positions[pos_count * 3 + 2] = z;
+                pos_count++;
+            } else if (line_start[0] == 'v' && line_start[1] == 't' && line_start[2] == ' ') {
+                // Texture coordinate
+                const char *p = line_start + 3;
+                float u = 0, v = 0;
+
+                int sign = 1;
+                if (*p == '-') { sign = -1; p++; }
+                while (*p == ' ') p++;
+                while (*p >= '0' && *p <= '9') u = u * 10 + (*p++ - '0');
+                if (*p == '.') { p++; float frac = 0.1f; while (*p >= '0' && *p <= '9') { u += (*p++ - '0') * frac; frac *= 0.1f; } }
+                u *= sign;
+
+                while (*p == ' ') p++;
+                sign = 1; if (*p == '-') { sign = -1; p++; }
+                while (*p >= '0' && *p <= '9') v = v * 10 + (*p++ - '0');
+                if (*p == '.') { p++; float frac = 0.1f; while (*p >= '0' && *p <= '9') { v += (*p++ - '0') * frac; frac *= 0.1f; } }
+                v *= sign;
+
+                temp_uvs[uv_count * 2 + 0] = u;
+                temp_uvs[uv_count * 2 + 1] = v;
+                uv_count++;
+            } else if (line_start[0] == 'v' && line_start[1] == 'n' && line_start[2] == ' ') {
+                // Normal
+                const char *p = line_start + 3;
+                float x = 0, y = 0, z = 0;
+
+                int sign = 1;
+                if (*p == '-') { sign = -1; p++; }
+                while (*p == ' ') p++;
+                while (*p >= '0' && *p <= '9') x = x * 10 + (*p++ - '0');
+                if (*p == '.') { p++; float frac = 0.1f; while (*p >= '0' && *p <= '9') { x += (*p++ - '0') * frac; frac *= 0.1f; } }
+                x *= sign;
+
+                while (*p == ' ') p++;
+                sign = 1; if (*p == '-') { sign = -1; p++; }
+                while (*p >= '0' && *p <= '9') y = y * 10 + (*p++ - '0');
+                if (*p == '.') { p++; float frac = 0.1f; while (*p >= '0' && *p <= '9') { y += (*p++ - '0') * frac; frac *= 0.1f; } }
+                y *= sign;
+
+                while (*p == ' ') p++;
+                sign = 1; if (*p == '-') { sign = -1; p++; }
+                while (*p >= '0' && *p <= '9') z = z * 10 + (*p++ - '0');
+                if (*p == '.') { p++; float frac = 0.1f; while (*p >= '0' && *p <= '9') { z += (*p++ - '0') * frac; frac *= 0.1f; } }
+                z *= sign;
+
+                temp_normals[normal_count * 3 + 0] = x;
+                temp_normals[normal_count * 3 + 1] = y;
+                temp_normals[normal_count * 3 + 2] = z;
+                normal_count++;
+            } else if (line_start[0] == 'f' && line_start[1] == ' ') {
+                // Face - parse v/vt/vn format
+                const char *p = line_start + 2;
+                uint32_t face_indices[3][3];  // [vertex][pos/uv/normal]
+
+                for (int i = 0; i < 3; i++) {
+                    while (*p == ' ') p++;
+                    uint32_t v_idx = 0, vt_idx = 0, vn_idx = 0;
+
+                    while (*p >= '0' && *p <= '9') v_idx = v_idx * 10 + (*p++ - '0');
+                    if (*p == '/') p++;
+                    while (*p >= '0' && *p <= '9') vt_idx = vt_idx * 10 + (*p++ - '0');
+                    if (*p == '/') p++;
+                    while (*p >= '0' && *p <= '9') vn_idx = vn_idx * 10 + (*p++ - '0');
+
+                    face_indices[i][0] = v_idx - 1;   // OBJ indices are 1-based
+                    face_indices[i][1] = vt_idx - 1;
+                    face_indices[i][2] = vn_idx - 1;
+                }
+
+                // Add vertices for this face
+                for (int i = 0; i < 3; i++) {
+                    uint32_t v_idx = face_indices[i][0];
+                    uint32_t vt_idx = face_indices[i][1];
+                    uint32_t vn_idx = face_indices[i][2];
+
+                    g_obj_positions[vertex_count * 3 + 0] = temp_positions[v_idx * 3 + 0];
+                    g_obj_positions[vertex_count * 3 + 1] = temp_positions[v_idx * 3 + 1];
+                    g_obj_positions[vertex_count * 3 + 2] = temp_positions[v_idx * 3 + 2];
+
+                    g_obj_uvs[vertex_count * 2 + 0] = temp_uvs[vt_idx * 2 + 0];
+                    g_obj_uvs[vertex_count * 2 + 1] = temp_uvs[vt_idx * 2 + 1];
+
+                    g_obj_normals[vertex_count * 3 + 0] = temp_normals[vn_idx * 3 + 0];
+                    g_obj_normals[vertex_count * 3 + 1] = temp_normals[vn_idx * 3 + 1];
+                    g_obj_normals[vertex_count * 3 + 2] = temp_normals[vn_idx * 3 + 2];
+
+                    g_obj_surface_types[vertex_count] = 4.0f;  // Sphere surface type
+
+                    g_obj_indices[index_count++] = (uint16_t)vertex_count;
+                    vertex_count++;
+                }
+            }
+        }
+
+        // Move to next line
+        line_start = line_end;
+        while (line_start < end && (*line_start == '\n' || *line_start == '\r')) {
+            line_start++;
+        }
+    }
+
+    SDL_free(file_data);  // Free the file data after parsing
+
+    SDL_Log("Loaded OBJ: %u vertices, %u indices", vertex_count, index_count);
+
+    g_obj_mesh_data.positions = g_obj_positions;
+    g_obj_mesh_data.uvs = g_obj_uvs;
+    g_obj_mesh_data.normals = g_obj_normals;
+    g_obj_mesh_data.surface_types = g_obj_surface_types;
+    g_obj_mesh_data.indices = g_obj_indices;
+    g_obj_mesh_data.position_count = vertex_count;
+    g_obj_mesh_data.uv_count = vertex_count;
+    g_obj_mesh_data.normal_count = vertex_count;
+    g_obj_mesh_data.vertex_count = vertex_count;
+    g_obj_mesh_data.index_count = index_count;
+
+    return &g_obj_mesh_data;
 }
 
 static int is_walkable(const GameState *state, float x, float z) {
@@ -2226,6 +2494,17 @@ static int complete_gpu_setup(GameApp *app) {
         return -1;
     }
 
+    app->sphere_texture = load_texture_from_path(app, SPHERE_TEXTURE_PATH, "sphere");
+    if (!app->sphere_texture) {
+        SDL_ReleaseGPUTexture(app->device, app->ceiling_texture);
+        app->ceiling_texture = NULL;
+        SDL_ReleaseGPUTexture(app->device, app->wall_texture);
+        app->wall_texture = NULL;
+        SDL_ReleaseGPUTexture(app->device, app->floor_texture);
+        app->floor_texture = NULL;
+        return -1;
+    }
+
     // Create sampler
     SDL_GPUSamplerCreateInfo sampler_info = {
         .min_filter = SDL_GPU_FILTER_LINEAR,
@@ -2458,7 +2737,7 @@ static int render_game(GameApp *app) {
     SDL_PushGPUFragmentUniformData(cmdbuf, 0, &app->scene_uniforms, sizeof(SceneUniforms));
 
     // Bind scene textures and sampler (shared sampler for all textures)
-    SDL_GPUTextureSamplerBinding texture_bindings[3] = {
+    SDL_GPUTextureSamplerBinding texture_bindings[4] = {
         {
             .texture = app->floor_texture,
             .sampler = app->floor_sampler,
@@ -2469,6 +2748,10 @@ static int render_game(GameApp *app) {
         },
         {
             .texture = app->ceiling_texture,
+            .sampler = app->floor_sampler,  // Use shared sampler
+        },
+        {
+            .texture = app->sphere_texture,
             .sampler = app->floor_sampler,  // Use shared sampler
         },
     };
@@ -2552,6 +2835,10 @@ static void shutdown_game(GameApp *app) {
     if (app->ceiling_texture) {
         SDL_ReleaseGPUTexture(app->device, app->ceiling_texture);
         app->ceiling_texture = NULL;
+    }
+    if (app->sphere_texture) {
+        SDL_ReleaseGPUTexture(app->device, app->sphere_texture);
+        app->sphere_texture = NULL;
     }
     if (app->floor_sampler) {
         SDL_ReleaseGPUSampler(app->device, app->floor_sampler);
