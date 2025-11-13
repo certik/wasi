@@ -31,6 +31,8 @@ Texture2D<float4> sphereTexture : register(t3, space2);
 SamplerState sphereSampler : register(s3, space2);
 Texture2D<float4> bookTexture : register(t4, space2);
 SamplerState bookSampler : register(s4, space2);
+Texture2D<float4> chairTexture : register(t5, space2);
+SamplerState chairSampler : register(s5, space2);
 
 struct FragmentInput_main {
     float surfaceType : TEXCOORD0;
@@ -63,6 +65,7 @@ float4 main_(FragmentInput_main fragmentinput_main) : SV_Target0
     float4 ceilingColor = ceilingTexture.Sample(ceilingSampler, input.uv);
     float4 sphereColor = sphereTexture.Sample(sphereSampler, input.uv);
     float4 bookColor = bookTexture.Sample(bookSampler, input.uv);
+    float4 chairColor = chairTexture.Sample(chairSampler, input.uv);
     if ((input.surfaceType < 0.5)) {
         baseColor = floorColor.xyz;
     } else {
@@ -73,13 +76,17 @@ float4 main_(FragmentInput_main fragmentinput_main) : SV_Target0
                 baseColor = ceilingColor.xyz;
             } else {
                 if ((input.surfaceType < 3.5)) {
-                    const float _e42 = checker(input.uv);
-                    baseColor = (float3(0.7, 0.5, 0.3) * _e42);
+                    const float _e46 = checker(input.uv);
+                    baseColor = (float3(0.7, 0.5, 0.3) * _e46);
                 } else {
                     if ((input.surfaceType < 4.5)) {
                         baseColor = sphereColor.xyz;
                     } else {
-                        baseColor = bookColor.xyz;
+                        if ((input.surfaceType < 5.5)) {
+                            baseColor = bookColor.xyz;
+                        } else {
+                            baseColor = chairColor.xyz;
+                        }
                     }
                 }
             }
@@ -94,14 +101,14 @@ float4 main_(FragmentInput_main fragmentinput_main) : SV_Target0
     if (((input.surfaceType >= 3.5) && (input.surfaceType < 4.5))) {
         diff = 1.0;
     }
-    float4 _e79 = cameraPos;
-    float fogFactor = exp((-(distance(input.worldPos, _e79.xyz)) * 0.08));
-    float3 _e86 = baseColor;
-    float _e87 = diff;
-    color = (_e86 * _e87);
-    float4 _e92 = fogColor;
-    float3 _e94 = color;
-    color = lerp(_e92.xyz, _e94, fogFactor);
-    float3 _e96 = color;
-    return float4(_e96, 1.0);
+    float4 _e87 = cameraPos;
+    float fogFactor = exp((-(distance(input.worldPos, _e87.xyz)) * 0.08));
+    float3 _e94 = baseColor;
+    float _e95 = diff;
+    color = (_e94 * _e95);
+    float4 _e100 = fogColor;
+    float3 _e102 = color;
+    color = lerp(_e100.xyz, _e102, fogFactor);
+    float3 _e104 = color;
+    return float4(_e104, 1.0);
 }

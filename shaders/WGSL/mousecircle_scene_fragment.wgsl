@@ -23,6 +23,8 @@ struct VertexOutput {
 @group(1) @binding(7) var sphereSampler: sampler;
 @group(1) @binding(8) var bookTexture: texture_2d<f32>;
 @group(1) @binding(9) var bookSampler: sampler;
+@group(1) @binding(10) var chairTexture: texture_2d<f32>;
+@group(1) @binding(11) var chairSampler: sampler;
 
 fn checker(uv: vec2f) -> f32 {
     let scaled = floor(uv * 4.0);
@@ -38,6 +40,7 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
     let ceilingColor = textureSample(ceilingTexture, ceilingSampler, input.uv);
     let sphereColor = textureSample(sphereTexture, sphereSampler, input.uv);
     let bookColor = textureSample(bookTexture, bookSampler, input.uv);
+    let chairColor = textureSample(chairTexture, chairSampler, input.uv);
 
     var baseColor: vec3f;
     if (input.surfaceType < 0.5) {
@@ -52,9 +55,12 @@ fn main(input: VertexOutput) -> @location(0) vec4f {
     } else if (input.surfaceType < 4.5) {
         // Sphere: use sphere texture
         baseColor = sphereColor.rgb;
-    } else {
+    } else if (input.surfaceType < 5.5) {
         // Book mesh
         baseColor = bookColor.rgb;
+    } else {
+        // Chair mesh
+        baseColor = chairColor.rgb;
     }
 
     let n = normalize(input.normal);

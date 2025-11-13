@@ -172,11 +172,13 @@ typedef struct {
     SDL_GPUTexture *ceiling_texture;
     SDL_GPUTexture *sphere_texture;
     SDL_GPUTexture *book_texture;
+    SDL_GPUTexture *chair_texture;
     SDL_GPUSampler *floor_sampler;   // slot 0
     SDL_GPUSampler *wall_sampler;    // slot 1
     SDL_GPUSampler *ceiling_sampler; // slot 2
     SDL_GPUSampler *sphere_sampler;  // slot 3
     SDL_GPUSampler *book_sampler;    // slot 4
+    SDL_GPUSampler *chair_sampler;   // slot 5
 
     uint32_t scene_vertex_count;
     uint32_t scene_index_count;
@@ -219,8 +221,10 @@ static Arena *g_shader_arena = NULL;
 #define CEILING_TEXTURE_PATH "assets/OfficeCeiling001_1K-JPG_Color.jpg"
 #define SPHERE_TEXTURE_PATH "assets/Land_ocean_ice_2048.jpg"
 #define BOOK_TEXTURE_PATH "assets/checker_board_4k.png"
+#define CHAIR_TEXTURE_PATH "assets/chair_02_diff_1k.jpg"
 #define SPHERE_OBJ_PATH "assets/equirectangular_sphere.obj"
 #define BOOK_OBJ_PATH "assets/book.obj"
+#define CHAIR_OBJ_PATH "assets/chair.obj"
 
 static string g_scene_vertex_shader = {0};
 static string g_scene_fragment_shader = {0};
@@ -914,6 +918,43 @@ static MeshData* generate_mesh(int *map, int width, int height, float spawn_x, f
         }
         for (uint32_t i = 0; i < book_mesh->index_count; i++) {
             push_index(&ctx, base_vertex + book_mesh->indices[i]);
+        }
+    }
+
+    MeshData *chair_mesh = load_obj_file(CHAIR_OBJ_PATH);
+    if (chair_mesh) {
+        SDL_Log("Adding chair near spawn position (%.2f, %.2f)", spawn_x, spawn_z);
+        float min_y = 0.0f;
+        if (chair_mesh->vertex_count > 0) {
+            min_y = chair_mesh->positions[1];
+            for (uint32_t i = 0; i < chair_mesh->vertex_count; i++) {
+                float y = chair_mesh->positions[i * 3 + 1];
+                if (y < min_y) {
+                    min_y = y;
+                }
+            }
+        }
+        const float chair_scale = 1.5f;
+        const float floor_y = 0.0f;
+        float chair_y = floor_y - min_y * chair_scale + 0.01f;
+        float chair_x = spawn_x + 0.9f;
+        float chair_z = spawn_z - 0.2f;
+        uint16_t base_vertex = (uint16_t)ctx.surface_idx;
+        for (uint32_t i = 0; i < chair_mesh->vertex_count; i++) {
+            push_position(&ctx,
+                chair_mesh->positions[i * 3 + 0] * chair_scale + chair_x,
+                chair_mesh->positions[i * 3 + 1] * chair_scale + chair_y,
+                chair_mesh->positions[i * 3 + 2] * chair_scale + chair_z);
+            push_uv(&ctx, chair_mesh->uvs[i * 2 + 0], chair_mesh->uvs[i * 2 + 1]);
+            push_normal(&ctx,
+                chair_mesh->normals[i * 3 + 0],
+                chair_mesh->normals[i * 3 + 1],
+                chair_mesh->normals[i * 3 + 2]);
+            push_surface_type(&ctx, 6.0f);  // Chair surface type
+            push_triangle_id(&ctx, 0.0f);
+        }
+        for (uint32_t i = 0; i < chair_mesh->index_count; i++) {
+            push_index(&ctx, base_vertex + chair_mesh->indices[i]);
         }
     }
 
@@ -2408,7 +2449,7 @@ static int complete_gpu_setup(GameApp *app) {
     shader_info.code_size = shader_code_size(scene_fs_code);
     shader_info.entrypoint = shader_entrypoint;
     shader_info.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
-    shader_info.num_samplers = 5;
+    shader_info.num_samplers = 6;
     shader_info.num_uniform_buffers = 1;
     shader_info.num_storage_buffers = 0;
     shader_info.num_storage_textures = 0;
@@ -2641,7 +2682,22 @@ static int complete_gpu_setup(GameApp *app) {
         return -1;
     }
 
-    // Create 5 separate samplers (one for each texture slot)
+    app->chair_texture = load_texture_from_path(app, CHAIR_TEXTURE_PATH, "chair");
+    if (!app->chair_texture) {
+        SDL_ReleaseGPUTexture(app->device, app->book_texture);
+        app->book_texture = NULL;
+        SDL_ReleaseGPUTexture(app->device, app->sphere_texture);
+        app->sphere_texture = NULL;
+        SDL_ReleaseGPUTexture(app->device, app->ceiling_texture);
+        app->ceiling_texture = NULL;
+        SDL_ReleaseGPUTexture(app->device, app->wall_texture);
+        app->wall_texture = NULL;
+        SDL_ReleaseGPUTexture(app->device, app->floor_texture);
+        app->floor_texture = NULL;
+        return -1;
+    }
+
+    // Create 6 separate samplers (one for each texture slot)
     SDL_GPUSamplerCreateInfo sampler_info = {
         .min_filter = SDL_GPU_FILTER_LINEAR,
         .mag_filter = SDL_GPU_FILTER_LINEAR,
@@ -2655,9 +2711,10 @@ static int complete_gpu_setup(GameApp *app) {
     app->ceiling_sampler = SDL_CreateGPUSampler(app->device, &sampler_info);
     app->sphere_sampler = SDL_CreateGPUSampler(app->device, &sampler_info);
     app->book_sampler = SDL_CreateGPUSampler(app->device, &sampler_info);
+    app->chair_sampler = SDL_CreateGPUSampler(app->device, &sampler_info);
 
     if (!app->sphere_sampler || !app->wall_sampler || !app->ceiling_sampler ||
-        !app->floor_sampler || !app->book_sampler) {
+        !app->floor_sampler || !app->book_sampler || !app->chair_sampler) {
         SDL_Log("Failed to create texture samplers: %s", SDL_GetError());
         SDL_ReleaseGPUTexture(app->device, app->ceiling_texture);
         app->ceiling_texture = NULL;
@@ -2669,6 +2726,8 @@ static int complete_gpu_setup(GameApp *app) {
         app->sphere_texture = NULL;
         SDL_ReleaseGPUTexture(app->device, app->book_texture);
         app->book_texture = NULL;
+        SDL_ReleaseGPUTexture(app->device, app->chair_texture);
+        app->chair_texture = NULL;
         return -1;
     }
     SDL_Log("Scene textures and samplers created successfully");
@@ -2887,8 +2946,8 @@ static int render_game(GameApp *app) {
         SDL_Log("ERROR: sphere_texture is NULL!");
     }
 
-    // Bind textures: slot 0=floor, 1=wall, 2=ceiling, 3=sphere, 4=book
-    SDL_GPUTextureSamplerBinding texture_bindings[5] = {
+    // Bind textures: slot 0=floor, 1=wall, 2=ceiling, 3=sphere, 4=book, 5=chair
+    SDL_GPUTextureSamplerBinding texture_bindings[6] = {
         {
             .texture = app->floor_texture,
             .sampler = app->floor_sampler,
@@ -2908,6 +2967,10 @@ static int render_game(GameApp *app) {
         {
             .texture = app->book_texture,
             .sampler = app->book_sampler,
+        },
+        {
+            .texture = app->chair_texture,
+            .sampler = app->chair_sampler,
         },
     };
 
@@ -3012,6 +3075,10 @@ static void shutdown_game(GameApp *app) {
         SDL_ReleaseGPUTexture(app->device, app->book_texture);
         app->book_texture = NULL;
     }
+    if (app->chair_texture) {
+        SDL_ReleaseGPUTexture(app->device, app->chair_texture);
+        app->chair_texture = NULL;
+    }
     if (app->sphere_sampler) {
         SDL_ReleaseGPUSampler(app->device, app->sphere_sampler);
         app->sphere_sampler = NULL;
@@ -3031,6 +3098,10 @@ static void shutdown_game(GameApp *app) {
     if (app->book_sampler) {
         SDL_ReleaseGPUSampler(app->device, app->book_sampler);
         app->book_sampler = NULL;
+    }
+    if (app->chair_sampler) {
+        SDL_ReleaseGPUSampler(app->device, app->chair_sampler);
+        app->chair_sampler = NULL;
     }
     if (app->device && app->window) {
         SDL_ReleaseWindowFromGPUDevice(app->device, app->window);
