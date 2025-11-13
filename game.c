@@ -1099,6 +1099,18 @@ static MeshData* load_obj_file(const char *path) {
 
     SDL_Log("Loaded OBJ: %u vertices, %u indices", vertex_count, index_count);
 
+    // Debug: Check UV range
+    float min_u = 1e9, max_u = -1e9, min_v = 1e9, max_v = -1e9;
+    for (uint32_t i = 0; i < vertex_count; i++) {
+        float u = g_obj_uvs[i * 2 + 0];
+        float v = g_obj_uvs[i * 2 + 1];
+        if (u < min_u) min_u = u;
+        if (u > max_u) max_u = u;
+        if (v < min_v) min_v = v;
+        if (v > max_v) max_v = v;
+    }
+    SDL_Log("UV range: u=[%f, %f], v=[%f, %f]", min_u, max_u, min_v, max_v);
+
     g_obj_mesh_data.positions = g_obj_positions;
     g_obj_mesh_data.uvs = g_obj_uvs;
     g_obj_mesh_data.normals = g_obj_normals;

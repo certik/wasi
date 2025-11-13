@@ -83,6 +83,10 @@ fragment main_Output main_(
     if ((input.surfaceType >= 1.5) && (input.surfaceType < 2.5)) {
         diff = 1.0;
     }
+    // Full brightness for spheres to debug texture
+    if (input.surfaceType >= 3.5) {
+        diff = 1.0;
+    }
     metal::float4 _e55 = uniforms.cameraPos;
     float fogFactor = metal::exp(-(metal::distance(input.worldPos, _e55.xyz)) * 0.08);
     metal::float3 _e62 = baseColor;
