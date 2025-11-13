@@ -1097,23 +1097,43 @@ static MeshData* load_obj_file(const char *path) {
                 temp_normals[normal_count * 3 + 2] = z;
                 normal_count++;
             } else if (line_start[0] == 'f' && line_start[1] == ' ') {
-                // Face - parse v/vt/vn format
+                // Face - expect exactly 3 vertices (triangles only)
                 const char *p = line_start + 2;
                 uint32_t face_indices[3][3];  // [vertex][pos/uv/normal]
+                int parsed_vertices = 0;
 
-                for (int i = 0; i < 3; i++) {
+                for (; parsed_vertices < 3; parsed_vertices++) {
                     while (*p == ' ') p++;
                     uint32_t v_idx = 0, vt_idx = 0, vn_idx = 0;
-
-                    while (*p >= '0' && *p <= '9') v_idx = v_idx * 10 + (*p++ - '0');
+                    bool has_digits = false;
+                    while (*p >= '0' && *p <= '9') {
+                        has_digits = true;
+                        v_idx = v_idx * 10 + (*p++ - '0');
+                    }
+                    if (!has_digits) {
+                        break;
+                    }
                     if (*p == '/') p++;
-                    while (*p >= '0' && *p <= '9') vt_idx = vt_idx * 10 + (*p++ - '0');
+                    while (*p >= '0' && *p <= '9') {
+                        vt_idx = vt_idx * 10 + (*p++ - '0');
+                    }
                     if (*p == '/') p++;
-                    while (*p >= '0' && *p <= '9') vn_idx = vn_idx * 10 + (*p++ - '0');
+                    while (*p >= '0' && *p <= '9') {
+                        vn_idx = vn_idx * 10 + (*p++ - '0');
+                    }
 
-                    face_indices[i][0] = v_idx - 1;   // OBJ indices are 1-based
-                    face_indices[i][1] = vt_idx - 1;
-                    face_indices[i][2] = vn_idx - 1;
+                    face_indices[parsed_vertices][0] = v_idx - 1;   // OBJ indices are 1-based
+                    face_indices[parsed_vertices][1] = vt_idx - 1;
+                    face_indices[parsed_vertices][2] = vn_idx - 1;
+                }
+
+                while (*p == ' ') p++;
+                bool has_extra_vertices = (*p != '\0' && *p != '\n' && *p != '\r');
+
+                if (parsed_vertices != 3 || has_extra_vertices) {
+                    SDL_Log("OBJ loader error: only triangle faces are supported in %s", path);
+                    SDL_free(file_data);
+                    return NULL;
                 }
 
                 // Add vertices for this face

@@ -32,4 +32,3 @@ fn main(input: VertexInput) -> VertexOutput {
     output.worldPos = input.position;
     return output;
 }
-
