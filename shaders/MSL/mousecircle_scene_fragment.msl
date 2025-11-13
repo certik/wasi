@@ -55,11 +55,11 @@ fragment main_Output main_(
     metal::float3 baseColor = {};
     float diff = {};
     metal::float3 color = {};
-    metal::float4 floorColor = floorTexture.sample(floorSampler, input.uv);
+    // TEMP DEBUG: floorTexture slot has sphere, sphereTexture slot has floor
+    metal::float4 sphereColor = floorTexture.sample(floorSampler, input.uv);
     metal::float4 wallColor = wallTexture.sample(wallSampler, input.uv);
     metal::float4 ceilingColor = ceilingTexture.sample(ceilingSampler, input.uv);
-    // Use sampler 0 for sphere texture (reuse floorSampler)
-    metal::float4 sphereColor = sphereTexture.sample(floorSampler, input.uv);
+    metal::float4 floorColor = sphereTexture.sample(floorSampler, input.uv);
     if (input.surfaceType < 0.5) {
         baseColor = floorColor.xyz;
     } else {
