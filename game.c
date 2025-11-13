@@ -26,6 +26,7 @@ typedef __builtin_va_list __gnuc_va_list;
 
 #include <base/arena.h>
 #include <base/buddy.h>
+#include <base/scratch.h>
 #include <base/mem.h>
 #include <base/mat4.h>
 #include <base/base_math.h>
@@ -1056,9 +1057,12 @@ static bool parse_face_vertex(const char **cursor, const char *end, ObjVertexRef
 }
 
 static MeshData* load_obj_file(const char *path) {
+    Scratch scratch = scratch_begin();
+
     SDL_IOStream *file = SDL_IOFromFile(path, "rb");
     if (!file) {
         SDL_Log("Failed to open OBJ file: %s", path);
+        scratch_end(scratch);
         return NULL;
     }
 
@@ -1066,13 +1070,15 @@ static MeshData* load_obj_file(const char *path) {
     if (file_size <= 0) {
         SDL_Log("Failed to get OBJ file size: %s", path);
         SDL_CloseIO(file);
+        scratch_end(scratch);
         return NULL;
     }
 
-    char *file_data = (char *)SDL_malloc((size_t)file_size + 1);
+    char *file_data = (char *)arena_alloc(scratch.arena, (size_t)file_size + 1);
     if (!file_data) {
         SDL_Log("Failed to allocate memory for OBJ file");
         SDL_CloseIO(file);
+        scratch_end(scratch);
         return NULL;
     }
 
@@ -1081,7 +1087,7 @@ static MeshData* load_obj_file(const char *path) {
 
     if (bytes_read != (size_t)file_size) {
         SDL_Log("Failed to read OBJ file completely");
-        SDL_free(file_data);
+        scratch_end(scratch);
         return NULL;
     }
     file_data[file_size] = '\0';
@@ -1105,14 +1111,14 @@ static MeshData* load_obj_file(const char *path) {
             if (line_start[0] == 'v' && line_start[1] == ' ') {
                 if (pos_count >= OBJ_MAX_TEMP_VERTICES) {
                     SDL_Log("OBJ loader error: too many vertex positions in %s (max %d)", path, OBJ_MAX_TEMP_VERTICES);
-                    SDL_free(file_data);
+                    scratch_end(scratch);
                     return NULL;
                 }
                 const char *cursor = line_start + 2;
                 float vec[3];
                 if (!parse_vec_components(&cursor, line_end, vec, 3)) {
                     SDL_Log("OBJ loader error: malformed vertex position in %s", path);
-                    SDL_free(file_data);
+                    scratch_end(scratch);
                     return NULL;
                 }
                 g_temp_obj_positions[pos_count * 3 + 0] = vec[0];
@@ -1122,14 +1128,14 @@ static MeshData* load_obj_file(const char *path) {
             } else if (line_start[0] == 'v' && line_start[1] == 't' && line_start[2] == ' ') {
                 if (uv_count >= OBJ_MAX_TEMP_VERTICES) {
                     SDL_Log("OBJ loader error: too many UVs in %s (max %d)", path, OBJ_MAX_TEMP_VERTICES);
-                    SDL_free(file_data);
+                    scratch_end(scratch);
                     return NULL;
                 }
                 const char *cursor = line_start + 3;
                 float uv[2];
                 if (!parse_vec_components(&cursor, line_end, uv, 2)) {
                     SDL_Log("OBJ loader error: malformed UV in %s", path);
-                    SDL_free(file_data);
+                    scratch_end(scratch);
                     return NULL;
                 }
                 g_temp_obj_uvs[uv_count * 2 + 0] = uv[0];
@@ -1138,14 +1144,14 @@ static MeshData* load_obj_file(const char *path) {
             } else if (line_start[0] == 'v' && line_start[1] == 'n' && line_start[2] == ' ') {
                 if (normal_count >= OBJ_MAX_TEMP_VERTICES) {
                     SDL_Log("OBJ loader error: too many normals in %s (max %d)", path, OBJ_MAX_TEMP_VERTICES);
-                    SDL_free(file_data);
+                    scratch_end(scratch);
                     return NULL;
                 }
                 const char *cursor = line_start + 3;
                 float normal[3];
                 if (!parse_vec_components(&cursor, line_end, normal, 3)) {
                     SDL_Log("OBJ loader error: malformed normal in %s", path);
-                    SDL_free(file_data);
+                    scratch_end(scratch);
                     return NULL;
                 }
                 g_temp_obj_normals[normal_count * 3 + 0] = normal[0];
@@ -1158,21 +1164,21 @@ static MeshData* load_obj_file(const char *path) {
                 for (int i = 0; i < 3; i++) {
                     if (!parse_face_vertex(&cursor, line_end, &face[i])) {
                         SDL_Log("OBJ loader error: malformed face in %s", path);
-                        SDL_free(file_data);
+                        scratch_end(scratch);
                         return NULL;
                     }
                 }
                 cursor = skip_spaces(cursor, line_end);
                 if (cursor < line_end) {
                     SDL_Log("OBJ loader error: only triangle faces are supported in %s", path);
-                    SDL_free(file_data);
+                    scratch_end(scratch);
                     return NULL;
                 }
 
                 for (int i = 0; i < 3; i++) {
                     if (vertex_count >= OBJ_MAX_VERTICES || index_count >= OBJ_MAX_INDICES) {
                         SDL_Log("OBJ loader error: too many vertices/indices in %s (max vertices %d)", path, OBJ_MAX_VERTICES);
-                        SDL_free(file_data);
+                        scratch_end(scratch);
                         return NULL;
                     }
                     const ObjVertexRef *ref = &face[i];
@@ -1200,8 +1206,6 @@ static MeshData* load_obj_file(const char *path) {
         }
     }
 
-    SDL_free(file_data);
-
     SDL_Log("Loaded OBJ: %u vertices, %u indices", vertex_count, index_count);
 
     float min_u = 1e9f, max_u = -1e9f, min_v = 1e9f, max_v = -1e9f;
@@ -1226,6 +1230,7 @@ static MeshData* load_obj_file(const char *path) {
     g_obj_mesh_data.vertex_count = vertex_count;
     g_obj_mesh_data.index_count = index_count;
 
+    scratch_end(scratch);
     return &g_obj_mesh_data;
 }
 
