@@ -934,7 +934,7 @@ static MeshData* generate_mesh(int *map, int width, int height, float spawn_x, f
                 }
             }
         }
-        const float chair_scale = 1.5f;
+        const float chair_scale = 0.75f;
         const float floor_y = 0.0f;
         float chair_y = floor_y - min_y * chair_scale + 0.01f;
         float chair_x = spawn_x + 0.9f;
