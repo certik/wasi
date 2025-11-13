@@ -58,10 +58,13 @@ typedef __builtin_va_list __gnuc_va_list;
 #define MAP_SCALE 6.0f
 #define PERF_SMOOTHING 0.9f
 
-#define MAX_SCENE_VERTICES 20000
-#define MAX_GENERATED_VERTICES 20000
-#define MAX_GENERATED_INDICES 24000
-#define MAX_OVERLAY_VERTICES 48000
+#define MAX_SCENE_VERTICES 40000
+#define MAX_GENERATED_VERTICES 40000
+#define MAX_GENERATED_INDICES 48000
+#define MAX_OVERLAY_VERTICES 96000
+#define OBJ_MAX_VERTICES 20000
+#define OBJ_MAX_INDICES 20000
+#define OBJ_MAX_TEMP_VERTICES 8000
 #define KEY_SHIFT 16
 #define KEY_CTRL 17
 
@@ -950,18 +953,18 @@ static inline float clampf(float v, float min, float max) {
     return v;
 }
 
-// OBJ loader for sphere mesh
-static float g_obj_positions[10000];
-static float g_obj_uvs[10000];
-static float g_obj_normals[10000];
-static float g_obj_surface_types[5000];
-static uint16_t g_obj_indices[10000];
+// OBJ loader for sphere/book meshes
+static float g_obj_positions[OBJ_MAX_VERTICES * 3];
+static float g_obj_uvs[OBJ_MAX_VERTICES * 2];
+static float g_obj_normals[OBJ_MAX_VERTICES * 3];
+static float g_obj_surface_types[OBJ_MAX_VERTICES];
+static uint16_t g_obj_indices[OBJ_MAX_INDICES];
 static MeshData g_obj_mesh_data;
 
 // Temporary storage for OBJ parsing (static to avoid stack overflow)
-static float g_temp_obj_positions[3500 * 3];
-static float g_temp_obj_uvs[3500 * 2];
-static float g_temp_obj_normals[3500 * 3];
+static float g_temp_obj_positions[OBJ_MAX_TEMP_VERTICES * 3];
+static float g_temp_obj_uvs[OBJ_MAX_TEMP_VERTICES * 2];
+static float g_temp_obj_normals[OBJ_MAX_TEMP_VERTICES * 3];
 
 static MeshData* load_obj_file(const char *path) {
     // Don't use arena for file reading - too much memory
@@ -1018,11 +1021,16 @@ static MeshData* load_obj_file(const char *path) {
         }
 
         // Skip empty lines and comments
-        if (line_end > line_start && line_start[0] != '#') {
-            if (line_start[0] == 'v' && line_start[1] == ' ') {
-                // Vertex position
-                const char *p = line_start + 2;
-                float x = 0, y = 0, z = 0;
+            if (line_end > line_start && line_start[0] != '#') {
+                if (line_start[0] == 'v' && line_start[1] == ' ') {
+                    if (pos_count >= OBJ_MAX_TEMP_VERTICES) {
+                        SDL_Log("OBJ loader error: too many vertex positions in %s (max %d)", path, OBJ_MAX_TEMP_VERTICES);
+                        SDL_free(file_data);
+                        return NULL;
+                    }
+                    // Vertex position
+                    const char *p = line_start + 2;
+                    float x = 0, y = 0, z = 0;
                 // Simple float parser
                 int sign = 1;
                 if (*p == '-') { sign = -1; p++; }
@@ -1048,6 +1056,11 @@ static MeshData* load_obj_file(const char *path) {
                 temp_positions[pos_count * 3 + 2] = z;
                 pos_count++;
             } else if (line_start[0] == 'v' && line_start[1] == 't' && line_start[2] == ' ') {
+                if (uv_count >= OBJ_MAX_TEMP_VERTICES) {
+                    SDL_Log("OBJ loader error: too many UVs in %s (max %d)", path, OBJ_MAX_TEMP_VERTICES);
+                    SDL_free(file_data);
+                    return NULL;
+                }
                 // Texture coordinate
                 const char *p = line_start + 3;
                 float u = 0, v = 0;
@@ -1069,6 +1082,11 @@ static MeshData* load_obj_file(const char *path) {
                 temp_uvs[uv_count * 2 + 1] = v;
                 uv_count++;
             } else if (line_start[0] == 'v' && line_start[1] == 'n' && line_start[2] == ' ') {
+                if (normal_count >= OBJ_MAX_TEMP_VERTICES) {
+                    SDL_Log("OBJ loader error: too many normals in %s (max %d)", path, OBJ_MAX_TEMP_VERTICES);
+                    SDL_free(file_data);
+                    return NULL;
+                }
                 // Normal
                 const char *p = line_start + 3;
                 float x = 0, y = 0, z = 0;
@@ -1138,6 +1156,11 @@ static MeshData* load_obj_file(const char *path) {
 
                 // Add vertices for this face
                 for (int i = 0; i < 3; i++) {
+                    if (vertex_count >= OBJ_MAX_VERTICES || index_count >= OBJ_MAX_INDICES) {
+                        SDL_Log("OBJ loader error: too many vertices/indices in %s (max vertices %d)", path, OBJ_MAX_VERTICES);
+                        SDL_free(file_data);
+                        return NULL;
+                    }
                     uint32_t v_idx = face_indices[i][0];
                     uint32_t vt_idx = face_indices[i][1];
                     uint32_t vn_idx = face_indices[i][2];
