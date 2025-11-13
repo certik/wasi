@@ -2616,8 +2616,6 @@ static int render_game(GameApp *app) {
     SDL_BindGPUFragmentSamplers(render_pass, 0, texture_bindings, SDL_arraysize(texture_bindings));
     SDL_Log("render_game: Fragment samplers bound");
 
-    // TODO: Add back buffers and drawing
-    #if 0
     if (!app->scene_vertex_buffer || !app->scene_index_buffer) {
         SDL_Log("ERROR: Scene buffers not initialized! vertex=%p index=%p", 
                 (void*)app->scene_vertex_buffer, (void*)app->scene_index_buffer);
@@ -2641,6 +2639,8 @@ static int render_game(GameApp *app) {
     SDL_BindGPUIndexBuffer(render_pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
     SDL_Log("render_game: Index buffer bound");
 
+    // TODO: Add back draw call
+    #if 0
     SDL_Log("render_game: Drawing scene (index_count=%u)", app->scene_index_count);
     SDL_DrawGPUIndexedPrimitives(render_pass, app->scene_index_count, 1, 0, 0, 0);
     SDL_Log("render_game: Scene drawn");
