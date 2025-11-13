@@ -43,23 +43,23 @@ fragment main_Output main_(
   main_Input varyings [[stage_in]]
 , metal::float4 position [[position]]
 , constant SceneUniforms& uniforms [[buffer(0)]]
-, metal::texture2d<float, metal::access::sample> floorTexture [[texture(0)]]
-, metal::sampler floorSampler [[sampler(0)]]
+, metal::texture2d<float, metal::access::sample> sphereTexture [[texture(0)]]
+, metal::sampler sharedSampler [[sampler(0)]]
 , metal::texture2d<float, metal::access::sample> wallTexture [[texture(1)]]
 , metal::sampler wallSampler [[sampler(1)]]
 , metal::texture2d<float, metal::access::sample> ceilingTexture [[texture(2)]]
 , metal::sampler ceilingSampler [[sampler(2)]]
-, metal::texture2d<float, metal::access::sample> sphereTexture [[texture(3)]]
+, metal::texture2d<float, metal::access::sample> floorTexture [[texture(3)]]
 ) {
     const VertexOutput input = { position, varyings.surfaceType, {}, varyings.uv, varyings.normal, varyings.worldPos };
     metal::float3 baseColor = {};
     float diff = {};
     metal::float3 color = {};
-    // TEMP DEBUG: floorTexture slot has sphere, sphereTexture slot has floor
-    metal::float4 sphereColor = floorTexture.sample(floorSampler, input.uv);
+    // Texture binding order: 0=sphere, 1=wall, 2=ceiling, 3=floor (slot 3 doesn't work, but floor is not visible)
+    metal::float4 sphereColor = sphereTexture.sample(sharedSampler, input.uv);
     metal::float4 wallColor = wallTexture.sample(wallSampler, input.uv);
     metal::float4 ceilingColor = ceilingTexture.sample(ceilingSampler, input.uv);
-    metal::float4 floorColor = sphereTexture.sample(floorSampler, input.uv);
+    metal::float4 floorColor = floorTexture.sample(sharedSampler, input.uv);
     if (input.surfaceType < 0.5) {
         baseColor = floorColor.xyz;
     } else {

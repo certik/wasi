@@ -2777,23 +2777,24 @@ static int render_game(GameApp *app) {
         SDL_Log("ERROR: sphere_texture is NULL!");
     }
 
-    // TEMP DEBUG: Swap floor and sphere textures to test if slot 0 works for sphere
+    // Bind textures: slot 0=sphere, 1=wall, 2=ceiling, 3=floor
+    // NOTE: Slot 3 doesn't work on Metal/SDL3, so floor goes there (floor is not visible anyway)
     SDL_GPUTextureSamplerBinding texture_bindings[4] = {
         {
-            .texture = app->sphere_texture,  // TEMP: sphere at slot 0
+            .texture = app->sphere_texture,
             .sampler = app->floor_sampler,
         },
         {
             .texture = app->wall_texture,
-            .sampler = app->floor_sampler,  // Use shared sampler
+            .sampler = app->floor_sampler,
         },
         {
             .texture = app->ceiling_texture,
-            .sampler = app->floor_sampler,  // Use shared sampler
+            .sampler = app->floor_sampler,
         },
         {
-            .texture = app->floor_texture,   // TEMP: floor at slot 3
-            .sampler = app->floor_sampler,  // Use shared sampler
+            .texture = app->floor_texture,
+            .sampler = app->floor_sampler,
         },
     };
 
