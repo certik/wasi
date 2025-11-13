@@ -42,21 +42,19 @@ struct main_Output {
 fragment main_Output main_(
   main_Input varyings [[stage_in]]
 , metal::float4 position [[position]]
-, constant SceneUniforms& uniforms [[buffer(0)]]
 , metal::texture2d<float, metal::access::sample> floorTexture [[texture(0)]]
-, metal::sampler floorSampler [[sampler(0)]]
 , metal::texture2d<float, metal::access::sample> wallTexture [[texture(1)]]
-, metal::sampler wallSampler [[sampler(1)]]
 , metal::texture2d<float, metal::access::sample> ceilingTexture [[texture(2)]]
-, metal::sampler ceilingSampler [[sampler(2)]]
+, metal::sampler sharedSampler [[sampler(0)]]
+, constant SceneUniforms& uniforms [[buffer(0)]]
 ) {
     const VertexOutput input = { position, varyings.surfaceType, {}, varyings.uv, varyings.normal, varyings.worldPos };
     metal::float3 baseColor = {};
     float diff = {};
     metal::float3 color = {};
-    metal::float4 floorColor = floorTexture.sample(floorSampler, input.uv);
-    metal::float4 wallColor = wallTexture.sample(wallSampler, input.uv);
-    metal::float4 ceilingColor = ceilingTexture.sample(ceilingSampler, input.uv);
+    metal::float4 floorColor = floorTexture.sample(sharedSampler, input.uv);
+    metal::float4 wallColor = wallTexture.sample(sharedSampler, input.uv);
+    metal::float4 ceilingColor = ceilingTexture.sample(sharedSampler, input.uv);
     if (input.surfaceType < 0.5) {
         baseColor = floorColor.xyz;
     } else {

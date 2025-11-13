@@ -12,13 +12,13 @@ struct VertexOutput {
     @location(3) worldPos: vec3f,
 };
 
-@group(0) @binding(0) var<uniform> uniforms: SceneUniforms;
-@group(1) @binding(0) var floorTexture: texture_2d<f32>;
-@group(1) @binding(1) var floorSampler: sampler;
-@group(1) @binding(2) var wallTexture: texture_2d<f32>;
-@group(1) @binding(3) var wallSampler: sampler;
-@group(1) @binding(4) var ceilingTexture: texture_2d<f32>;
-@group(1) @binding(5) var ceilingSampler: sampler;
+// SDL3 SPIRV requirement: fragment textures in set 2, uniforms in set 3
+// Use single shared sampler to reduce binding complexity
+@group(2) @binding(0) var floorTexture: texture_2d<f32>;
+@group(2) @binding(1) var wallTexture: texture_2d<f32>;
+@group(2) @binding(2) var ceilingTexture: texture_2d<f32>;
+@group(2) @binding(3) var sharedSampler: sampler;
+@group(3) @binding(0) var<uniform> uniforms: SceneUniforms;
 
 fn checker(uv: vec2f) -> f32 {
     let scaled = floor(uv * 4.0);
@@ -29,9 +29,9 @@ fn checker(uv: vec2f) -> f32 {
 @fragment
 fn main(input: VertexOutput) -> @location(0) vec4f {
     // Sample textures unconditionally (required for uniform control flow)
-    let floorColor = textureSample(floorTexture, floorSampler, input.uv);
-    let wallColor = textureSample(wallTexture, wallSampler, input.uv);
-    let ceilingColor = textureSample(ceilingTexture, ceilingSampler, input.uv);
+    let floorColor = textureSample(floorTexture, sharedSampler, input.uv);
+    let wallColor = textureSample(wallTexture, sharedSampler, input.uv);
+    let ceilingColor = textureSample(ceilingTexture, sharedSampler, input.uv);
 
     var baseColor: vec3f;
     if (input.surfaceType < 0.5) {

@@ -2121,7 +2121,7 @@ static int complete_gpu_setup(GameApp *app) {
     shader_info.code_size = shader_code_size(scene_fs_code);
     shader_info.entrypoint = shader_entrypoint;
     shader_info.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
-    shader_info.num_samplers = 3;
+    shader_info.num_samplers = 4;  // 3 textures + 1 sampler in set 2 = 4 bindings
     shader_info.num_uniform_buffers = 1;
     shader_info.num_storage_buffers = 0;
     shader_info.num_storage_textures = 0;
@@ -2258,6 +2258,16 @@ static int complete_gpu_setup(GameApp *app) {
         return -1;
     }
     base_memcpy(mapped_vertices, cpu_vertices, vertex_buffer_info.size);
+    
+    // DEBUG: Print first 3 vertices
+    SDL_Log("First 3 vertices:");
+    for (int i = 0; i < 3 && i < mesh->vertex_count; i++) {
+        SDL_Log("  v[%d]: pos=(%.2f,%.2f,%.2f) surf=%.1f uv=(%.2f,%.2f) norm=(%.2f,%.2f,%.2f)",
+            i, cpu_vertices[i].position[0], cpu_vertices[i].position[1], cpu_vertices[i].position[2],
+            cpu_vertices[i].surface_type, cpu_vertices[i].uv[0], cpu_vertices[i].uv[1],
+            cpu_vertices[i].normal[0], cpu_vertices[i].normal[1], cpu_vertices[i].normal[2]);
+    }
+    
     SDL_UnmapGPUTransferBuffer(app->device, app->scene_vertex_transfer_buffer);
 
     uint16_t *mapped_indices = (uint16_t *)SDL_MapGPUTransferBuffer(app->device, app->scene_index_transfer_buffer, false);
@@ -2266,6 +2276,13 @@ static int complete_gpu_setup(GameApp *app) {
         return -1;
     }
     base_memcpy(mapped_indices, mesh->indices, index_buffer_info.size);
+    
+    // DEBUG: Print first 3 indices
+    SDL_Log("First 3 indices: [%u, %u, %u]", 
+        mesh->index_count > 0 ? mesh->indices[0] : 0,
+        mesh->index_count > 1 ? mesh->indices[1] : 0,
+        mesh->index_count > 2 ? mesh->indices[2] : 0);
+    
     SDL_UnmapGPUTransferBuffer(app->device, app->scene_index_transfer_buffer);
 
     SDL_GPUCommandBuffer *upload_cmdbuf = SDL_AcquireGPUCommandBuffer(app->device);
@@ -2489,12 +2506,27 @@ static void update_game(GameApp *app) {
 
     gm_update_frame(state, (float)app->window_width, (float)app->window_height);
 
+    // Debug: Always log vertex count and check for issues
+    static uint32_t frame_count = 0;
+    frame_count++;
+
     mat4 projection = mat4_perspective(state->fov, (float)app->window_width / (float)app->window_height, 0.05f, 100.0f);
     mat4 view = mat4_look_at_fps(state->camera_x, state->camera_y, state->camera_z,
                                  state->yaw, state->pitch);
     mat4 mvp = mat4_multiply(projection, view);
 
     app->scene_uniforms.mvp = mvp;
+    
+    // DEBUG: Print MVP matrix and camera position
+    if (frame_count <= 2) {
+        SDL_Log("Camera: pos=(%.2f,%.2f,%.2f) yaw=%.2f pitch=%.2f",
+            state->camera_x, state->camera_y, state->camera_z, state->yaw, state->pitch);
+        SDL_Log("MVP matrix row 0: [%.3f, %.3f, %.3f, %.3f]", mvp.m[0], mvp.m[1], mvp.m[2], mvp.m[3]);
+        SDL_Log("MVP matrix row 1: [%.3f, %.3f, %.3f, %.3f]", mvp.m[4], mvp.m[5], mvp.m[6], mvp.m[7]);
+        SDL_Log("MVP matrix row 2: [%.3f, %.3f, %.3f, %.3f]", mvp.m[8], mvp.m[9], mvp.m[10], mvp.m[11]);
+        SDL_Log("MVP matrix row 3: [%.3f, %.3f, %.3f, %.3f]", mvp.m[12], mvp.m[13], mvp.m[14], mvp.m[15]);
+    }
+    
     app->scene_uniforms.camera_pos[0] = state->camera_x;
     app->scene_uniforms.camera_pos[1] = state->camera_y;
     app->scene_uniforms.camera_pos[2] = state->camera_z;
@@ -2505,10 +2537,6 @@ static void update_game(GameApp *app) {
     app->scene_uniforms.fog_color[3] = 1.0f;
 
     build_overlay(app);
-
-    // Debug: Always log vertex count and check for issues
-    static uint32_t frame_count = 0;
-    frame_count++;
 
     // Unconditional log to verify this code is running
     if (frame_count <= 3) {
@@ -2595,26 +2623,19 @@ static int render_game(GameApp *app) {
         return -1;
     }
     
-    SDL_GPUTextureSamplerBinding texture_bindings[3] = {
-        {
-            .texture = app->floor_texture,
-            .sampler = app->floor_sampler,
-        },
-        {
-            .texture = app->wall_texture,
-            .sampler = app->floor_sampler,  // Use shared sampler
-        },
-        {
-            .texture = app->ceiling_texture,
-            .sampler = app->floor_sampler,  // Use shared sampler
-        },
+    // Bind all resources: 3 textures + 1 sampler = 4 total bindings in set 2
+    // Try binding 4 texture-sampler pairs to cover all 4 binding slots
+    SDL_GPUTextureSamplerBinding texture_bindings[4] = {
+        { .texture = app->floor_texture, .sampler = app->floor_sampler },
+        { .texture = app->wall_texture, .sampler = app->floor_sampler },
+        { .texture = app->ceiling_texture, .sampler = app->floor_sampler },
+        { .texture = app->floor_texture, .sampler = app->floor_sampler },  // Dummy for binding 3
     };
     
     SDL_Log("render_game: Binding fragment samplers");
-    // Note: On Vulkan, vertex shaders don't typically access textures
-    // Only bind to fragment samplers
-    SDL_BindGPUFragmentSamplers(render_pass, 0, texture_bindings, SDL_arraysize(texture_bindings));
+    SDL_BindGPUFragmentSamplers(render_pass, 0, texture_bindings, 4);
     SDL_Log("render_game: Fragment samplers bound");
+
 
     if (!app->scene_vertex_buffer || !app->scene_index_buffer) {
         SDL_Log("ERROR: Scene buffers not initialized! vertex=%p index=%p", 
@@ -2640,8 +2661,8 @@ static int render_game(GameApp *app) {
     SDL_Log("render_game: Index buffer bound");
 
     SDL_Log("render_game: Drawing scene (index_count=%u)", app->scene_index_count);
-    // TEMP: Draw 0 triangles to test
-    SDL_DrawGPUIndexedPrimitives(render_pass, 0, 1, 0, 0, 0);
+    // TEMP: Draw just 1 triangle to test
+    SDL_DrawGPUIndexedPrimitives(render_pass, 3, 1, 0, 0, 0);
     SDL_Log("render_game: Scene drawn");
 
     // Temporarily disable overlay to test scene stability

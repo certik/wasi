@@ -16,17 +16,15 @@ struct VertexOutput {
     float3 worldPos : TEXCOORD3;
 };
 
+Texture2D<float4> floorTexture : register(t0, space2);
+Texture2D<float4> wallTexture : register(t1, space2);
+Texture2D<float4> ceilingTexture : register(t2, space2);
+SamplerState sharedSampler : register(s0, space2);
 cbuffer SceneUniforms : register(b0, space3) {
     row_major float4x4 mvp;
     float4 cameraPos;
     float4 fogColor;
 }
-Texture2D<float4> floorTexture : register(t0, space2);
-SamplerState floorSampler : register(s0, space2);
-Texture2D<float4> wallTexture : register(t1, space2);
-SamplerState wallSampler : register(s1, space2);
-Texture2D<float4> ceilingTexture : register(t2, space2);
-SamplerState ceilingSampler : register(s2, space2);
 
 struct FragmentInput_main {
     float surfaceType : TEXCOORD0;
@@ -54,9 +52,9 @@ float4 main_(FragmentInput_main fragmentinput_main) : SV_Target0
     float diff = (float)0;
     float3 color = (float3)0;
 
-    float4 floorColor = floorTexture.Sample(floorSampler, input.uv);
-    float4 wallColor = wallTexture.Sample(wallSampler, input.uv);
-    float4 ceilingColor = ceilingTexture.Sample(ceilingSampler, input.uv);
+    float4 floorColor = floorTexture.Sample(sharedSampler, input.uv);
+    float4 wallColor = wallTexture.Sample(sharedSampler, input.uv);
+    float4 ceilingColor = ceilingTexture.Sample(sharedSampler, input.uv);
     if ((input.surfaceType < 0.5)) {
         baseColor = floorColor.xyz;
     } else {
