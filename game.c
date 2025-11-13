@@ -2258,16 +2258,6 @@ static int complete_gpu_setup(GameApp *app) {
         return -1;
     }
     base_memcpy(mapped_vertices, cpu_vertices, vertex_buffer_info.size);
-    
-    // DEBUG: Print first 3 vertices
-    SDL_Log("First 3 vertices:");
-    for (int i = 0; i < 3 && i < mesh->vertex_count; i++) {
-        SDL_Log("  v[%d]: pos=(%.2f,%.2f,%.2f) surf=%.1f uv=(%.2f,%.2f) norm=(%.2f,%.2f,%.2f)",
-            i, cpu_vertices[i].position[0], cpu_vertices[i].position[1], cpu_vertices[i].position[2],
-            cpu_vertices[i].surface_type, cpu_vertices[i].uv[0], cpu_vertices[i].uv[1],
-            cpu_vertices[i].normal[0], cpu_vertices[i].normal[1], cpu_vertices[i].normal[2]);
-    }
-    
     SDL_UnmapGPUTransferBuffer(app->device, app->scene_vertex_transfer_buffer);
 
     uint16_t *mapped_indices = (uint16_t *)SDL_MapGPUTransferBuffer(app->device, app->scene_index_transfer_buffer, false);
@@ -2276,13 +2266,6 @@ static int complete_gpu_setup(GameApp *app) {
         return -1;
     }
     base_memcpy(mapped_indices, mesh->indices, index_buffer_info.size);
-    
-    // DEBUG: Print first 3 indices
-    SDL_Log("First 3 indices: [%u, %u, %u]", 
-        mesh->index_count > 0 ? mesh->indices[0] : 0,
-        mesh->index_count > 1 ? mesh->indices[1] : 0,
-        mesh->index_count > 2 ? mesh->indices[2] : 0);
-    
     SDL_UnmapGPUTransferBuffer(app->device, app->scene_index_transfer_buffer);
 
     SDL_GPUCommandBuffer *upload_cmdbuf = SDL_AcquireGPUCommandBuffer(app->device);
@@ -2516,17 +2499,6 @@ static void update_game(GameApp *app) {
     mat4 mvp = mat4_multiply(projection, view);
 
     app->scene_uniforms.mvp = mvp;
-    
-    // DEBUG: Print MVP matrix and camera position
-    if (frame_count <= 2) {
-        SDL_Log("Camera: pos=(%.2f,%.2f,%.2f) yaw=%.2f pitch=%.2f",
-            state->camera_x, state->camera_y, state->camera_z, state->yaw, state->pitch);
-        SDL_Log("MVP matrix row 0: [%.3f, %.3f, %.3f, %.3f]", mvp.m[0], mvp.m[1], mvp.m[2], mvp.m[3]);
-        SDL_Log("MVP matrix row 1: [%.3f, %.3f, %.3f, %.3f]", mvp.m[4], mvp.m[5], mvp.m[6], mvp.m[7]);
-        SDL_Log("MVP matrix row 2: [%.3f, %.3f, %.3f, %.3f]", mvp.m[8], mvp.m[9], mvp.m[10], mvp.m[11]);
-        SDL_Log("MVP matrix row 3: [%.3f, %.3f, %.3f, %.3f]", mvp.m[12], mvp.m[13], mvp.m[14], mvp.m[15]);
-    }
-    
     app->scene_uniforms.camera_pos[0] = state->camera_x;
     app->scene_uniforms.camera_pos[1] = state->camera_y;
     app->scene_uniforms.camera_pos[2] = state->camera_z;
@@ -2606,17 +2578,12 @@ static int render_game(GameApp *app) {
     };
 
     SDL_GPURenderPass *render_pass = SDL_BeginGPURenderPass(cmdbuf, &color_target, 1, &depth_target);
-    SDL_Log("render_game: Render pass started");
 
-    SDL_Log("render_game: Binding scene pipeline");
     SDL_BindGPUGraphicsPipeline(render_pass, app->scene_pipeline);
-    SDL_Log("render_game: Pushing uniform data");
     SDL_PushGPUVertexUniformData(cmdbuf, 0, &app->scene_uniforms, sizeof(SceneUniforms));
     SDL_PushGPUFragmentUniformData(cmdbuf, 0, &app->scene_uniforms, sizeof(SceneUniforms));
-    SDL_Log("render_game: Pipeline and uniforms set");
 
-    // Bind scene textures and sampler (shared sampler for all textures)
-    SDL_Log("render_game: About to bind textures");
+    // Bind scene textures and sampler
     if (!app->floor_texture || !app->wall_texture || !app->ceiling_texture || !app->floor_sampler) {
         SDL_Log("ERROR: Missing textures or sampler!");
         SDL_EndGPURenderPass(render_pass);
@@ -2650,20 +2617,14 @@ static int render_game(GameApp *app) {
         .offset = 0,
     };
     SDL_BindGPUVertexBuffers(render_pass, 0, &vertex_binding, 1);
-    SDL_Log("render_game: Vertex buffers bound");
 
-    SDL_Log("render_game: Binding index buffer (ptr=%p)", (void*)app->scene_index_buffer);
     SDL_GPUBufferBinding index_binding = {
         .buffer = app->scene_index_buffer,
         .offset = 0,
     };
     SDL_BindGPUIndexBuffer(render_pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
-    SDL_Log("render_game: Index buffer bound");
 
-    SDL_Log("render_game: Drawing scene (index_count=%u)", app->scene_index_count);
-    // TEMP: Draw just 1 triangle to test
-    SDL_DrawGPUIndexedPrimitives(render_pass, 3, 1, 0, 0, 0);
-    SDL_Log("render_game: Scene drawn");
+    SDL_DrawGPUIndexedPrimitives(render_pass, app->scene_index_count, 1, 0, 0, 0);
 
     // Temporarily disable overlay to test scene stability
     if (false && app->overlay_vertex_count > 0) {
