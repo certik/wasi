@@ -72,7 +72,12 @@ fragment main_Output main_(
                     float _e31 = checker(input.uv);
                     baseColor = metal::float3(0.7, 0.5, 0.3) * _e31;
                 } else {
+                    // Sphere texture - debug with color tint
                     baseColor = sphereColor.xyz;
+                    // If texture is black, show magenta to indicate shader is working
+                    if (sphereColor.x < 0.01 && sphereColor.y < 0.01 && sphereColor.z < 0.01) {
+                        baseColor = metal::float3(1.0, 0.0, 1.0); // Magenta for debugging
+                    }
                 }
             }
         }
