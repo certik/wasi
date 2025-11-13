@@ -197,7 +197,7 @@ typedef struct {
 
     bool export_obj_mode;     // If true, export OBJ and exit
     char export_obj_path[256]; // Output path for OBJ file
-    
+
     bool minimal_mode;        // If true, skip GPU setup for testing
 } GameApp;
 
@@ -344,7 +344,7 @@ static Uint32 shader_code_size(string source) {
     }
     // Return full size for binary shader files (SPIRV, DXIL, etc.)
     // Don't subtract 1 like we would for null-terminated text
-    return (Uint32)source.size;
+    return (Uint32)(source.size-1);
 }
 
 // ============================================================================
@@ -2589,7 +2589,7 @@ static int render_game(GameApp *app) {
         SDL_EndGPURenderPass(render_pass);
         return -1;
     }
-    
+
     // Bind all resources: 3 textures + 1 sampler = 4 total bindings in set 2
     // Try binding 4 texture-sampler pairs to cover all 4 binding slots
     SDL_GPUTextureSamplerBinding texture_bindings[4] = {
@@ -2598,14 +2598,14 @@ static int render_game(GameApp *app) {
         { .texture = app->ceiling_texture, .sampler = app->floor_sampler },
         { .texture = app->floor_texture, .sampler = app->floor_sampler },  // Dummy for binding 3
     };
-    
+
     SDL_Log("render_game: Binding fragment samplers");
     SDL_BindGPUFragmentSamplers(render_pass, 0, texture_bindings, 4);
     SDL_Log("render_game: Fragment samplers bound");
 
 
     if (!app->scene_vertex_buffer || !app->scene_index_buffer) {
-        SDL_Log("ERROR: Scene buffers not initialized! vertex=%p index=%p", 
+        SDL_Log("ERROR: Scene buffers not initialized! vertex=%p index=%p",
                 (void*)app->scene_vertex_buffer, (void*)app->scene_index_buffer);
         SDL_EndGPURenderPass(render_pass);
         return -1;
@@ -2892,7 +2892,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
     update_game(app);
     SDL_Log("SDL_AppIterate: update_game returned");
-    
+
     int render_result = render_game(app);
     SDL_Log("SDL_AppIterate: render_game returned %d", render_result);
     if (render_result < 0) {
