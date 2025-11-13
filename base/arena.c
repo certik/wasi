@@ -25,6 +25,7 @@ struct arena_s {
     char *current_ptr;
     size_t remaining_in_chunk;
     size_t default_chunk_size;
+    int debug_id;
 };
 
 // Aligns a value up to the nearest multiple of ARENA_ALIGNMENT.
@@ -38,6 +39,9 @@ Arena *arena_new(size_t initial_size) {
     if (!arena) {
         FATAL_ERROR("buddy_alloc failed for Arena");
     }
+    static int arena_id_counter = 0;
+    arena->debug_id = ++arena_id_counter;
+    writeln_int(WASI_STDERR_FD, "[arena] new arena id =", arena->debug_id);
 
     if (initial_size < MIN_CHUNK_SIZE) {
         initial_size = MIN_CHUNK_SIZE;
@@ -103,7 +107,16 @@ try_alloc:
         new_chunk_data_size = aligned_size; // Ensure the new chunk is large enough.
     }
 
-    size_t total_alloc_size = sizeof(struct arena_chunk) + new_chunk_data_size;
+    // Add extra space for header and alignment to ensure we have enough usable space
+    // The usable data area starts at align_up(chunk + 1), so we may lose up to ARENA_ALIGNMENT bytes
+    size_t total_alloc_size = sizeof(struct arena_chunk) + new_chunk_data_size + ARENA_ALIGNMENT;
+    static int new_chunk_count = 0;
+    new_chunk_count++;
+    if (total_alloc_size >= 131072) {
+        writeln_int(WASI_STDERR_FD, "[arena] id =", arena->debug_id);
+        writeln_int(WASI_STDERR_FD, "[arena] new_chunk_count =", new_chunk_count);
+        writeln_int(WASI_STDERR_FD, "[arena] new chunk bytes =", (int)total_alloc_size);
+    }
     struct arena_chunk *new_chunk = buddy_alloc(total_alloc_size);
     if (!new_chunk) {
         FATAL_ERROR("buddy_alloc failed");
@@ -114,7 +127,10 @@ try_alloc:
 
     // Link the new chunk to the end of the list.
     if (arena->current_chunk) {
+        writeln_int(WASI_STDERR_FD, "[arena] linking: current_chunk=first?", arena->current_chunk == arena->current_chunk ? 1 : 0);
+        writeln_int(WASI_STDERR_FD, "[arena] linking: before link, first->next=", (int)(uintptr_t)arena->first_chunk->next);
         arena->current_chunk->next = new_chunk;
+        writeln_int(WASI_STDERR_FD, "[arena] linking: after link, first->next=", (int)(uintptr_t)arena->first_chunk->next);
     } else {
         arena->first_chunk = new_chunk;
     }
@@ -149,10 +165,28 @@ arena_pos_t arena_get_pos(Arena *arena) {
     };
 }
 
+arena_pos_t arena_get_first_pos(Arena *arena) {
+    assert(arena);
+    assert(arena->first_chunk);
+
+    // Calculate the start of the usable data area in the first chunk
+    uintptr_t data_start = align_up((uintptr_t)(arena->first_chunk + 1));
+
+    return (arena_pos_t){
+        .chunk = arena->first_chunk,
+        .ptr = (char *)data_start
+    };
+}
+
 void arena_reset(Arena *arena, arena_pos_t pos) {
     assert(arena);
     assert(pos.chunk);
     assert(pos.ptr);
+
+    writeln_int(WASI_STDERR_FD, "[arena_reset] id =", arena->debug_id);
+    writeln_int(WASI_STDERR_FD, "[arena_reset] before: current_chunk=", (int)(uintptr_t)arena->current_chunk);
+    writeln_int(WASI_STDERR_FD, "[arena_reset] after: current_chunk=", (int)(uintptr_t)pos.chunk);
+    writeln_int(WASI_STDERR_FD, "[arena_reset] first_chunk=", (int)(uintptr_t)arena->first_chunk);
 
     // Restore the state from the saved position
     arena->current_chunk = pos.chunk;

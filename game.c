@@ -657,6 +657,7 @@ static void push_east_segment(MeshGenContext *ctx, float x, float z, float y0, f
 }
 
 static MeshData* load_obj_file(const char *path);
+static Arena *g_obj_file_arena = NULL;
 static float mesh_min_y(const MeshData *mesh);
 static void add_mesh_instance(MeshGenContext *ctx, const MeshData *mesh,
                               float scale, float tx, float ty, float tz,
@@ -1059,6 +1060,9 @@ static bool parse_face_vertex(const char **cursor, const char *end, ObjVertexRef
 static MeshData* load_obj_file(const char *path) {
     Scratch scratch = scratch_begin();
     MeshData *result = NULL;
+    static int obj_load_counter = 0;
+    obj_load_counter++;
+    SDL_Log("load_obj_file[%d]: %s", obj_load_counter, path);
 
     SDL_IOStream *file = SDL_IOFromFile(path, "rb");
     if (!file) {
@@ -1073,6 +1077,8 @@ static MeshData* load_obj_file(const char *path) {
         goto cleanup;
     }
 
+    writeln_int(WASI_STDERR_FD, "[obj] scratch.arena=", (int)(uintptr_t)scratch.arena);
+    writeln_int(WASI_STDERR_FD, "[obj] file_size=", (int)file_size);
     char *file_data = (char *)arena_alloc(scratch.arena, (size_t)file_size + 1);
     if (!file_data) {
         SDL_Log("Failed to allocate memory for OBJ file");
