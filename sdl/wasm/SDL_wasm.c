@@ -744,6 +744,41 @@ SDL_IOStream* SDL_IOFromFile(const char* file, const char* mode) {
     return stream;
 }
 
+Sint64 SDL_GetIOSize(SDL_IOStream* stream) {
+    if (!stream) {
+        return -1;
+    }
+    return (Sint64)stream->size;
+}
+
+size_t SDL_ReadIO(SDL_IOStream* stream, void* ptr, size_t size) {
+    if (!stream || !ptr || size == 0) {
+        return 0;
+    }
+
+    if (!stream->mem) {
+        // For file-based streams in WASM, there's no actual data to read
+        // The file path is used elsewhere to load pre-decoded images
+        return 0;
+    }
+
+    // For memory-based streams, copy the data
+    if (size > stream->size) {
+        size = stream->size;
+    }
+
+    base_memcpy(ptr, stream->mem, size);
+    return size;
+}
+
+void SDL_CloseIO(SDL_IOStream* stream) {
+    extern void buddy_free(void* ptr);
+
+    if (stream) {
+        buddy_free(stream);
+    }
+}
+
 // SDL_Image implementation for WASM
 #include <SDL3_image/SDL_image.h>
 
