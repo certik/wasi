@@ -7,6 +7,7 @@ struct SceneUniforms {
     float4 cameraPos;
     float4 fogColor;
     float4 staticLights[16];
+    float4 staticLightColors[16];
     float4 staticLightParams;
     float4 flashlightPos;
     float4 flashlightDir;
@@ -36,6 +37,7 @@ cbuffer SceneUniforms : register(b0, space1) {
     float4 cameraPos;
     float4 fogColor;
     float4 staticLights[16];
+    float4 staticLightColors[16];
     float4 staticLightParams;
     float4 flashlightPos;
     float4 flashlightDir;

@@ -16,6 +16,7 @@ struct SceneUniforms {
     metal::float4 cameraPos;
     metal::float4 fogColor;
     type_4 staticLights;
+    type_4 staticLightColors;
     metal::float4 staticLightParams;
     metal::float4 flashlightPos;
     metal::float4 flashlightDir;
