@@ -449,12 +449,12 @@ float4 main_(FragmentInput_main fragmentinput_main) : SV_Target0
         const float3x3 _e131 = build_tbn(_e130);
         float3 _e133 = view_dir;
         float3 view_ts_1 = mul(_e133, transpose(_e131));
-        uv = (input.uv * 4.0);
+        uv = (input.uv * 8.0);
         float4 _e141 = cameraPos;
         if ((distance(_e141.xyz, input.worldPos) < 5.0)) {
             float2 _e147 = uv;
             float3 _e148 = n;
-            const float2 _e151 = parallax_occlusion(_e147, view_ts_1, _e148, 0.08, int(48));
+            const float2 _e151 = parallax_occlusion(_e147, view_ts_1, _e148, 0.16, int(48));
             uv = _e151;
         }
         float2 _e154 = uv;
