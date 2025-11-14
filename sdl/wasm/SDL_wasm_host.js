@@ -299,8 +299,12 @@ export function createWasmSDLHost(device, canvas) {
                 }
 
                 const uniformLayout = pipelineInfo.uniformLayout || null;
+                const fragmentUniformLayout = pipelineInfo.fragmentUniformLayout || null;
                 const samplerLayout = pipelineInfo.samplerLayout || null;
                 const uniformSlotCount = pipelineInfo.uniformSlotCount || 0;
+                const fragmentUniformSlotCount = pipelineInfo.fragmentUniformSlotCount || 0;
+                const uniformBindingIndex = pipelineInfo.uniformBindingIndex ?? 0;
+                const fragmentUniformBindingIndex = pipelineInfo.fragmentUniformBindingIndex ?? 0;
 
                 if (!uniformLayout || uniformSlotCount === 0) {
                     cmdbuf.uniformBindGroup = null;
@@ -311,7 +315,7 @@ export function createWasmSDLHost(device, canvas) {
                         cmdbuf.uniformBindGroup = device.createBindGroup({
                             layout: uniformLayout,
                             entries: [{
-                                binding: 0,
+                                binding: uniformBindingIndex,
                                 resource: { buffer: cmdbuf.uniformBuffer }
                             }]
                         });
@@ -321,6 +325,27 @@ export function createWasmSDLHost(device, canvas) {
                         cmdbuf.uniformBindGroupPipeline = null;
                     }
                     cmdbuf.uniformBindGroupDirty = false;
+                }
+
+                if (!fragmentUniformLayout || fragmentUniformSlotCount === 0) {
+                    cmdbuf.fragmentUniformBindGroup = null;
+                    cmdbuf.fragmentUniformBindGroupPipeline = null;
+                    cmdbuf.fragmentUniformBindGroupDirty = false;
+                } else if (cmdbuf.fragmentUniformBindGroupDirty) {
+                    if (cmdbuf.uniformBuffer) {
+                        cmdbuf.fragmentUniformBindGroup = device.createBindGroup({
+                            layout: fragmentUniformLayout,
+                            entries: [{
+                                binding: fragmentUniformBindingIndex,
+                                resource: { buffer: cmdbuf.uniformBuffer }
+                            }]
+                        });
+                        cmdbuf.fragmentUniformBindGroupPipeline = cmdbuf.currentPipeline;
+                    } else {
+                        cmdbuf.fragmentUniformBindGroup = null;
+                        cmdbuf.fragmentUniformBindGroupPipeline = null;
+                    }
+                    cmdbuf.fragmentUniformBindGroupDirty = false;
                 }
 
                 if (!samplerLayout) {
@@ -379,6 +404,7 @@ export function createWasmSDLHost(device, canvas) {
 
                 device.queue.writeBuffer(cmdbuf.uniformBuffer, 0, uniformData);
                 cmdbuf.uniformBindGroupDirty = true;
+                cmdbuf.fragmentUniformBindGroupDirty = true;
                 ensureBindGroups(cmdbuf);
             }
 
@@ -729,77 +755,154 @@ export function createWasmSDLHost(device, canvas) {
 
                     const bindGroupLayouts = [];
 
-                    const uniformEntries = [];
-                    const uniformSlotCount = Math.max(
-                        vertexShaderInfo.numUniformBuffers || 0,
-                        fragmentShaderInfo.numUniformBuffers || 0
-                    );
-                    let uniformGroupIndex = null;
-                    for (let slot = 0; slot < uniformSlotCount; slot++) {
-                        let visibility = 0;
-                        if (slot < (vertexShaderInfo.numUniformBuffers || 0)) {
-                            visibility |= GPUShaderStage.VERTEX;
-                        }
-                        if (slot < (fragmentShaderInfo.numUniformBuffers || 0)) {
-                            visibility |= GPUShaderStage.FRAGMENT;
-                        }
-                        if (visibility !== 0) {
-                            uniformEntries.push({
-                                binding: slot,
-                                visibility,
-                                buffer: { type: 'uniform' }
-                            });
-                        }
-                    }
+                    const vertexWGSLBindings = vertexShaderInfo.wgslBindings || [];
+                    const fragmentWGSLBindings = fragmentShaderInfo.wgslBindings || [];
+                    const vertexUniformBinding = vertexWGSLBindings.find(binding => binding.kind === 'uniform-buffer');
+                    const fragmentUniformBinding = fragmentWGSLBindings.find(binding => binding.kind === 'uniform-buffer');
+                    const fragmentSamplerBindings = fragmentWGSLBindings
+                        .filter(binding => binding.kind === 'texture' || binding.kind === 'sampler')
+                        .sort((a, b) => (a.group - b.group) || (a.binding - b.binding));
+
                     let uniformLayout = null;
-                    if (uniformEntries.length > 0) {
-                        uniformGroupIndex = bindGroupLayouts.length;
-                        uniformLayout = device.createBindGroupLayout({ entries: uniformEntries });
-                        bindGroupLayouts.push(uniformLayout);
-                    }
+                    let uniformGroupIndex = null;
+                    let uniformSlotCount = 0;
+                    let uniformBindingIndex = 0;
+
+                    let fragmentUniformLayout = null;
+                    let fragmentUniformGroupIndex = null;
+                    let fragmentUniformSlotCount = 0;
+                    let fragmentUniformBindingIndex = 0;
 
                     const samplerEntries = [];
                     const samplerBindingInfo = [];
+                    let samplerLayout = null;
                     let samplerGroupIndex = null;
 
-                    const fragmentWGSLBindings = (fragmentShaderInfo.wgslBindings || [])
-                        .filter(binding => binding.group === 2 && (binding.kind === 'texture' || binding.kind === 'sampler'))
-                        .sort((a, b) => a.binding - b.binding);
+                    const usingWGSLLayout = Boolean(vertexUniformBinding || fragmentUniformBinding || fragmentSamplerBindings.length > 0);
 
-                    if (fragmentWGSLBindings.length > 0) {
-                        const visibility = GPUShaderStage.FRAGMENT;
-                        for (const binding of fragmentWGSLBindings) {
-                            if (binding.kind === 'texture') {
-                                samplerEntries.push({
-                                    binding: binding.binding,
-                                    visibility,
-                                    texture: { sampleType: 'float' }
-                                });
-                            } else if (binding.kind === 'sampler') {
-                                samplerEntries.push({
-                                    binding: binding.binding,
-                                    visibility,
-                                    sampler: { type: 'filtering' }
-                                });
+                    if (usingWGSLLayout) {
+                        if (vertexUniformBinding) {
+                            uniformGroupIndex = vertexUniformBinding.group;
+                            uniformBindingIndex = vertexUniformBinding.binding;
+                            uniformSlotCount = 1;
+                            uniformLayout = device.createBindGroupLayout({
+                                entries: [{
+                                    binding: uniformBindingIndex,
+                                    visibility: GPUShaderStage.VERTEX,
+                                    buffer: { type: 'uniform' }
+                                }]
+                            });
+                        }
+
+                        if (fragmentUniformBinding) {
+                            fragmentUniformGroupIndex = fragmentUniformBinding.group;
+                            fragmentUniformBindingIndex = fragmentUniformBinding.binding;
+                            fragmentUniformSlotCount = 1;
+                            fragmentUniformLayout = device.createBindGroupLayout({
+                                entries: [{
+                                    binding: fragmentUniformBindingIndex,
+                                    visibility: GPUShaderStage.FRAGMENT,
+                                    buffer: { type: 'uniform' }
+                                }]
+                            });
+                        }
+
+                        if (fragmentSamplerBindings.length > 0) {
+                            samplerGroupIndex = fragmentSamplerBindings[0].group;
+                            const visibility = GPUShaderStage.FRAGMENT;
+                            const samplerGroupBindings = fragmentSamplerBindings.filter(binding => binding.group === samplerGroupIndex);
+                            for (const binding of samplerGroupBindings) {
+                                if (binding.kind === 'texture') {
+                                    samplerEntries.push({
+                                        binding: binding.binding,
+                                        visibility,
+                                        texture: { sampleType: 'float' }
+                                    });
+                                } else if (binding.kind === 'sampler') {
+                                    samplerEntries.push({
+                                        binding: binding.binding,
+                                        visibility,
+                                        sampler: { type: 'filtering' }
+                                    });
+                                }
+                            }
+
+                            const textureBindings = samplerGroupBindings.filter(binding => binding.kind === 'texture');
+                            const samplerBindings = samplerGroupBindings.filter(binding => binding.kind === 'sampler');
+                            const resolvedSlotCount = textureBindings.length;
+                            for (let slot = 0; slot < resolvedSlotCount; slot++) {
+                                const textureBinding = textureBindings[slot]?.binding;
+                                const samplerBinding = samplerBindings.length > 0
+                                    ? samplerBindings[Math.min(slot, samplerBindings.length - 1)]?.binding
+                                    : undefined;
+                                if (textureBinding === undefined || samplerBinding === undefined) {
+                                    continue;
+                                }
+                                samplerBindingInfo.push({ slot, textureBinding, samplerBinding });
                             }
                         }
 
-                        const textureBindings = fragmentWGSLBindings.filter(binding => binding.kind === 'texture');
-                        const samplerBindings = fragmentWGSLBindings.filter(binding => binding.kind === 'sampler');
-                        const resolvedSlotCount = textureBindings.length;
-                        for (let slot = 0; slot < resolvedSlotCount; slot++) {
-                            const textureBinding = textureBindings[slot]?.binding;
-                            const samplerBinding = samplerBindings.length > 0
-                                ? samplerBindings[Math.min(slot, samplerBindings.length - 1)]?.binding
-                                : undefined;
-                            if (textureBinding === undefined || samplerBinding === undefined) {
-                                continue;
+                        if (samplerEntries.length > 0) {
+                            samplerLayout = device.createBindGroupLayout({ entries: samplerEntries });
+                        }
+
+                        const groupIndices = [];
+                        if (uniformLayout && uniformGroupIndex !== null) {
+                            groupIndices.push(uniformGroupIndex);
+                        }
+                        if (samplerLayout && samplerGroupIndex !== null) {
+                            groupIndices.push(samplerGroupIndex);
+                        }
+                        if (fragmentUniformLayout && fragmentUniformGroupIndex !== null) {
+                            groupIndices.push(fragmentUniformGroupIndex);
+                        }
+
+                        const maxGroupIndex = groupIndices.length > 0 ? Math.max(...groupIndices) : -1;
+                        if (maxGroupIndex >= 0) {
+                            const emptyLayout = device.createBindGroupLayout({ entries: [] });
+                            for (let group = 0; group <= maxGroupIndex; group++) {
+                                if (group === uniformGroupIndex && uniformLayout) {
+                                    bindGroupLayouts[group] = uniformLayout;
+                                } else if (group === samplerGroupIndex && samplerLayout) {
+                                    bindGroupLayouts[group] = samplerLayout;
+                                } else if (group === fragmentUniformGroupIndex && fragmentUniformLayout) {
+                                    bindGroupLayouts[group] = fragmentUniformLayout;
+                                } else {
+                                    bindGroupLayouts[group] = emptyLayout;
+                                }
                             }
-                            samplerBindingInfo.push({ slot, textureBinding, samplerBinding });
                         }
                     }
 
-                    if (samplerEntries.length === 0) {
+                    if (!usingWGSLLayout) {
+                        const uniformEntries = [];
+                        uniformSlotCount = Math.max(
+                            vertexShaderInfo.numUniformBuffers || 0,
+                            fragmentShaderInfo.numUniformBuffers || 0
+                        );
+                        for (let slot = 0; slot < uniformSlotCount; slot++) {
+                            let visibility = 0;
+                            if (slot < (vertexShaderInfo.numUniformBuffers || 0)) {
+                                visibility |= GPUShaderStage.VERTEX;
+                            }
+                            if (slot < (fragmentShaderInfo.numUniformBuffers || 0)) {
+                                visibility |= GPUShaderStage.FRAGMENT;
+                            }
+                            if (visibility !== 0) {
+                                uniformEntries.push({
+                                    binding: slot,
+                                    visibility,
+                                    buffer: { type: 'uniform' }
+                                });
+                            }
+                        }
+                        if (uniformEntries.length > 0) {
+                            uniformGroupIndex = bindGroupLayouts.length;
+                            uniformBindingIndex = 0;
+                            uniformLayout = device.createBindGroupLayout({ entries: uniformEntries });
+                            bindGroupLayouts.push(uniformLayout);
+                        }
+
                         const maxSamplers = Math.max(
                             vertexShaderInfo.numSamplers || 0,
                             fragmentShaderInfo.numSamplers || 0
@@ -828,12 +931,12 @@ export function createWasmSDLHost(device, canvas) {
                                 samplerBindingInfo.push({ slot, textureBinding, samplerBinding });
                             }
                         }
-                    }
-                    let samplerLayout = null;
-                    if (samplerEntries.length > 0) {
-                        samplerGroupIndex = bindGroupLayouts.length;
-                        samplerLayout = device.createBindGroupLayout({ entries: samplerEntries });
-                        bindGroupLayouts.push(samplerLayout);
+
+                        if (samplerEntries.length > 0) {
+                            samplerGroupIndex = bindGroupLayouts.length;
+                            samplerLayout = device.createBindGroupLayout({ entries: samplerEntries });
+                            bindGroupLayouts.push(samplerLayout);
+                        }
                     }
 
                     const pipelineLayout = device.createPipelineLayout({
@@ -943,10 +1046,15 @@ export function createWasmSDLHost(device, canvas) {
                             pipeline,
                             bindGroupLayouts,
                             uniformLayout,
+                            fragmentUniformLayout,
                             samplerLayout,
                             uniformSlotCount,
+                            fragmentUniformSlotCount,
                             uniformGroupIndex,
+                            fragmentUniformGroupIndex,
                             samplerGroupIndex,
+                            uniformBindingIndex,
+                            fragmentUniformBindingIndex,
                             samplerBindingInfo
                         });
                         return handle;
@@ -975,10 +1083,13 @@ export function createWasmSDLHost(device, canvas) {
                         uniformBufferSize: 0,
                         uniformBindGroup: null,
                         uniformBindGroupPipeline: null,
+                        fragmentUniformBindGroup: null,
+                        fragmentUniformBindGroupPipeline: null,
                         textureBindGroup: null,
                         textureBindGroupPipeline: null,
                         boundSamplers: new Map(),
                         uniformBindGroupDirty: false,
+                        fragmentUniformBindGroupDirty: false,
                         textureBindGroupDirty: false,
                         currentPipeline: null,
                         swapchainTextures: []
@@ -1092,13 +1203,15 @@ export function createWasmSDLHost(device, canvas) {
                         if (cmdbuf) {
                             cmdbuf.currentPipeline = pipelineHandle;
                             cmdbuf.uniformBindGroupPipeline = null;
+                            cmdbuf.fragmentUniformBindGroupPipeline = null;
                             cmdbuf.textureBindGroupPipeline = null;
 
                             // Check which bind groups this pipeline actually has
                             const hasBindGroup0 = pipelineInfo.uniformGroupIndex !== null && (pipelineInfo.uniformSlotCount || 0) > 0;
+                            const hasFragmentUniformGroup = pipelineInfo.fragmentUniformGroupIndex !== null && (pipelineInfo.fragmentUniformSlotCount || 0) > 0;
                             const hasBindGroup1 = pipelineInfo.samplerGroupIndex !== null && (pipelineInfo.samplerBindingInfo?.length || 0) > 0;
 
-                            console.log('[SDL] Pipeline bind groups', pipelineHandle, { hasBindGroup0, hasBindGroup1 });
+                            console.log('[SDL] Pipeline bind groups', pipelineHandle, { hasBindGroup0, hasFragmentUniformGroup, hasBindGroup1 });
 
                             // Clear bind groups and mark as dirty only if pipeline has them
                             if (hasBindGroup0) {
@@ -1107,6 +1220,15 @@ export function createWasmSDLHost(device, canvas) {
                             } else {
                                 cmdbuf.uniformBindGroup = null;
                                 cmdbuf.uniformBindGroupDirty = false;
+                            }
+
+                            if (hasFragmentUniformGroup) {
+                                cmdbuf.fragmentUniformBindGroup = null;
+                                cmdbuf.fragmentUniformBindGroupDirty = true;
+                            } else {
+                                cmdbuf.fragmentUniformBindGroup = null;
+                                cmdbuf.fragmentUniformBindGroupPipeline = null;
+                                cmdbuf.fragmentUniformBindGroupDirty = false;
                             }
 
                             if (hasBindGroup1) {
@@ -1476,6 +1598,10 @@ export function createWasmSDLHost(device, canvas) {
                                 passEntry.pass.setBindGroup(pipelineInfo.uniformGroupIndex, cmdbuf.uniformBindGroup);
                             }
 
+                            if (cmdbuf.fragmentUniformBindGroup && cmdbuf.fragmentUniformBindGroupPipeline === cmdbuf.currentPipeline && pipelineInfo.fragmentUniformGroupIndex !== null) {
+                                passEntry.pass.setBindGroup(pipelineInfo.fragmentUniformGroupIndex, cmdbuf.fragmentUniformBindGroup);
+                            }
+
                             if (cmdbuf.textureBindGroup && cmdbuf.textureBindGroupPipeline === cmdbuf.currentPipeline && pipelineInfo.samplerGroupIndex !== null) {
                                 passEntry.pass.setBindGroup(pipelineInfo.samplerGroupIndex, cmdbuf.textureBindGroup);
                             }
@@ -1615,6 +1741,10 @@ export function createWasmSDLHost(device, canvas) {
                         if (pipelineInfo) {
                             if (cmdbuf.uniformBindGroup && cmdbuf.uniformBindGroupPipeline === cmdbuf.currentPipeline && pipelineInfo.uniformGroupIndex !== null) {
                                 passEntry.pass.setBindGroup(pipelineInfo.uniformGroupIndex, cmdbuf.uniformBindGroup);
+                            }
+
+                            if (cmdbuf.fragmentUniformBindGroup && cmdbuf.fragmentUniformBindGroupPipeline === cmdbuf.currentPipeline && pipelineInfo.fragmentUniformGroupIndex !== null) {
+                                passEntry.pass.setBindGroup(pipelineInfo.fragmentUniformGroupIndex, cmdbuf.fragmentUniformBindGroup);
                             }
 
                             if (cmdbuf.textureBindGroup && cmdbuf.textureBindGroupPipeline === cmdbuf.currentPipeline && pipelineInfo.samplerGroupIndex !== null) {
