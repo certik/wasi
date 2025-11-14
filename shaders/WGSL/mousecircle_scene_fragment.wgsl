@@ -154,6 +154,10 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
     let n = normalize(input.normal);
     let staticLight = compute_static_lighting(n, input.worldPos);
     let flashlight = compute_flashlight(n, input.worldPos, frag_coord);
+    if (uniforms.screenParams.w > 0.5) {
+        let mapped = normalize(input.normal) * 0.5 + vec3f(0.5);
+        return vec4f(mapped, 1.0);
+    }
     let ambient = uniforms.staticLightParams.z;
     var lighting = ambient + staticLight;
     lighting = clamp(lighting, ambient, 6.0);

@@ -237,20 +237,25 @@ float4 main_(FragmentInput_main fragmentinput_main) : SV_Target0
     float3 n = normalize(input.normal);
     const float _e61 = compute_static_lighting(n, input.worldPos);
     const FlashlightContribution _e63 = compute_flashlight(n, input.worldPos, frag_coord);
+    float _e67 = screenParams.w;
+    if ((_e67 > 0.5)) {
+        float3 mapped = ((normalize(input.normal) * 0.5) + (0.5).xxx);
+        return float4(mapped, 1.0);
+    }
     float ambient = staticLightParams.z;
     lighting = (ambient + _e61);
-    float _e70 = lighting;
-    lighting = clamp(_e70, ambient, 6.0);
-    float4 _e76 = cameraPos;
-    float fogFactor = exp((-(distance(input.worldPos, _e76.xyz)) * 0.08));
-    float3 _e83 = baseColor;
-    float _e84 = lighting;
-    color = (_e83 * (_e84 + _e63.diffuse));
-    float3 _e95 = color;
-    color = (_e95 + (_e63.specular * float3(1.0, 0.95, 0.85)));
-    float4 _e99 = fogColor;
-    float3 _e101 = color;
-    color = lerp(_e99.xyz, _e101, fogFactor);
-    float3 _e103 = color;
-    return float4(_e103, 1.0);
+    float _e85 = lighting;
+    lighting = clamp(_e85, ambient, 6.0);
+    float4 _e91 = cameraPos;
+    float fogFactor = exp((-(distance(input.worldPos, _e91.xyz)) * 0.08));
+    float3 _e98 = baseColor;
+    float _e99 = lighting;
+    color = (_e98 * (_e99 + _e63.diffuse));
+    float3 _e110 = color;
+    color = (_e110 + (_e63.specular * float3(1.0, 0.95, 0.85)));
+    float4 _e114 = fogColor;
+    float3 _e116 = color;
+    color = lerp(_e114.xyz, _e116, fogFactor);
+    float3 _e118 = color;
+    return float4(_e118, 1.0);
 }

@@ -114,6 +114,7 @@ typedef struct {
     int triangle_mode;
     int debug_mode;
     int horizontal_movement;
+    int normal_debug;
     int flashlight_enabled;
 
     uint8_t keys[256];
@@ -1361,6 +1362,7 @@ static void gm_init_game_state(GameState *state, int *map, int width, int height
     state->triangle_mode = 0;
     state->debug_mode = 0;
     state->horizontal_movement = 1;
+    state->normal_debug = 0;
     state->flashlight_enabled = 0;
 
     state->map_data = map;
@@ -1444,6 +1446,10 @@ static void gm_handle_key_press(GameState *state, uint8_t key_code) {
         case 'f':
         case 'F':
             gm_toggle_horizontal_movement(state);
+            break;
+        case 'n':
+        case 'N':
+            state->normal_debug = !state->normal_debug;
             break;
         case 'l':
         case 'L':
@@ -2265,9 +2271,10 @@ static void build_overlay(GameApp *app) {
                  state->horizontal_movement ? "WALK" : "FLY",
                  state->map_visible ? "ON" : "OFF",
                  state->hud_visible ? "ON" : "OFF");
-    SDL_snprintf(lines[4], sizeof(lines[4]), "FLASH %s",
-                 state->flashlight_enabled ? "ON" : "OFF");
-    SDL_snprintf(lines[5], sizeof(lines[5]), "TOGGLE M/R/H/T/I/B/F/L");
+    SDL_snprintf(lines[4], sizeof(lines[4]), "FLASH %s NORMAL %s",
+                 state->flashlight_enabled ? "ON" : "OFF",
+                 state->normal_debug ? "ON" : "OFF");
+    SDL_snprintf(lines[5], sizeof(lines[5]), "TOGGLE M/R/H/T/I/B/F/L/N");
 
     uint32_t offset = 0;
     int line_count = SDL_arraysize(lines);
@@ -2967,7 +2974,7 @@ static void update_game(GameApp *app) {
     app->scene_uniforms.screen_params[1] = (float)app->window_height;
     float min_dim = (float)((app->window_width < app->window_height) ? app->window_width : app->window_height);
     app->scene_uniforms.screen_params[2] = min_dim;
-    app->scene_uniforms.screen_params[3] = 0.0f;
+    app->scene_uniforms.screen_params[3] = state->normal_debug ? 1.0f : 0.0f;
 
     build_overlay(app);
 
