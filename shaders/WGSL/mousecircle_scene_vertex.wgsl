@@ -19,7 +19,8 @@ struct VertexOutput {
     @location(3) worldPos: vec3f,
 };
 
-@group(0) @binding(0) var<uniform> uniforms: SceneUniforms;
+// SDL3 SPIRV requirement: vertex uniform buffers must be in set 1
+@group(1) @binding(0) var<uniform> uniforms: SceneUniforms;
 
 @vertex
 fn main_(input: VertexInput) -> VertexOutput {
@@ -32,4 +33,3 @@ fn main_(input: VertexInput) -> VertexOutput {
     output.worldPos = input.position;
     return output;
 }
-

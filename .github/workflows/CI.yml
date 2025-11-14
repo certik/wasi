@@ -22,6 +22,7 @@ jobs:
               # TODO: `test_game_linux` doesn't work yet:
               #pixi run -e linux test_game_linux --test-frames 5
               pixi run -e linux build_game_linux
+              pixi run -e linux test_game_linux --export-obj model.obj
 
               # WASM
               pixi run -e wasm test_wasm a1 b2 c3
