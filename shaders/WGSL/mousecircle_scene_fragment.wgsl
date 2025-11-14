@@ -230,31 +230,32 @@ fn compute_material_index(surface_type: f32) -> u32 {
     return u32(clamped);
 }
 
-fn parallax_occlusion(uv: vec2f, view_dir_ts: vec3f, height_scale: f32, steps: i32) -> vec2f {
-    var current_uv = uv;
+fn parallax_occlusion(uv: vec2f, view_ts: vec3f, _normal: vec3f, height_scale: f32, steps: i32) -> vec2f {
     let num_steps = max(steps, 1);
     let layer_depth = 1.0 / f32(num_steps);
-    let view_dir = normalize(view_dir_ts);
-    let denom = max(view_dir.z, 0.0001);
-    let delta = view_dir.xy / denom * height_scale;
     var current_depth = 0.0;
+    let view_dir = normalize(view_ts);
+    if (abs(view_dir.z) < 0.001) {
+        return uv;
+    }
+    let offset_dir = view_dir.xy / view_dir.z * height_scale;
+    var current_uv = uv;
+    var prev_depth_map = 0.0;
     var prev_uv = uv;
-    var prev_depth_map = textureSample(heightTexture, sharedSampler, uv).r;
     for (var i = 0; i < num_steps; i = i + 1) {
-        current_uv -= delta * layer_depth;
-        current_depth += layer_depth;
+        current_uv -= offset_dir * layer_depth;
         let depth_map = textureSample(heightTexture, sharedSampler, current_uv).r;
-        if (depth_map < current_depth) {
-            let prev_layer_depth = current_depth - layer_depth;
-            let after = depth_map - current_depth;
-            let before = prev_depth_map - prev_layer_depth;
-            let weight = clamp(before / (before - after + 0.0001), 0.0, 1.0);
-            return mix(current_uv, prev_uv, weight);
+        if (current_depth >= depth_map) {
+            let delta = vec2f(prev_depth_map - current_depth + layer_depth, depth_map - current_depth);
+            let denom = max(delta.x - delta.y, 0.0001);
+            let weight = delta.x / denom;
+            return prev_uv - offset_dir * (weight * layer_depth);
         }
         prev_uv = current_uv;
         prev_depth_map = depth_map;
+        current_depth += layer_depth;
     }
-    return current_uv;
+    return uv;
 }
 
 fn build_tbn(normal: vec3f) -> mat3x3f {
@@ -320,10 +321,9 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
     if (use_pbr_debug) {
         let tbn = build_tbn(n);
         let view_ts = transpose(tbn) * view_dir;
-        let camera_distance = distance(uniforms.cameraPos.xyz, input.worldPos);
         var uv = input.uv;
-        if (camera_distance < 6.0) {
-            uv = parallax_occlusion(uv, view_ts, 0.05, 32);
+        if (distance(uniforms.cameraPos.xyz, input.worldPos) < 5.0) {
+            uv = parallax_occlusion(uv, view_ts, n, 0.05, 32);
         }
         sampledAlbedo = textureSample(debugAlbedoTexture, sharedSampler, uv).rgb;
         sampledNormal = textureSample(normalTexture, sharedSampler, uv).rgb * 2.0 - 1.0;
