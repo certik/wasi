@@ -25,7 +25,6 @@ struct arena_s {
     char *current_ptr;
     size_t remaining_in_chunk;
     size_t default_chunk_size;
-    int debug_id;
 };
 
 // Aligns a value up to the nearest multiple of ARENA_ALIGNMENT.
@@ -39,8 +38,6 @@ Arena *arena_new(size_t initial_size) {
     if (!arena) {
         FATAL_ERROR("buddy_alloc failed for Arena");
     }
-    static int arena_id_counter = 0;
-    arena->debug_id = ++arena_id_counter;
 
     if (initial_size < MIN_CHUNK_SIZE) {
         initial_size = MIN_CHUNK_SIZE;
@@ -151,19 +148,6 @@ arena_pos_t arena_get_pos(Arena *arena) {
     return (arena_pos_t){
         .chunk = arena->current_chunk,
         .ptr = arena->current_ptr
-    };
-}
-
-arena_pos_t arena_get_first_pos(Arena *arena) {
-    assert(arena);
-    assert(arena->first_chunk);
-
-    // Calculate the start of the usable data area in the first chunk
-    uintptr_t data_start = align_up((uintptr_t)(arena->first_chunk + 1));
-
-    return (arena_pos_t){
-        .chunk = arena->first_chunk,
-        .ptr = (char *)data_start
     };
 }
 

@@ -4,13 +4,7 @@
 #include <base/base_io.h>
 
 Scratch scratch_begin_from_arena(Arena *arena) {
-    // Reset arena to the beginning to ensure we reuse existing chunks
-    // instead of accumulating new ones on every scratch_begin call
-    arena_pos_t first_pos = arena_get_first_pos(arena);
-    arena_reset(arena, first_pos);
-
-    Scratch scratch = {.arena=arena, .saved_pos=first_pos};
-    return scratch;
+    return (Scratch){.arena=arena, .saved_pos=arena_get_pos(arena)};
 }
 
 Scratch scratch_begin() {

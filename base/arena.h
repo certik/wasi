@@ -54,17 +54,6 @@ void *arena_alloc(Arena *arena, size_t size);
 arena_pos_t arena_get_pos(Arena *arena);
 
 /**
- * @brief Returns a position pointing to the start of the first chunk.
- *
- * This is useful for resetting an arena to its initial state, allowing
- * all chunks to be reused from the beginning.
- *
- * @param arena A pointer to the arena.
- * @return An arena_pos_t handle pointing to the start of the first chunk.
- */
-arena_pos_t arena_get_first_pos(Arena *arena);
-
-/**
  * @brief Resets the arena's allocation pointer to a previously saved position.
  *
  * This invalidates all allocations made since the position was saved,
