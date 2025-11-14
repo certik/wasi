@@ -59,8 +59,13 @@ typedef __builtin_va_list __gnuc_va_list;
 #define MAP_SCALE 6.0f
 #define PERF_SMOOTHING 0.9f
 
-#define MAX_SCENE_VERTICES 4096
-#define MAX_OVERLAY_VERTICES 48000
+#define MAX_SCENE_VERTICES 40000
+#define MAX_GENERATED_VERTICES 40000
+#define MAX_GENERATED_INDICES 48000
+#define MAX_OVERLAY_VERTICES 96000
+#define OBJ_MAX_VERTICES 20000
+#define OBJ_MAX_INDICES 20000
+#define OBJ_MAX_TEMP_VERTICES 8000
 #define KEY_SHIFT 16
 #define KEY_CTRL 17
 
@@ -166,7 +171,15 @@ typedef struct {
     SDL_GPUTexture *floor_texture;
     SDL_GPUTexture *wall_texture;
     SDL_GPUTexture *ceiling_texture;
-    SDL_GPUSampler *floor_sampler;
+    SDL_GPUTexture *sphere_texture;
+    SDL_GPUTexture *book_texture;
+    SDL_GPUTexture *chair_texture;
+    SDL_GPUSampler *floor_sampler;   // slot 0
+    SDL_GPUSampler *wall_sampler;    // slot 1
+    SDL_GPUSampler *ceiling_sampler; // slot 2
+    SDL_GPUSampler *sphere_sampler;  // slot 3
+    SDL_GPUSampler *book_sampler;    // slot 4
+    SDL_GPUSampler *chair_sampler;   // slot 5
 
     uint32_t scene_vertex_count;
     uint32_t scene_index_count;
@@ -207,6 +220,12 @@ static Arena *g_shader_arena = NULL;
 #define FLOOR_TEXTURE_PATH "assets/WoodFloor007_1K-JPG_Color.jpg"
 #define WALL_TEXTURE_PATH "assets/Concrete046_1K-JPG_Color.jpg"
 #define CEILING_TEXTURE_PATH "assets/OfficeCeiling001_1K-JPG_Color.jpg"
+#define SPHERE_TEXTURE_PATH "assets/Land_ocean_ice_2048.jpg"
+#define BOOK_TEXTURE_PATH "assets/checker_board_4k.png"
+#define CHAIR_TEXTURE_PATH "assets/chair_02_diff_1k.jpg"
+#define SPHERE_OBJ_PATH "assets/equirectangular_sphere.obj"
+#define BOOK_OBJ_PATH "assets/book.obj"
+#define CHAIR_OBJ_PATH "assets/chair.obj"
 
 static string g_scene_vertex_shader = {0};
 static string g_scene_fragment_shader = {0};
@@ -302,6 +321,15 @@ static SDL_GPUTexture *load_texture_from_path(GameApp *app, const char *path, co
         return NULL;
     }
     SDL_memcpy(mapped, surface->pixels, tex_data_size);
+
+    // Debug: Check if texture has non-zero data
+    unsigned char *pixels = (unsigned char *)surface->pixels;
+    int non_zero_count = 0;
+    for (int i = 0; i < tex_data_size && i < 1000; i++) {
+        if (pixels[i] != 0) non_zero_count++;
+    }
+    SDL_Log("%s texture: checked first 1000 bytes, %d non-zero", label, non_zero_count);
+
     SDL_UnmapGPUTransferBuffer(app->device, transfer_buffer);
 
     SDL_DestroySurface(surface);
@@ -628,16 +656,23 @@ static void push_east_segment(MeshGenContext *ctx, float x, float z, float y0, f
     push_east_segment_range(ctx, x + 1.0f, z, z + 1.0f, y0, y1, 0, 1.0f);
 }
 
-static float g_positions_storage[6000];
-static float g_uvs_storage[4000];
-static float g_normals_storage[6000];
-static float g_surface_storage[2000];
-static float g_triangle_storage[2000];
-static uint16_t g_index_storage[6000];
+static MeshData* load_obj_file(const char *path);
+static Arena *g_obj_file_arena = NULL;
+static float mesh_min_y(const MeshData *mesh);
+static void add_mesh_instance(MeshGenContext *ctx, const MeshData *mesh,
+                              float scale, float tx, float ty, float tz,
+                              float surface_type);
+
+static float g_positions_storage[MAX_GENERATED_VERTICES * 3];
+static float g_uvs_storage[MAX_GENERATED_VERTICES * 2];
+static float g_normals_storage[MAX_GENERATED_VERTICES * 3];
+static float g_surface_storage[MAX_GENERATED_VERTICES];
+static float g_triangle_storage[MAX_GENERATED_VERTICES];
+static uint16_t g_index_storage[MAX_GENERATED_INDICES];
 static MeshData g_mesh_data_storage;
 static MapVertex g_temp_vertices[MAX_SCENE_VERTICES];
 
-static MeshData* generate_mesh(int *map, int width, int height) {
+static MeshData* generate_mesh(int *map, int width, int height, float spawn_x, float spawn_z) {
     MeshGenContext ctx = {0};
     ctx.positions = g_positions_storage;
     ctx.uvs = g_uvs_storage;
@@ -795,6 +830,65 @@ static MeshData* generate_mesh(int *map, int width, int height) {
         }
     }
 
+    // Load sphere mesh and add it to window cells
+    SDL_Log("Before sphere: position_idx=%u, surface_idx=%u, index_idx=%u",
+            ctx.position_idx, ctx.surface_idx, ctx.index_idx);
+
+    MeshData *sphere_mesh = load_obj_file(SPHERE_OBJ_PATH);
+    if (sphere_mesh) {
+        SDL_Log("Adding spheres to window cells");
+        SDL_Log("Sphere mesh: vertex_count=%u, index_count=%u",
+                sphere_mesh->vertex_count, sphere_mesh->index_count);
+
+        int sphere_count = 0;
+        for (int z = 0; z < height; z++) {
+            for (int x = 0; x < width; x++) {
+                int cell = map[z * width + x];
+                if (cell == 2 || cell == 3) {
+                    float cx = (float)x + 0.5f;
+                    float cy = WALL_HEIGHT * 0.5f;
+                    float cz = (float)z + 0.5f;
+                    float scale = 0.3f;
+
+                    SDL_Log("Sphere %d at cell(%d,%d): base_vertex=%u, surface_idx before=%u",
+                            sphere_count, x, z, (uint16_t)ctx.surface_idx, ctx.surface_idx);
+
+                    add_mesh_instance(&ctx, sphere_mesh, scale, cx, cy, cz, 4.0f);
+
+                    SDL_Log("Sphere %d: surface_idx after=%u, index_idx after=%u",
+                            sphere_count, ctx.surface_idx, ctx.index_idx);
+                    sphere_count++;
+                }
+            }
+        }
+        SDL_Log("Added %d spheres total", sphere_count);
+    }
+
+    SDL_Log("After spheres: position_idx=%u, surface_idx=%u, index_idx=%u",
+            ctx.position_idx, ctx.surface_idx, ctx.index_idx);
+
+    MeshData *book_mesh = load_obj_file(BOOK_OBJ_PATH);
+    if (book_mesh) {
+        SDL_Log("Adding book at spawn position (%.2f, %.2f)", spawn_x, spawn_z);
+        float min_y = mesh_min_y(book_mesh);
+        const float book_scale = 2.0f;
+        const float floor_y = 0.0f;
+        float book_y = floor_y - min_y * book_scale + 0.01f;
+        add_mesh_instance(&ctx, book_mesh, book_scale, spawn_x, book_y, spawn_z, 5.0f);
+    }
+
+    MeshData *chair_mesh = load_obj_file(CHAIR_OBJ_PATH);
+    if (chair_mesh) {
+        SDL_Log("Adding chair near spawn position (%.2f, %.2f)", spawn_x, spawn_z);
+        float min_y = mesh_min_y(chair_mesh);
+        const float chair_scale = 0.75f;
+        const float floor_y = 0.0f;
+        float chair_y = floor_y - min_y * chair_scale + 0.01f;
+        float chair_x = spawn_x + 0.9f;
+        float chair_z = spawn_z - 0.2f;
+        add_mesh_instance(&ctx, chair_mesh, chair_scale, chair_x, chair_y, chair_z, 6.0f);
+    }
+
     g_mesh_data_storage.positions = g_positions_storage;
     g_mesh_data_storage.uvs = g_uvs_storage;
     g_mesh_data_storage.normals = g_normals_storage;
@@ -829,6 +923,372 @@ static inline float clampf(float v, float min, float max) {
     if (v < min) return min;
     if (v > max) return max;
     return v;
+}
+
+// OBJ loader for sphere/book meshes
+static float g_obj_positions[OBJ_MAX_VERTICES * 3];
+static float g_obj_uvs[OBJ_MAX_VERTICES * 2];
+static float g_obj_normals[OBJ_MAX_VERTICES * 3];
+static float g_obj_surface_types[OBJ_MAX_VERTICES];
+static uint16_t g_obj_indices[OBJ_MAX_INDICES];
+static MeshData g_obj_mesh_data;
+
+// Temporary storage for OBJ parsing (static to avoid stack overflow)
+static float g_temp_obj_positions[OBJ_MAX_TEMP_VERTICES * 3];
+static float g_temp_obj_uvs[OBJ_MAX_TEMP_VERTICES * 2];
+static float g_temp_obj_normals[OBJ_MAX_TEMP_VERTICES * 3];
+
+typedef struct {
+    uint32_t position;
+    uint32_t uv;
+    uint32_t normal;
+} ObjVertexRef;
+
+static inline int is_digit_char(char c) {
+    return c >= '0' && c <= '9';
+}
+
+static const char *skip_spaces(const char *p, const char *end) {
+    while (p < end && (*p == ' ' || *p == '\t')) {
+        p++;
+    }
+    return p;
+}
+
+static bool parse_float_token(const char **cursor, const char *end, float *out_value) {
+    const char *p = skip_spaces(*cursor, end);
+    if (p >= end) {
+        return false;
+    }
+
+    int sign = 1;
+    if (*p == '-' || *p == '+') {
+        if (*p == '-') {
+            sign = -1;
+        }
+        p++;
+    }
+
+    float value = 0.0f;
+    int has_digits = 0;
+    while (p < end && is_digit_char(*p)) {
+        has_digits = 1;
+        value = value * 10.0f + (float)(*p - '0');
+        p++;
+    }
+
+    if (p < end && *p == '.') {
+        p++;
+        float frac = 0.1f;
+        while (p < end && is_digit_char(*p)) {
+            has_digits = 1;
+            value += (float)(*p - '0') * frac;
+            frac *= 0.1f;
+            p++;
+        }
+    }
+
+    if (!has_digits) {
+        return false;
+    }
+
+    *out_value = value * (float)sign;
+    *cursor = p;
+    return true;
+}
+
+static bool parse_vec_components(const char **cursor, const char *end, float *dst, int count) {
+    for (int i = 0; i < count; i++) {
+        if (!parse_float_token(cursor, end, &dst[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool parse_uint_token(const char **cursor, const char *end, uint32_t *out_value) {
+    const char *p = skip_spaces(*cursor, end);
+    if (p >= end || !is_digit_char(*p)) {
+        return false;
+    }
+
+    uint32_t value = 0;
+    while (p < end && is_digit_char(*p)) {
+        value = value * 10u + (uint32_t)(*p - '0');
+        p++;
+    }
+
+    *out_value = value;
+    *cursor = p;
+    return true;
+}
+
+static bool parse_face_vertex(const char **cursor, const char *end, ObjVertexRef *out) {
+    const char *p = skip_spaces(*cursor, end);
+    uint32_t v_idx = 0;
+    if (!parse_uint_token(&p, end, &v_idx)) {
+        return false;
+    }
+
+    uint32_t vt_idx = 0;
+    uint32_t vn_idx = 0;
+
+    if (p < end && *p == '/') {
+        p++;
+        if (p < end && is_digit_char(*p)) {
+            if (!parse_uint_token(&p, end, &vt_idx)) {
+                return false;
+            }
+        }
+        if (p < end && *p == '/') {
+            p++;
+            if (p < end && is_digit_char(*p)) {
+                if (!parse_uint_token(&p, end, &vn_idx)) {
+                    return false;
+                }
+            }
+        }
+    }
+
+    out->position = v_idx > 0 ? v_idx - 1 : 0;
+    out->uv = vt_idx > 0 ? vt_idx - 1 : 0;
+    out->normal = vn_idx > 0 ? vn_idx - 1 : 0;
+    *cursor = p;
+    return true;
+}
+
+static MeshData* load_obj_file(const char *path) {
+    Scratch scratch = scratch_begin();
+    MeshData *result = NULL;
+    static int obj_load_counter = 0;
+    obj_load_counter++;
+    SDL_Log("load_obj_file[%d]: %s", obj_load_counter, path);
+
+    SDL_IOStream *file = SDL_IOFromFile(path, "rb");
+    if (!file) {
+        SDL_Log("Failed to open OBJ file: %s", path);
+        goto cleanup;
+    }
+
+    Sint64 file_size = SDL_GetIOSize(file);
+    if (file_size <= 0) {
+        SDL_Log("Failed to get OBJ file size: %s", path);
+        SDL_CloseIO(file);
+        goto cleanup;
+    }
+
+    char *file_data = (char *)arena_alloc(scratch.arena, (size_t)file_size + 1);
+    if (!file_data) {
+        SDL_Log("Failed to allocate memory for OBJ file");
+        SDL_CloseIO(file);
+        goto cleanup;
+    }
+
+    size_t bytes_read = SDL_ReadIO(file, file_data, (size_t)file_size);
+    SDL_CloseIO(file);
+
+    if (bytes_read != (size_t)file_size) {
+        SDL_Log("Failed to read OBJ file completely");
+        goto cleanup;
+    }
+    file_data[file_size] = '\0';
+
+    uint32_t pos_count = 0;
+    uint32_t uv_count = 0;
+    uint32_t normal_count = 0;
+    uint32_t vertex_count = 0;
+    uint32_t index_count = 0;
+
+    const char *line_start = file_data;
+    const char *end = file_data + file_size;
+
+    while (line_start < end) {
+        const char *line_end = line_start;
+        while (line_end < end && *line_end != '\n' && *line_end != '\r') {
+            line_end++;
+        }
+
+        bool ok = true;
+        if (line_end > line_start && line_start[0] != '#') {
+            if (line_start[0] == 'v' && line_start[1] == ' ') {
+                if (pos_count >= OBJ_MAX_TEMP_VERTICES) {
+                    SDL_Log("OBJ loader error: too many vertex positions in %s (max %d)", path, OBJ_MAX_TEMP_VERTICES);
+                    ok = false;
+                } else {
+                    const char *cursor = line_start + 2;
+                    float vec[3];
+                    ok = parse_vec_components(&cursor, line_end, vec, 3);
+                    if (!ok) {
+                        SDL_Log("OBJ loader error: malformed vertex position in %s", path);
+                    } else {
+                        g_temp_obj_positions[pos_count * 3 + 0] = vec[0];
+                        g_temp_obj_positions[pos_count * 3 + 1] = vec[1];
+                        g_temp_obj_positions[pos_count * 3 + 2] = vec[2];
+                        pos_count++;
+                    }
+                }
+            } else if (line_start[0] == 'v' && line_start[1] == 't' && line_start[2] == ' ') {
+                if (uv_count >= OBJ_MAX_TEMP_VERTICES) {
+                    SDL_Log("OBJ loader error: too many UVs in %s (max %d)", path, OBJ_MAX_TEMP_VERTICES);
+                    ok = false;
+                } else {
+                    const char *cursor = line_start + 3;
+                    float uv[2];
+                    ok = parse_vec_components(&cursor, line_end, uv, 2);
+                    if (!ok) {
+                        SDL_Log("OBJ loader error: malformed UV in %s", path);
+                    } else {
+                        g_temp_obj_uvs[uv_count * 2 + 0] = uv[0];
+                        g_temp_obj_uvs[uv_count * 2 + 1] = uv[1];
+                        uv_count++;
+                    }
+                }
+            } else if (line_start[0] == 'v' && line_start[1] == 'n' && line_start[2] == ' ') {
+                if (normal_count >= OBJ_MAX_TEMP_VERTICES) {
+                    SDL_Log("OBJ loader error: too many normals in %s (max %d)", path, OBJ_MAX_TEMP_VERTICES);
+                    ok = false;
+                } else {
+                    const char *cursor = line_start + 3;
+                    float normal[3];
+                    ok = parse_vec_components(&cursor, line_end, normal, 3);
+                    if (!ok) {
+                        SDL_Log("OBJ loader error: malformed normal in %s", path);
+                    } else {
+                        g_temp_obj_normals[normal_count * 3 + 0] = normal[0];
+                        g_temp_obj_normals[normal_count * 3 + 1] = normal[1];
+                        g_temp_obj_normals[normal_count * 3 + 2] = normal[2];
+                        normal_count++;
+                    }
+                }
+            } else if (line_start[0] == 'f' && line_start[1] == ' ') {
+                const char *cursor = line_start + 2;
+                ObjVertexRef face[3];
+                for (int i = 0; i < 3; i++) {
+                    if (!parse_face_vertex(&cursor, line_end, &face[i])) {
+                        SDL_Log("OBJ loader error: malformed face in %s", path);
+                        ok = false;
+                        break;
+                    }
+                }
+                if (ok) {
+                    cursor = skip_spaces(cursor, line_end);
+                    if (cursor < line_end) {
+                        SDL_Log("OBJ loader error: only triangle faces are supported in %s", path);
+                        ok = false;
+                    }
+                }
+                if (ok) {
+                    for (int i = 0; i < 3; i++) {
+                        if (vertex_count >= OBJ_MAX_VERTICES || index_count >= OBJ_MAX_INDICES) {
+                            SDL_Log("OBJ loader error: too many vertices/indices in %s (max vertices %d)", path, OBJ_MAX_VERTICES);
+                            ok = false;
+                            break;
+                        }
+                        const ObjVertexRef *ref = &face[i];
+                        g_obj_positions[vertex_count * 3 + 0] = g_temp_obj_positions[ref->position * 3 + 0];
+                        g_obj_positions[vertex_count * 3 + 1] = g_temp_obj_positions[ref->position * 3 + 1];
+                        g_obj_positions[vertex_count * 3 + 2] = g_temp_obj_positions[ref->position * 3 + 2];
+
+                        g_obj_uvs[vertex_count * 2 + 0] = g_temp_obj_uvs[ref->uv * 2 + 0];
+                        g_obj_uvs[vertex_count * 2 + 1] = g_temp_obj_uvs[ref->uv * 2 + 1];
+
+                        g_obj_normals[vertex_count * 3 + 0] = g_temp_obj_normals[ref->normal * 3 + 0];
+                        g_obj_normals[vertex_count * 3 + 1] = g_temp_obj_normals[ref->normal * 3 + 1];
+                        g_obj_normals[vertex_count * 3 + 2] = g_temp_obj_normals[ref->normal * 3 + 2];
+
+                        g_obj_surface_types[vertex_count] = 4.0f;
+                        g_obj_indices[index_count++] = (uint16_t)vertex_count;
+                        vertex_count++;
+                    }
+                }
+                if (!ok) {
+                    goto cleanup;
+                }
+            }
+
+            if (!ok) {
+                goto cleanup;
+            }
+        }
+
+        line_start = line_end;
+        while (line_start < end && (*line_start == '\n' || *line_start == '\r')) {
+            line_start++;
+        }
+    }
+
+    SDL_Log("Loaded OBJ: %u vertices, %u indices", vertex_count, index_count);
+
+    float min_u = 1e9f, max_u = -1e9f, min_v = 1e9f, max_v = -1e9f;
+    for (uint32_t i = 0; i < vertex_count; i++) {
+        float u = g_obj_uvs[i * 2 + 0];
+        float v = g_obj_uvs[i * 2 + 1];
+        if (u < min_u) min_u = u;
+        if (u > max_u) max_u = u;
+        if (v < min_v) min_v = v;
+        if (v > max_v) max_v = v;
+    }
+    SDL_Log("UV range: u=[%f, %f], v=[%f, %f]", min_u, max_u, min_v, max_v);
+
+    g_obj_mesh_data.positions = g_obj_positions;
+    g_obj_mesh_data.uvs = g_obj_uvs;
+    g_obj_mesh_data.normals = g_obj_normals;
+    g_obj_mesh_data.surface_types = g_obj_surface_types;
+    g_obj_mesh_data.indices = g_obj_indices;
+    g_obj_mesh_data.position_count = vertex_count;
+    g_obj_mesh_data.uv_count = vertex_count;
+    g_obj_mesh_data.normal_count = vertex_count;
+    g_obj_mesh_data.vertex_count = vertex_count;
+    g_obj_mesh_data.index_count = index_count;
+    result = &g_obj_mesh_data;
+
+cleanup:
+    scratch_end(scratch);
+    return result;
+}
+
+static float mesh_min_y(const MeshData *mesh) {
+    if (!mesh || mesh->vertex_count == 0) {
+        return 0.0f;
+    }
+    float min_y = mesh->positions[1];
+    for (uint32_t i = 0; i < mesh->vertex_count; i++) {
+        float y = mesh->positions[i * 3 + 1];
+        if (y < min_y) {
+            min_y = y;
+        }
+    }
+    return min_y;
+}
+
+static void add_mesh_instance(MeshGenContext *ctx, const MeshData *mesh,
+                              float scale, float tx, float ty, float tz,
+                              float surface_type) {
+    if (!mesh) {
+        return;
+    }
+
+    uint16_t base_vertex = (uint16_t)ctx->surface_idx;
+    for (uint32_t i = 0; i < mesh->vertex_count; i++) {
+        const float *pos = &mesh->positions[i * 3];
+        push_position(ctx,
+            pos[0] * scale + tx,
+            pos[1] * scale + ty,
+            pos[2] * scale + tz);
+        push_uv(ctx,
+            mesh->uvs[i * 2 + 0],
+            mesh->uvs[i * 2 + 1]);
+        push_normal(ctx,
+            mesh->normals[i * 3 + 0],
+            mesh->normals[i * 3 + 1],
+            mesh->normals[i * 3 + 2]);
+        push_surface_type(ctx, surface_type);
+        push_triangle_id(ctx, 0.0f);
+    }
+
+    for (uint32_t i = 0; i < mesh->index_count; i++) {
+        push_index(ctx, base_vertex + mesh->indices[i]);
+    }
 }
 
 static int is_walkable(const GameState *state, float x, float z) {
@@ -2016,7 +2476,7 @@ static int complete_gpu_setup(GameApp *app) {
     shader_info.code_size = shader_code_size(scene_fs_code);
     shader_info.entrypoint = shader_entrypoint;
     shader_info.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
-    shader_info.num_samplers = 4;  // 3 textures + 1 sampler in set 2 = 4 bindings
+    shader_info.num_samplers = 7;  // 6 textures + 1 sampler in set 2 = 7 bindings
     shader_info.num_uniform_buffers = 1;
     shader_info.num_storage_buffers = 0;
     shader_info.num_storage_textures = 0;
@@ -2092,7 +2552,7 @@ static int complete_gpu_setup(GameApp *app) {
     float start_yaw = 0.0f;
     find_start_position(g_map_data, MAP_WIDTH, MAP_HEIGHT, &start_x, &start_z, &start_yaw);
 
-    MeshData *mesh = generate_mesh(g_map_data, MAP_WIDTH, MAP_HEIGHT);
+    MeshData *mesh = generate_mesh(g_map_data, MAP_WIDTH, MAP_HEIGHT, start_x, start_z);
     app->scene_vertex_count = mesh->vertex_count;
     app->scene_index_count = mesh->index_count;
 
@@ -2204,28 +2664,34 @@ static int complete_gpu_setup(GameApp *app) {
         return -1;
     }
 
-    app->floor_texture = load_texture_from_path(app, FLOOR_TEXTURE_PATH, "floor");
-    if (!app->floor_texture) {
-        return -1;
+    typedef struct {
+        const char *path;
+        const char *label;
+        SDL_GPUTexture **slot;
+    } TextureRequest;
+
+    TextureRequest texture_requests[] = {
+        {FLOOR_TEXTURE_PATH, "floor", &app->floor_texture},
+        {WALL_TEXTURE_PATH, "wall", &app->wall_texture},
+        {CEILING_TEXTURE_PATH, "ceiling", &app->ceiling_texture},
+        {SPHERE_TEXTURE_PATH, "sphere", &app->sphere_texture},
+        {BOOK_TEXTURE_PATH, "book", &app->book_texture},
+        {CHAIR_TEXTURE_PATH, "chair", &app->chair_texture},
+    };
+
+    for (size_t i = 0; i < SDL_arraysize(texture_requests); i++) {
+        SDL_GPUTexture *texture = load_texture_from_path(app, texture_requests[i].path, texture_requests[i].label);
+        if (!texture) {
+            for (size_t j = 0; j < i; j++) {
+                SDL_ReleaseGPUTexture(app->device, *texture_requests[j].slot);
+                *texture_requests[j].slot = NULL;
+            }
+            return -1;
+        }
+        *texture_requests[i].slot = texture;
     }
 
-    app->wall_texture = load_texture_from_path(app, WALL_TEXTURE_PATH, "wall");
-    if (!app->wall_texture) {
-        SDL_ReleaseGPUTexture(app->device, app->floor_texture);
-        app->floor_texture = NULL;
-        return -1;
-    }
-
-    app->ceiling_texture = load_texture_from_path(app, CEILING_TEXTURE_PATH, "ceiling");
-    if (!app->ceiling_texture) {
-        SDL_ReleaseGPUTexture(app->device, app->wall_texture);
-        app->wall_texture = NULL;
-        SDL_ReleaseGPUTexture(app->device, app->floor_texture);
-        app->floor_texture = NULL;
-        return -1;
-    }
-
-    // Create sampler
+    // Create 6 separate samplers (one for each texture slot)
     SDL_GPUSamplerCreateInfo sampler_info = {
         .min_filter = SDL_GPU_FILTER_LINEAR,
         .mag_filter = SDL_GPU_FILTER_LINEAR,
@@ -2234,18 +2700,34 @@ static int complete_gpu_setup(GameApp *app) {
         .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
         .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
     };
-    app->floor_sampler = SDL_CreateGPUSampler(app->device, &sampler_info);
-    if (!app->floor_sampler) {
-        SDL_Log("Failed to create texture sampler: %s", SDL_GetError());
-        SDL_ReleaseGPUTexture(app->device, app->ceiling_texture);
-        app->ceiling_texture = NULL;
-        SDL_ReleaseGPUTexture(app->device, app->wall_texture);
-        app->wall_texture = NULL;
-        SDL_ReleaseGPUTexture(app->device, app->floor_texture);
-        app->floor_texture = NULL;
-        return -1;
+    SDL_GPUSampler **samplers[] = {
+        &app->floor_sampler,
+        &app->wall_sampler,
+        &app->ceiling_sampler,
+        &app->sphere_sampler,
+        &app->book_sampler,
+        &app->chair_sampler,
+    };
+    for (size_t i = 0; i < SDL_arraysize(samplers); i++) {
+        *samplers[i] = SDL_CreateGPUSampler(app->device, &sampler_info);
+        if (!*samplers[i]) {
+            SDL_Log("Failed to create texture samplers: %s", SDL_GetError());
+            for (size_t j = 0; j <= i; j++) {
+                if (*samplers[j]) {
+                    SDL_ReleaseGPUSampler(app->device, *samplers[j]);
+                    *samplers[j] = NULL;
+                }
+            }
+            for (size_t j = 0; j < SDL_arraysize(texture_requests); j++) {
+                if (*texture_requests[j].slot) {
+                    SDL_ReleaseGPUTexture(app->device, *texture_requests[j].slot);
+                    *texture_requests[j].slot = NULL;
+                }
+            }
+            return -1;
+        }
     }
-    SDL_Log("Scene textures and sampler created successfully");
+    SDL_Log("Scene textures and samplers created successfully");
 
     GameState *state = &app->state;
     gm_init_game_state(state, g_map_data, MAP_WIDTH, MAP_HEIGHT, start_x, start_z, start_yaw);
@@ -2468,17 +2950,19 @@ static int render_game(GameApp *app) {
         return -1;
     }
 
-    // Bind all resources: 3 textures + 1 sampler = 4 total bindings in set 2
-    // Try binding 4 texture-sampler pairs to cover all 4 binding slots
-    SDL_GPUTextureSamplerBinding texture_bindings[4] = {
+    // Bind all resources: 6 textures + 1 sampler = 7 total bindings in set 2
+    SDL_GPUTextureSamplerBinding texture_bindings[7] = {
         { .texture = app->floor_texture, .sampler = app->floor_sampler },
         { .texture = app->wall_texture, .sampler = app->floor_sampler },
         { .texture = app->ceiling_texture, .sampler = app->floor_sampler },
-        { .texture = app->floor_texture, .sampler = app->floor_sampler },  // Dummy for binding 3
+        { .texture = app->sphere_texture, .sampler = app->floor_sampler },
+        { .texture = app->book_texture, .sampler = app->floor_sampler },
+        { .texture = app->chair_texture, .sampler = app->floor_sampler },
+        { .texture = app->floor_texture, .sampler = app->floor_sampler },  // Dummy for sampler binding
     };
 
     SDL_Log("render_game: Binding fragment samplers");
-    SDL_BindGPUFragmentSamplers(render_pass, 0, texture_bindings, 4);
+    SDL_BindGPUFragmentSamplers(render_pass, 0, texture_bindings, 7);
     SDL_Log("render_game: Fragment samplers bound");
 
 
@@ -2581,9 +3065,41 @@ static void shutdown_game(GameApp *app) {
         SDL_ReleaseGPUTexture(app->device, app->ceiling_texture);
         app->ceiling_texture = NULL;
     }
+    if (app->sphere_texture) {
+        SDL_ReleaseGPUTexture(app->device, app->sphere_texture);
+        app->sphere_texture = NULL;
+    }
+    if (app->book_texture) {
+        SDL_ReleaseGPUTexture(app->device, app->book_texture);
+        app->book_texture = NULL;
+    }
+    if (app->chair_texture) {
+        SDL_ReleaseGPUTexture(app->device, app->chair_texture);
+        app->chair_texture = NULL;
+    }
+    if (app->sphere_sampler) {
+        SDL_ReleaseGPUSampler(app->device, app->sphere_sampler);
+        app->sphere_sampler = NULL;
+    }
+    if (app->wall_sampler) {
+        SDL_ReleaseGPUSampler(app->device, app->wall_sampler);
+        app->wall_sampler = NULL;
+    }
+    if (app->ceiling_sampler) {
+        SDL_ReleaseGPUSampler(app->device, app->ceiling_sampler);
+        app->ceiling_sampler = NULL;
+    }
     if (app->floor_sampler) {
         SDL_ReleaseGPUSampler(app->device, app->floor_sampler);
         app->floor_sampler = NULL;
+    }
+    if (app->book_sampler) {
+        SDL_ReleaseGPUSampler(app->device, app->book_sampler);
+        app->book_sampler = NULL;
+    }
+    if (app->chair_sampler) {
+        SDL_ReleaseGPUSampler(app->device, app->chair_sampler);
+        app->chair_sampler = NULL;
     }
     if (app->device && app->window) {
         SDL_ReleaseWindowFromGPUDevice(app->device, app->window);
@@ -2677,7 +3193,12 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         }
 
         // Generate the mesh
-        MeshData *mesh = generate_mesh(g_map_data, MAP_WIDTH, MAP_HEIGHT);
+        float start_x = 1.5f;
+        float start_z = 1.5f;
+        float start_yaw = 0.0f;
+        find_start_position(g_map_data, MAP_WIDTH, MAP_HEIGHT, &start_x, &start_z, &start_yaw);
+
+        MeshData *mesh = generate_mesh(g_map_data, MAP_WIDTH, MAP_HEIGHT, start_x, start_z);
         if (!mesh) {
             SDL_Log("Failed to generate mesh");
             return SDL_APP_FAILURE;

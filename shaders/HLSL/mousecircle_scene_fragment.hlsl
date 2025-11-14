@@ -19,6 +19,9 @@ struct VertexOutput {
 Texture2D<float4> floorTexture : register(t0, space2);
 Texture2D<float4> wallTexture : register(t1, space2);
 Texture2D<float4> ceilingTexture : register(t2, space2);
+Texture2D<float4> sphereTexture : register(t3, space2);
+Texture2D<float4> bookTexture : register(t4, space2);
+Texture2D<float4> chairTexture : register(t5, space2);
 SamplerState sharedSampler : register(s0, space2);
 cbuffer SceneUniforms : register(b0, space3) {
     row_major float4x4 mvp;
@@ -55,6 +58,9 @@ float4 main_(FragmentInput_main fragmentinput_main) : SV_Target0
     float4 floorColor = floorTexture.Sample(sharedSampler, input.uv);
     float4 wallColor = wallTexture.Sample(sharedSampler, input.uv);
     float4 ceilingColor = ceilingTexture.Sample(sharedSampler, input.uv);
+    float4 sphereColor = sphereTexture.Sample(sharedSampler, input.uv);
+    float4 bookColor = bookTexture.Sample(sharedSampler, input.uv);
+    float4 chairColor = chairTexture.Sample(sharedSampler, input.uv);
     if ((input.surfaceType < 0.5)) {
         baseColor = floorColor.xyz;
     } else {
@@ -64,8 +70,20 @@ float4 main_(FragmentInput_main fragmentinput_main) : SV_Target0
             if ((input.surfaceType < 2.5)) {
                 baseColor = ceilingColor.xyz;
             } else {
-                const float _e31 = checker(input.uv);
-                baseColor = (float3(0.7, 0.5, 0.3) * _e31);
+                if ((input.surfaceType < 3.5)) {
+                    const float _e46 = checker(input.uv);
+                    baseColor = (float3(0.7, 0.5, 0.3) * _e46);
+                } else {
+                    if ((input.surfaceType < 4.5)) {
+                        baseColor = sphereColor.xyz;
+                    } else {
+                        if ((input.surfaceType < 5.5)) {
+                            baseColor = bookColor.xyz;
+                        } else {
+                            baseColor = chairColor.xyz;
+                        }
+                    }
+                }
             }
         }
     }
@@ -75,14 +93,14 @@ float4 main_(FragmentInput_main fragmentinput_main) : SV_Target0
     if (((input.surfaceType >= 1.5) && (input.surfaceType < 2.5))) {
         diff = 1.0;
     }
-    float4 _e55 = cameraPos;
-    float fogFactor = exp((-(distance(input.worldPos, _e55.xyz)) * 0.08));
-    float3 _e62 = baseColor;
-    float _e63 = diff;
-    color = (_e62 * _e63);
-    float4 _e68 = fogColor;
-    float3 _e70 = color;
-    color = lerp(_e68.xyz, _e70, fogFactor);
-    float3 _e72 = color;
-    return float4(_e72, 1.0);
+    float4 _e79 = cameraPos;
+    float fogFactor = exp((-(distance(input.worldPos, _e79.xyz)) * 0.08));
+    float3 _e86 = baseColor;
+    float _e87 = diff;
+    color = (_e86 * _e87);
+    float4 _e92 = fogColor;
+    float3 _e94 = color;
+    color = lerp(_e92.xyz, _e94, fogFactor);
+    float3 _e96 = color;
+    return float4(_e96, 1.0);
 }

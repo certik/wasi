@@ -17,7 +17,10 @@ struct VertexOutput {
 @group(2) @binding(0) var floorTexture: texture_2d<f32>;
 @group(2) @binding(1) var wallTexture: texture_2d<f32>;
 @group(2) @binding(2) var ceilingTexture: texture_2d<f32>;
-@group(2) @binding(3) var sharedSampler: sampler;
+@group(2) @binding(3) var sphereTexture: texture_2d<f32>;
+@group(2) @binding(4) var bookTexture: texture_2d<f32>;
+@group(2) @binding(5) var chairTexture: texture_2d<f32>;
+@group(2) @binding(6) var sharedSampler: sampler;
 @group(3) @binding(0) var<uniform> uniforms: SceneUniforms;
 
 fn checker(uv: vec2f) -> f32 {
@@ -32,6 +35,9 @@ fn main_(input: VertexOutput) -> @location(0) vec4f {
     let floorColor = textureSample(floorTexture, sharedSampler, input.uv);
     let wallColor = textureSample(wallTexture, sharedSampler, input.uv);
     let ceilingColor = textureSample(ceilingTexture, sharedSampler, input.uv);
+    let sphereColor = textureSample(sphereTexture, sharedSampler, input.uv);
+    let bookColor = textureSample(bookTexture, sharedSampler, input.uv);
+    let chairColor = textureSample(chairTexture, sharedSampler, input.uv);
 
     var baseColor: vec3f;
     if (input.surfaceType < 0.5) {
@@ -41,8 +47,17 @@ fn main_(input: VertexOutput) -> @location(0) vec4f {
         baseColor = wallColor.rgb;
     } else if (input.surfaceType < 2.5) {
         baseColor = ceilingColor.rgb;
-    } else {
+    } else if (input.surfaceType < 3.5) {
         baseColor = vec3f(0.7, 0.5, 0.3) * checker(input.uv);
+    } else if (input.surfaceType < 4.5) {
+        // Sphere: use sphere texture
+        baseColor = sphereColor.rgb;
+    } else if (input.surfaceType < 5.5) {
+        // Book mesh
+        baseColor = bookColor.rgb;
+    } else {
+        // Chair mesh
+        baseColor = chairColor.rgb;
     }
 
     let n = normalize(input.normal);

@@ -45,6 +45,9 @@ fragment main_Output main_(
 , metal::texture2d<float, metal::access::sample> floorTexture [[texture(0)]]
 , metal::texture2d<float, metal::access::sample> wallTexture [[texture(1)]]
 , metal::texture2d<float, metal::access::sample> ceilingTexture [[texture(2)]]
+, metal::texture2d<float, metal::access::sample> sphereTexture [[texture(3)]]
+, metal::texture2d<float, metal::access::sample> bookTexture [[texture(4)]]
+, metal::texture2d<float, metal::access::sample> chairTexture [[texture(5)]]
 , metal::sampler sharedSampler [[sampler(0)]]
 , constant SceneUniforms& uniforms [[buffer(0)]]
 ) {
@@ -55,6 +58,9 @@ fragment main_Output main_(
     metal::float4 floorColor = floorTexture.sample(sharedSampler, input.uv);
     metal::float4 wallColor = wallTexture.sample(sharedSampler, input.uv);
     metal::float4 ceilingColor = ceilingTexture.sample(sharedSampler, input.uv);
+    metal::float4 sphereColor = sphereTexture.sample(sharedSampler, input.uv);
+    metal::float4 bookColor = bookTexture.sample(sharedSampler, input.uv);
+    metal::float4 chairColor = chairTexture.sample(sharedSampler, input.uv);
     if (input.surfaceType < 0.5) {
         baseColor = floorColor.xyz;
     } else {
@@ -64,8 +70,20 @@ fragment main_Output main_(
             if (input.surfaceType < 2.5) {
                 baseColor = ceilingColor.xyz;
             } else {
-                float _e31 = checker(input.uv);
-                baseColor = metal::float3(0.7, 0.5, 0.3) * _e31;
+                if (input.surfaceType < 3.5) {
+                    float _e46 = checker(input.uv);
+                    baseColor = metal::float3(0.7, 0.5, 0.3) * _e46;
+                } else {
+                    if (input.surfaceType < 4.5) {
+                        baseColor = sphereColor.xyz;
+                    } else {
+                        if (input.surfaceType < 5.5) {
+                            baseColor = bookColor.xyz;
+                        } else {
+                            baseColor = chairColor.xyz;
+                        }
+                    }
+                }
             }
         }
     }
@@ -75,14 +93,14 @@ fragment main_Output main_(
     if ((input.surfaceType >= 1.5) && (input.surfaceType < 2.5)) {
         diff = 1.0;
     }
-    metal::float4 _e55 = uniforms.cameraPos;
-    float fogFactor = metal::exp(-(metal::distance(input.worldPos, _e55.xyz)) * 0.08);
-    metal::float3 _e62 = baseColor;
-    float _e63 = diff;
-    color = _e62 * _e63;
-    metal::float4 _e68 = uniforms.fogColor;
-    metal::float3 _e70 = color;
-    color = metal::mix(_e68.xyz, _e70, fogFactor);
-    metal::float3 _e72 = color;
-    return main_Output { metal::float4(_e72, 1.0) };
+    metal::float4 _e79 = uniforms.cameraPos;
+    float fogFactor = metal::exp(-(metal::distance(input.worldPos, _e79.xyz)) * 0.08);
+    metal::float3 _e86 = baseColor;
+    float _e87 = diff;
+    color = _e86 * _e87;
+    metal::float4 _e92 = uniforms.fogColor;
+    metal::float3 _e94 = color;
+    color = metal::mix(_e92.xyz, _e94, fogFactor);
+    metal::float3 _e96 = color;
+    return main_Output { metal::float4(_e96, 1.0) };
 }
