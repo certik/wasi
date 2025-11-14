@@ -9,6 +9,35 @@ export function createWasmSDLHost(device, canvas) {
             const encoder = new TextEncoder();
             const SDL_GPU_SHADERFORMAT_WGSL = 1 << 6;
 
+            function parseWGSLBindings(source) {
+                const regex = /@group\((\d+)\)\s*@binding\((\d+)\)\s*var(?:<([^>]+)>)?\s+[A-Za-z0-9_]+\s*:\s*([^;]+);/g;
+                const bindings = [];
+                let match;
+                while ((match = regex.exec(source)) !== null) {
+                    const group = Number(match[1]);
+                    const binding = Number(match[2]);
+                    const addressSpace = match[3] ? match[3].toLowerCase() : '';
+                    const type = match[4].trim();
+                    let kind = null;
+                    if (addressSpace.includes('uniform')) {
+                        kind = 'uniform-buffer';
+                    } else if (addressSpace.includes('storage')) {
+                        kind = 'storage-buffer';
+                    } else if (type.startsWith('texture_storage')) {
+                        kind = 'storage-texture';
+                    } else if (type.startsWith('texture_')) {
+                        kind = 'texture';
+                    } else if (type.startsWith('sampler')) {
+                        kind = 'sampler';
+                    }
+
+                    if (kind) {
+                        bindings.push({ group, binding, kind });
+                    }
+                }
+                return bindings;
+            }
+
             const context = canvas.getContext('webgpu');
             canvas.tabIndex = 0;
             canvas.addEventListener('click', () => {
@@ -604,6 +633,11 @@ export function createWasmSDLHost(device, canvas) {
                     try {
                         const shaderModule = device.createShaderModule({ code: shaderCode });
 
+                        let wgslBindings = null;
+                        if (format === SDL_GPU_SHADERFORMAT_WGSL) {
+                            wgslBindings = parseWGSLBindings(shaderCode);
+                        }
+
                         // Check for compilation errors asynchronously
                         shaderModule.getCompilationInfo().then(info => {
                             if (info.messages.length > 0) {
@@ -623,6 +657,7 @@ export function createWasmSDLHost(device, canvas) {
                             numUniformBuffers,
                             numStorageBuffers,
                             numStorageTextures,
+                            wgslBindings,
                         });
                         console.log('[SDL] CreateGPUShader, handle:', handle);
                         return handle;
@@ -725,33 +760,73 @@ export function createWasmSDLHost(device, canvas) {
 
                     const samplerEntries = [];
                     const samplerBindingInfo = [];
-                    const maxSamplers = Math.max(
-                        vertexShaderInfo.numSamplers || 0,
-                        fragmentShaderInfo.numSamplers || 0
-                    );
                     let samplerGroupIndex = null;
-                    for (let slot = 0; slot < maxSamplers; slot++) {
-                        let visibility = 0;
-                        if (slot < (vertexShaderInfo.numSamplers || 0)) {
-                            visibility |= GPUShaderStage.VERTEX;
+
+                    const fragmentWGSLBindings = (fragmentShaderInfo.wgslBindings || [])
+                        .filter(binding => binding.group === 2 && (binding.kind === 'texture' || binding.kind === 'sampler'))
+                        .sort((a, b) => a.binding - b.binding);
+
+                    if (fragmentWGSLBindings.length > 0) {
+                        const visibility = GPUShaderStage.FRAGMENT;
+                        for (const binding of fragmentWGSLBindings) {
+                            if (binding.kind === 'texture') {
+                                samplerEntries.push({
+                                    binding: binding.binding,
+                                    visibility,
+                                    texture: { sampleType: 'float' }
+                                });
+                            } else if (binding.kind === 'sampler') {
+                                samplerEntries.push({
+                                    binding: binding.binding,
+                                    visibility,
+                                    sampler: { type: 'filtering' }
+                                });
+                            }
                         }
-                        if (slot < (fragmentShaderInfo.numSamplers || 0)) {
-                            visibility |= GPUShaderStage.FRAGMENT;
-                        }
-                        if (visibility !== 0) {
-                            const textureBinding = slot * 2;
-                            const samplerBinding = slot * 2 + 1;
-                            samplerEntries.push({
-                                binding: textureBinding,
-                                visibility,
-                                texture: { sampleType: 'float' }
-                            });
-                            samplerEntries.push({
-                                binding: samplerBinding,
-                                visibility,
-                                sampler: { type: 'filtering' }
-                            });
+
+                        const textureBindings = fragmentWGSLBindings.filter(binding => binding.kind === 'texture');
+                        const samplerBindings = fragmentWGSLBindings.filter(binding => binding.kind === 'sampler');
+                        const resolvedSlotCount = textureBindings.length;
+                        for (let slot = 0; slot < resolvedSlotCount; slot++) {
+                            const textureBinding = textureBindings[slot]?.binding;
+                            const samplerBinding = samplerBindings.length > 0
+                                ? samplerBindings[Math.min(slot, samplerBindings.length - 1)]?.binding
+                                : undefined;
+                            if (textureBinding === undefined || samplerBinding === undefined) {
+                                continue;
+                            }
                             samplerBindingInfo.push({ slot, textureBinding, samplerBinding });
+                        }
+                    }
+
+                    if (samplerEntries.length === 0) {
+                        const maxSamplers = Math.max(
+                            vertexShaderInfo.numSamplers || 0,
+                            fragmentShaderInfo.numSamplers || 0
+                        );
+                        for (let slot = 0; slot < maxSamplers; slot++) {
+                            let visibility = 0;
+                            if (slot < (vertexShaderInfo.numSamplers || 0)) {
+                                visibility |= GPUShaderStage.VERTEX;
+                            }
+                            if (slot < (fragmentShaderInfo.numSamplers || 0)) {
+                                visibility |= GPUShaderStage.FRAGMENT;
+                            }
+                            if (visibility !== 0) {
+                                const textureBinding = slot * 2;
+                                const samplerBinding = slot * 2 + 1;
+                                samplerEntries.push({
+                                    binding: textureBinding,
+                                    visibility,
+                                    texture: { sampleType: 'float' }
+                                });
+                                samplerEntries.push({
+                                    binding: samplerBinding,
+                                    visibility,
+                                    sampler: { type: 'filtering' }
+                                });
+                                samplerBindingInfo.push({ slot, textureBinding, samplerBinding });
+                            }
                         }
                     }
                     let samplerLayout = null;
