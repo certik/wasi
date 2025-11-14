@@ -19,9 +19,8 @@ jobs:
               pixi run -e linux test_linux a1 b2 c3
               echo "test input data" | pixi run -e linux ./arena_linux --test-input
               pixi run -e linux test_wordfreq_linux
-              pixi run -e linux build_game_linux
-              pixi run test_game --export-obj model.obj
               xvfb-run -a pixi run test_game --test-frames 5
+              pixi run test_game --export-obj model.obj
 
               # WASM
               pixi run -e wasm test_wasm a1 b2 c3
