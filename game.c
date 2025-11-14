@@ -243,7 +243,7 @@ static bool g_buddy_initialized = false;
 static Arena *g_shader_arena = NULL;
 
 #define FLOOR_TEXTURE_PATH "assets/WoodFloor007_1K-JPG_Color.jpg"
-#define WALL_TEXTURE_PATH "assets/checker_board_4k.png"
+#define WALL_TEXTURE_PATH "assets/Concrete046_1K-JPG_Color.jpg"
 #define CEILING_TEXTURE_PATH "assets/OfficeCeiling001_1K-JPG_Color.jpg"
 #define SPHERE_TEXTURE_PATH "assets/Land_ocean_ice_2048.jpg"
 #define BOOK_TEXTURE_PATH "assets/checker_board_4k.png"
