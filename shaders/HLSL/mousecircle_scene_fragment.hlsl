@@ -5,6 +5,7 @@
 struct SceneUniforms {
     row_major float4x4 mvp;
     float4 cameraPos;
+    float4 cameraDir;
     float4 fogColor;
     float4 staticLights[16];
     float4 staticLightColors[16];
@@ -51,6 +52,7 @@ SamplerState sharedSampler : register(s0, space2);
 cbuffer SceneUniforms : register(b0, space3) {
     row_major float4x4 mvp;
     float4 cameraPos;
+    float4 cameraDir;
     float4 fogColor;
     float4 staticLights[16];
     float4 staticLightColors[16];
@@ -63,7 +65,7 @@ cbuffer SceneUniforms : register(b0, space3) {
 
 struct FragmentInput_main {
     float surfaceType : TEXCOORD0;
-    float2 uv_1 : TEXCOORD1;
+    float2 uv_4 : TEXCOORD1;
     float3 normal_2 : TEXCOORD2;
     float3 worldPos : TEXCOORD3;
     float4 frag_coord_2 : SV_Position;
@@ -73,11 +75,75 @@ float naga_mod(float lhs, float rhs) {
     return lhs - rhs * trunc(lhs / rhs);
 }
 
-float checker(float2 uv)
+float checker(float2 uv_1)
 {
-    float2 scaled = floor((uv * 4.0));
+    float2 scaled = floor((uv_1 * 4.0));
     float v = naga_mod((scaled.x + scaled.y), 2.0);
     return ((v < 0.5) ? 1.0 : 0.7);
+}
+
+float get_debug_height(float2 uv_2)
+{
+    if (((((uv_2.x >= 0.4) && (uv_2.x <= 0.6)) && (uv_2.y >= 0.4)) && (uv_2.y <= 0.6))) {
+        float2 center_ = float2(0.5, 0.5);
+        float dist = length((uv_2 - center_));
+        return clamp((1.0 - (dist / 0.141)), 0.0, 1.0);
+    }
+    return 0.0;
+}
+
+float2 parallax_occlusion(float2 uv_3, float3 view_tangent, float height_scale, int steps)
+{
+    float current_depth = 0.0;
+    float2 current_uv = (float2)0;
+    float2 prev_uv = (float2)0;
+    float prev_depth_map = (float)0;
+    int i = int(0);
+
+    float layer_depth = (1.0 / float(steps));
+    float2 parallax_dir = ((-(view_tangent.xy) / (max(abs(view_tangent.z), 0.01)).xx) * height_scale);
+    current_uv = uv_3;
+    prev_uv = uv_3;
+    const float _e20 = get_debug_height(uv_3);
+    prev_depth_map = _e20;
+    bool loop_init = true;
+    while(true) {
+        if (!loop_init) {
+            int _e47 = i;
+            i = asint(asuint(_e47) + asuint(int(1)));
+        }
+        loop_init = false;
+        int _e24 = i;
+        if ((_e24 < steps)) {
+        } else {
+            break;
+        }
+        {
+            float _e26 = current_depth;
+            current_depth = (_e26 + layer_depth);
+            float2 _e29 = current_uv;
+            current_uv = (_e29 + (parallax_dir * layer_depth));
+            float2 _e31 = current_uv;
+            const float _e32 = get_debug_height(_e31);
+            float _e33 = current_depth;
+            if ((_e33 >= _e32)) {
+                float _e35 = current_depth;
+                float after_depth = (_e32 - _e35);
+                float _e37 = prev_depth_map;
+                float _e38 = current_depth;
+                float before_depth = (_e37 - (_e38 - layer_depth));
+                float weight = (after_depth / (after_depth - before_depth));
+                float2 _e43 = current_uv;
+                float2 _e44 = prev_uv;
+                return lerp(_e43, _e44, weight);
+            }
+            float2 _e46 = current_uv;
+            prev_uv = _e46;
+            prev_depth_map = _e32;
+        }
+    }
+    float2 _e50 = current_uv;
+    return _e50;
 }
 
 MaterialProperties ConstructMaterialProperties(float arg0, float arg1) {
@@ -137,7 +203,7 @@ StaticLightContribution compute_static_lighting(float3 normal, float3 world_pos,
 {
     float3 total_diffuse = (0.0).xxx;
     float3 total_specular = (0.0).xxx;
-    int i = int(0);
+    int i_1 = int(0);
     float range_falloff = (float)0;
 
     float _e7 = staticLightParams.x;
@@ -148,44 +214,44 @@ StaticLightContribution compute_static_lighting(float3 normal, float3 world_pos,
         return staticlightcontribution;
     }
     float shininess = max(material.shininess, 1.0);
-    bool loop_init = true;
+    bool loop_init_1 = true;
     while(true) {
-        if (!loop_init) {
-            int _e105 = i;
-            i = asint(asuint(_e105) + asuint(int(1)));
+        if (!loop_init_1) {
+            int _e105 = i_1;
+            i_1 = asint(asuint(_e105) + asuint(int(1)));
         }
-        loop_init = false;
-        int _e37 = i;
+        loop_init_1 = false;
+        int _e37 = i_1;
         if ((_e37 < light_count)) {
         } else {
             break;
         }
         {
-            int _e41 = i;
+            int _e41 = i_1;
             float4 light_data = staticLights[min(uint(uint(_e41)), 15u)];
             float3 to_light = (light_data.xyz - world_pos);
-            float dist = length(to_light);
-            if ((dist <= 0.0001)) {
+            float dist_1 = length(to_light);
+            if ((dist_1 <= 0.0001)) {
                 continue;
             }
-            float3 dir = (to_light / (dist).xxx);
+            float3 dir = (to_light / (dist_1).xxx);
             float ndotl = max(dot(normal, dir), 0.0);
             if ((ndotl <= 0.0)) {
                 continue;
             }
             range_falloff = 1.0;
             if ((range > 0.0)) {
-                if ((dist > range)) {
+                if ((dist_1 > range)) {
                     continue;
                 }
-                range_falloff = clamp((1.0 - (dist / range)), 0.0, 1.0);
+                range_falloff = clamp((1.0 - (dist_1 / range)), 0.0, 1.0);
             }
-            float inv = (1.0 / ((1.0 + (0.09 * dist)) + ((0.032 * dist) * dist)));
+            float inv = (1.0 / ((1.0 + (0.09 * dist_1)) + ((0.032 * dist_1) * dist_1)));
             float _e78 = range_falloff;
             float attenuation = (inv * _e78);
             float3 H = normalize((dir + view_dir_1));
             float spec = pow(max(dot(normal, H), 0.0), shininess);
-            int _e88 = i;
+            int _e88 = i_1;
             float4 _e91 = staticLightColors[min(uint(uint(_e88)), 15u)];
             float3 light_color = _e91.xyz;
             float3 _e95 = total_diffuse;
@@ -224,19 +290,19 @@ FlashlightContribution compute_flashlight(float3 normal_1, float3 world_pos_1, f
         return flashlightcontribution_1;
     }
     float2 pixel = frag_coord_1.xy;
-    float2 center_ = float2((width * 0.5), (height * 0.5));
-    float2 delta = ((pixel - center_) / (min_dim).xx);
+    float2 center_1 = float2((width * 0.5), (height * 0.5));
+    float2 delta = ((pixel - center_1) / (min_dim).xx);
     float radius = flashlightParams.w;
     if ((radius <= 0.0)) {
         const FlashlightContribution flashlightcontribution_2 = ConstructFlashlightContribution(0.0, 0.0);
         return flashlightcontribution_2;
     }
-    float dist_1 = length(delta);
-    if ((dist_1 > radius)) {
+    float dist_2 = length(delta);
+    if ((dist_2 > radius)) {
         const FlashlightContribution flashlightcontribution_3 = ConstructFlashlightContribution(0.0, 0.0);
         return flashlightcontribution_3;
     }
-    float falloff = clamp((dist_1 / radius), 0.0, 1.0);
+    float falloff = clamp((dist_2 / radius), 0.0, 1.0);
     float _e70 = flashlightParams.y;
     float base_intensity = (((1.0 - (falloff * falloff)) * _e70) * 0.35);
     float _e77 = flashlightDir.w;
@@ -283,14 +349,63 @@ FlashlightContribution compute_flashlight(float3 normal_1, float3 world_pos_1, f
 
 float4 main_(FragmentInput_main fragmentinput_main) : SV_Target0
 {
-    FragmentInput input = { fragmentinput_main.surfaceType, fragmentinput_main.uv_1, fragmentinput_main.normal_2, fragmentinput_main.worldPos };
+    FragmentInput input = { fragmentinput_main.surfaceType, fragmentinput_main.uv_4, fragmentinput_main.normal_2, fragmentinput_main.worldPos };
     float4 frag_coord = fragmentinput_main.frag_coord_2;
-    float3 baseColor = (float3)0;
+    float3 n = (float3)0;
     float3 view_dir = (float3)0;
+    float3 tangent = (float3)0;
+    float2 uv = (float2)0;
+    float3 baseColor = (float3)0;
     float3 color = (float3)0;
 
+    n = normalize(input.normal);
+    float4 _e7 = cameraPos;
+    view_dir = (_e7.xyz - input.worldPos);
+    float3 _e12 = view_dir;
+    float view_len = length(_e12);
+    if ((view_len > 0.0001)) {
+        float3 _e16 = view_dir;
+        view_dir = (_e16 / (view_len).xxx);
+    } else {
+        view_dir = float3(0.0, 0.0, 1.0);
+    }
+    float3 _e23 = n;
+    float3 _e24 = view_dir;
+    if ((dot(_e23, _e24) < 0.0)) {
+        float3 _e28 = n;
+        n = -(_e28);
+    }
+    float4 _e32 = cameraDir;
+    float3 cam_dir = _e32.xyz;
+    float3 bitangent = float3(0.0, 1.0, 0.0);
+    float3 _e38 = n;
+    tangent = normalize(cross(bitangent, _e38));
+    float _e43 = n.z;
+    float _e46 = n.x;
+    if ((abs(_e43) > abs(_e46))) {
+        float _e50 = n.z;
+        if ((_e50 < 0.0)) {
+            float3 _e53 = tangent;
+            tangent = -(_e53);
+        }
+    } else {
+        float _e56 = n.x;
+        if ((_e56 > 0.0)) {
+            float3 _e59 = tangent;
+            tangent = -(_e59);
+        }
+    }
+    float3 _e61 = tangent;
+    float3 _e64 = n;
+    float3 cam_tangent = float3(dot(cam_dir, _e61), dot(cam_dir, bitangent), dot(cam_dir, _e64));
+    uv = input.uv;
+    if (((input.surfaceType >= 0.5) && (input.surfaceType < 1.5))) {
+        const float2 _e79 = parallax_occlusion(input.uv, cam_tangent, 0.15, int(32));
+        uv = _e79;
+    }
     float4 floorColor = floorTexture.Sample(sharedSampler, input.uv);
-    float4 wallColor = wallTexture.Sample(sharedSampler, input.uv);
+    float2 _e86 = uv;
+    float4 wallColor = wallTexture.Sample(sharedSampler, _e86);
     float4 ceilingColor = ceilingTexture.Sample(sharedSampler, input.uv);
     float4 sphereColor = sphereTexture.Sample(sharedSampler, input.uv);
     float4 bookColor = bookTexture.Sample(sharedSampler, input.uv);
@@ -300,13 +415,32 @@ float4 main_(FragmentInput_main fragmentinput_main) : SV_Target0
     } else {
         if ((input.surfaceType < 1.5)) {
             baseColor = wallColor.xyz;
+            float _e116 = staticLightParams.w;
+            if ((_e116 > 0.5)) {
+                if (((((input.uv.x >= 0.4) && (input.uv.x <= 0.6)) && (input.uv.y >= 0.4)) && (input.uv.y <= 0.6))) {
+                    float _e139 = n.x;
+                    float _e145 = n.y;
+                    float _e151 = n.z;
+                    baseColor = float3(((_e139 * 0.5) + 0.5), ((_e145 * 0.5) + 0.5), ((_e151 * 0.5) + 0.5));
+                    float _e159 = uv.x;
+                    float grid_x = frac((_e159 / 0.05));
+                    float _e163 = uv.y;
+                    float grid_y = frac((_e163 / 0.05));
+                    if (((grid_x < 0.1) || (grid_y < 0.1))) {
+                        baseColor = float3(1.0, 1.0, 0.0);
+                    }
+                    if (((((input.uv.x < (0.4 + 0.01)) || (input.uv.x > (0.6 - 0.01))) || (input.uv.y < (0.4 + 0.01))) || (input.uv.y > (0.6 - 0.01)))) {
+                        baseColor = float3(1.0, 0.0, 0.0);
+                    }
+                }
+            }
         } else {
             if ((input.surfaceType < 2.5)) {
                 baseColor = ceilingColor.xyz;
             } else {
                 if ((input.surfaceType < 3.5)) {
-                    const float _e47 = checker(input.uv);
-                    baseColor = (float3(0.7, 0.5, 0.3) * _e47);
+                    const float _e215 = checker(input.uv);
+                    baseColor = (float3(0.7, 0.5, 0.3) * _e215);
                 } else {
                     if ((input.surfaceType < 4.5)) {
                         baseColor = sphereColor.xyz;
@@ -321,42 +455,33 @@ float4 main_(FragmentInput_main fragmentinput_main) : SV_Target0
             }
         }
     }
-    float3 n = normalize(input.normal);
-    const MaterialProperties _e61 = get_material_properties(input.surfaceType);
-    float4 _e64 = cameraPos;
-    view_dir = (_e64.xyz - input.worldPos);
-    float3 _e69 = view_dir;
-    float view_len = length(_e69);
-    if ((view_len > 0.0001)) {
-        float3 _e73 = view_dir;
-        view_dir = (_e73 / (view_len).xxx);
-    } else {
-        view_dir = float3(0.0, 0.0, 1.0);
-    }
-    float3 _e81 = view_dir;
-    const StaticLightContribution _e82 = compute_static_lighting(n, input.worldPos, _e81, _e61);
-    float3 _e84 = view_dir;
-    const FlashlightContribution _e85 = compute_flashlight(n, input.worldPos, frag_coord, _e84, _e61);
-    float _e89 = screenParams.w;
-    if ((_e89 > 0.5)) {
+    const MaterialProperties _e227 = get_material_properties(input.surfaceType);
+    float3 _e228 = n;
+    float3 _e230 = view_dir;
+    const StaticLightContribution _e231 = compute_static_lighting(_e228, input.worldPos, _e230, _e227);
+    float3 _e232 = n;
+    float3 _e234 = view_dir;
+    const FlashlightContribution _e235 = compute_flashlight(_e232, input.worldPos, frag_coord, _e234, _e227);
+    float _e239 = screenParams.w;
+    if ((_e239 > 0.5)) {
         float3 mapped = ((normalize(input.normal) * 0.5) + (0.5).xxx);
         return float4(mapped, 1.0);
     }
     float ambient = staticLightParams.z;
-    float4 _e108 = cameraPos;
-    float fogFactor = exp((-(distance(input.worldPos, _e108.xyz)) * 0.08));
-    float3 _e115 = baseColor;
-    color = (_e115 * (ambient + _e85.diffuse));
-    float3 _e120 = baseColor;
-    float3 _e123 = color;
-    color = (_e123 + (_e120 * _e82.diffuse));
-    float3 _e126 = color;
-    color = (_e126 + _e82.specular);
-    float3 _e134 = color;
-    color = (_e134 + (_e85.specular * float3(1.0, 0.95, 0.85)));
-    float4 _e138 = fogColor;
-    float3 _e140 = color;
-    color = lerp(_e138.xyz, _e140, fogFactor);
-    float3 _e142 = color;
-    return float4(_e142, 1.0);
+    float4 _e258 = cameraPos;
+    float fogFactor = exp((-(distance(input.worldPos, _e258.xyz)) * 0.08));
+    float3 _e265 = baseColor;
+    color = (_e265 * (ambient + _e235.diffuse));
+    float3 _e270 = baseColor;
+    float3 _e273 = color;
+    color = (_e273 + (_e270 * _e231.diffuse));
+    float3 _e276 = color;
+    color = (_e276 + _e231.specular);
+    float3 _e284 = color;
+    color = (_e284 + (_e235.specular * float3(1.0, 0.95, 0.85)));
+    float4 _e288 = fogColor;
+    float3 _e290 = color;
+    color = lerp(_e288.xyz, _e290, fogFactor);
+    float3 _e292 = color;
+    return float4(_e292, 1.0);
 }
