@@ -322,8 +322,8 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
         let tbn = build_tbn(n);
         let view_ts = transpose(tbn) * view_dir;
         var uv = input.uv * 8.0;
-        if (distance(uniforms.cameraPos.xyz, input.worldPos) < 5.0) {
-            uv = parallax_occlusion(uv, view_ts, n, 0.16, 48);
+        if (distance(uniforms.cameraPos.xyz, input.worldPos) < 15.0) {
+            uv = parallax_occlusion(uv, view_ts, n, 0.35, 72);
         }
         sampledAlbedo = textureSample(debugAlbedoTexture, sharedSampler, uv).rgb;
         sampledNormal = textureSample(normalTexture, sharedSampler, uv).rgb * 2.0 - 1.0;

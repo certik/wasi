@@ -469,10 +469,10 @@ fragment main_Output main_(
         metal::float3 view_ts_1 = metal::transpose(_e131) * _e133;
         uv = input.uv * 8.0;
         metal::float4 _e141 = uniforms.cameraPos;
-        if (metal::distance(_e141.xyz, input.worldPos) < 5.0) {
+        if (metal::distance(_e141.xyz, input.worldPos) < 15.0) {
             metal::float2 _e147 = uv;
             metal::float3 _e148 = n;
-            metal::float2 _e151 = parallax_occlusion(_e147, view_ts_1, _e148, 0.16, 48, heightTexture, sharedSampler);
+            metal::float2 _e151 = parallax_occlusion(_e147, view_ts_1, _e148, 0.35, 72, heightTexture, sharedSampler);
             uv = _e151;
         }
         metal::float2 _e154 = uv;
