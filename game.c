@@ -2373,10 +2373,6 @@ static void update_game(GameApp *app) {
 
     gm_update_frame(state, (float)app->window_width, (float)app->window_height);
 
-    // Debug: Always log vertex count and check for issues
-    static uint32_t frame_count = 0;
-    frame_count++;
-
     mat4 projection = mat4_perspective(state->fov, (float)app->window_width / (float)app->window_height, 0.05f, 100.0f);
     mat4 view = mat4_look_at_fps(state->camera_x, state->camera_y, state->camera_z,
                                  state->yaw, state->pitch);
@@ -2394,6 +2390,10 @@ static void update_game(GameApp *app) {
 
     build_overlay(app);
 
+    // Debug: Always log vertex count and check for issues
+    static uint32_t frame_count = 0;
+    frame_count++;
+
     // Unconditional log to verify this code is running
     if (frame_count <= 3) {
         SDL_Log("=== UPDATE_GAME Frame %u: overlay_vertex_count=%u ===", frame_count, app->overlay_vertex_count);
@@ -2406,9 +2406,6 @@ static void update_game(GameApp *app) {
             base_memcpy(mapped, app->overlay_cpu_vertices, sizeof(OverlayVertex) * app->overlay_vertex_count);
             SDL_UnmapGPUTransferBuffer(app->device, app->overlay_transfer_buffer);
         }
-    }
-    if (frame_count <= 3) {
-        SDL_Log("update_game: END frame %u", frame_count);
     }
 }
 
@@ -2510,7 +2507,6 @@ static int render_game(GameApp *app) {
 
     SDL_DrawGPUIndexedPrimitives(render_pass, app->scene_index_count, 1, 0, 0, 0);
 
-    // Temporarily disable overlay to test scene stability
     if (app->overlay_vertex_count > 0) {
         SDL_Log("render_game: Binding overlay pipeline (ptr=%p)", (void*)app->overlay_pipeline);
         if (!app->overlay_pipeline) {
