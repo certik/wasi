@@ -1,5 +1,6 @@
 #include <base/io.h>
 #include <base/arena.h>
+#include <base/scratch.h>
 #include <base/buddy.h>
 #include <base/base_string.h>
 #include <base/hashtable.h>
@@ -152,6 +153,8 @@ static bool parse_int(string s, int64_t *result) {
 
 int main(void) {
     // Get command line arguments
+    Scratch scratch = scratch_begin();
+
     size_t argc;
     size_t argv_buf_size;
     if (wasi_args_sizes_get(&argc, &argv_buf_size) != 0) {
@@ -159,8 +162,8 @@ int main(void) {
         return 1;
     }
 
-    char **argv = (char **)buddy_alloc(argc * sizeof(char*));
-    char *argv_buf = (char *)buddy_alloc(argv_buf_size);
+    char **argv = (char **)arena_alloc(scratch.arena, argc * sizeof(char*));
+    char *argv_buf = (char *)arena_alloc(scratch.arena, argv_buf_size);
     if (wasi_args_get(argv, argv_buf) != 0) {
         println(str_lit("Error: Failed to get arguments"));
         buddy_free(argv);
