@@ -2455,6 +2455,7 @@ static int complete_gpu_setup(GameApp *app) {
     }
 
     string scene_vs_code = load_shader_source(&g_scene_vertex_shader, app->scene_vertex_path);
+    SDL_Log("Loaded scene vertex shader: %zu bytes from %s", scene_vs_code.size, app->scene_vertex_path);
     SDL_GPUShaderCreateInfo shader_info = {
         .code = (const Uint8 *)scene_vs_code.str,
         .code_size = shader_code_size(scene_vs_code),
@@ -2472,13 +2473,14 @@ static int complete_gpu_setup(GameApp *app) {
         SDL_Log("Failed to create scene vertex shader: %s", SDL_GetError());
         return -1;
     }
+    SDL_Log("Created scene vertex shader successfully");
 
     string scene_fs_code = load_shader_source(&g_scene_fragment_shader, app->scene_fragment_path);
     shader_info.code = (const Uint8 *)scene_fs_code.str;
     shader_info.code_size = shader_code_size(scene_fs_code);
     shader_info.entrypoint = shader_entrypoint;
     shader_info.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
-    shader_info.num_samplers = 6;
+    shader_info.num_samplers = 7;  // 6 textures + 1 sampler in set 2 = 7 bindings
     shader_info.num_uniform_buffers = 1;
     shader_info.num_storage_buffers = 0;
     shader_info.num_storage_textures = 0;
@@ -2891,17 +2893,20 @@ static void update_game(GameApp *app) {
 }
 
 static int render_game(GameApp *app) {
+    SDL_Log("render_game: START");
     SDL_GPUCommandBuffer *cmdbuf = SDL_AcquireGPUCommandBuffer(app->device);
     if (!cmdbuf) {
         SDL_Log("SDL_AcquireGPUCommandBuffer failed: %s", SDL_GetError());
         return -1;
     }
+    SDL_Log("render_game: Got command buffer");
 
     SDL_GPUTexture *swapchain_texture;
     if (!SDL_WaitAndAcquireGPUSwapchainTexture(cmdbuf, app->window, &swapchain_texture, NULL, NULL)) {
         SDL_Log("SDL_WaitAndAcquireGPUSwapchainTexture failed: %s", SDL_GetError());
         return -1;
     }
+    SDL_Log("render_game: Got swapchain texture");
 
     // Always upload if dirty, even if vertex_count is 0 (to clear stale data)
     if (app->overlay_dirty) {
@@ -2918,8 +2923,10 @@ static int render_game(GameApp *app) {
         SDL_UploadToGPUBuffer(copy_pass, &src, &dst, true);
         SDL_EndGPUCopyPass(copy_pass);
         app->overlay_dirty = false;
+        SDL_Log("render_game: Uploaded overlay data");
     }
 
+    SDL_Log("render_game: Setting up render pass");
     SDL_GPUColorTargetInfo color_target = {
         .texture = swapchain_texture,
         .clear_color = (SDL_FColor){0.5f, 0.65f, 0.9f, 1.0f},
@@ -2940,54 +2947,37 @@ static int render_game(GameApp *app) {
     SDL_PushGPUVertexUniformData(cmdbuf, 0, &app->scene_uniforms, sizeof(SceneUniforms));
     SDL_PushGPUFragmentUniformData(cmdbuf, 0, &app->scene_uniforms, sizeof(SceneUniforms));
 
-    // Debug: Check sphere texture is valid
-    if (!app->sphere_texture) {
-        SDL_Log("ERROR: sphere_texture is NULL!");
+    // Bind scene textures and sampler
+    if (!app->floor_texture || !app->wall_texture || !app->ceiling_texture || !app->floor_sampler) {
+        SDL_Log("ERROR: Missing textures or sampler!");
+        SDL_EndGPURenderPass(render_pass);
+        return -1;
     }
 
-    // Bind textures: slot 0=floor, 1=wall, 2=ceiling, 3=sphere, 4=book, 5=chair
-    SDL_GPUTextureSamplerBinding texture_bindings[6] = {
-        {
-            .texture = app->floor_texture,
-            .sampler = app->floor_sampler,
-        },
-        {
-            .texture = app->wall_texture,
-            .sampler = app->wall_sampler,
-        },
-        {
-            .texture = app->ceiling_texture,
-            .sampler = app->ceiling_sampler,
-        },
-        {
-            .texture = app->sphere_texture,
-            .sampler = app->sphere_sampler,
-        },
-        {
-            .texture = app->book_texture,
-            .sampler = app->book_sampler,
-        },
-        {
-            .texture = app->chair_texture,
-            .sampler = app->chair_sampler,
-        },
+    // Bind all resources: 6 textures + 1 sampler = 7 total bindings in set 2
+    SDL_GPUTextureSamplerBinding texture_bindings[7] = {
+        { .texture = app->floor_texture, .sampler = app->floor_sampler },
+        { .texture = app->wall_texture, .sampler = app->floor_sampler },
+        { .texture = app->ceiling_texture, .sampler = app->floor_sampler },
+        { .texture = app->sphere_texture, .sampler = app->floor_sampler },
+        { .texture = app->book_texture, .sampler = app->floor_sampler },
+        { .texture = app->chair_texture, .sampler = app->floor_sampler },
+        { .texture = app->floor_texture, .sampler = app->floor_sampler },  // Dummy for sampler binding
     };
 
-    // Debug: Log binding info once
-    static int logged = 0;
-    if (!logged) {
-        SDL_Log("Binding %d texture/sampler pairs:", (int)SDL_arraysize(texture_bindings));
-        for (int i = 0; i < (int)SDL_arraysize(texture_bindings); i++) {
-            SDL_Log("  [%d] texture=%p, sampler=%p", i,
-                    (void*)texture_bindings[i].texture,
-                    (void*)texture_bindings[i].sampler);
-        }
-        logged = 1;
+    SDL_Log("render_game: Binding fragment samplers");
+    SDL_BindGPUFragmentSamplers(render_pass, 0, texture_bindings, 7);
+    SDL_Log("render_game: Fragment samplers bound");
+
+
+    if (!app->scene_vertex_buffer || !app->scene_index_buffer) {
+        SDL_Log("ERROR: Scene buffers not initialized! vertex=%p index=%p",
+                (void*)app->scene_vertex_buffer, (void*)app->scene_index_buffer);
+        SDL_EndGPURenderPass(render_pass);
+        return -1;
     }
 
-    SDL_BindGPUVertexSamplers(render_pass, 0, texture_bindings, SDL_arraysize(texture_bindings));
-    SDL_BindGPUFragmentSamplers(render_pass, 0, texture_bindings, SDL_arraysize(texture_bindings));
-
+    SDL_Log("render_game: Binding vertex buffers (ptr=%p)", (void*)app->scene_vertex_buffer);
     SDL_GPUBufferBinding vertex_binding = {
         .buffer = app->scene_vertex_buffer,
         .offset = 0,
@@ -3003,17 +2993,30 @@ static int render_game(GameApp *app) {
     SDL_DrawGPUIndexedPrimitives(render_pass, app->scene_index_count, 1, 0, 0, 0);
 
     if (app->overlay_vertex_count > 0) {
+        SDL_Log("render_game: Binding overlay pipeline (ptr=%p)", (void*)app->overlay_pipeline);
+        if (!app->overlay_pipeline) {
+            SDL_Log("ERROR: overlay_pipeline is NULL!");
+            SDL_EndGPURenderPass(render_pass);
+            return -1;
+        }
         SDL_BindGPUGraphicsPipeline(render_pass, app->overlay_pipeline);
+        SDL_Log("render_game: Binding overlay vertex buffer");
         SDL_GPUBufferBinding overlay_binding = {
             .buffer = app->overlay_vertex_buffer,
             .offset = 0,
         };
         SDL_BindGPUVertexBuffers(render_pass, 0, &overlay_binding, 1);
+        SDL_Log("render_game: Drawing overlay (vertex_count=%u)", app->overlay_vertex_count);
         SDL_DrawGPUPrimitives(render_pass, app->overlay_vertex_count, 1, 0, 0);
+        SDL_Log("render_game: Overlay drawn");
     }
 
+    SDL_Log("render_game: Ending render pass");
     SDL_EndGPURenderPass(render_pass);
+    SDL_Log("render_game: Submitting command buffer (ptr=%p)", (void*)cmdbuf);
     SDL_SubmitGPUCommandBuffer(cmdbuf);
+    SDL_Log("render_game: Command buffer submitted successfully");
+    SDL_Log("render_game: END");
     return 0;
 }
 
@@ -3280,13 +3283,18 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     }
 
     update_game(app);
-    if (render_game(app) < 0) {
+    SDL_Log("SDL_AppIterate: update_game returned");
+
+    int render_result = render_game(app);
+    SDL_Log("SDL_AppIterate: render_game returned %d", render_result);
+    if (render_result < 0) {
         return SDL_APP_FAILURE;
     }
 
     // Check if we've reached the frame limit for testing
     if (app->test_frames_max > 0) {
         app->test_frames_count++;
+        SDL_Log("SDL_AppIterate: Frame %d/%d complete", app->test_frames_count, app->test_frames_max);
         if (app->test_frames_count >= app->test_frames_max) {
             return SDL_APP_SUCCESS;  // Exit after N frames
         }

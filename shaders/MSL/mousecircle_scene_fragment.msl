@@ -42,30 +42,25 @@ struct main_Output {
 fragment main_Output main_(
   main_Input varyings [[stage_in]]
 , metal::float4 position [[position]]
-, constant SceneUniforms& uniforms [[buffer(0)]]
 , metal::texture2d<float, metal::access::sample> floorTexture [[texture(0)]]
-, metal::sampler floorSampler [[sampler(0)]]
 , metal::texture2d<float, metal::access::sample> wallTexture [[texture(1)]]
-, metal::sampler wallSampler [[sampler(1)]]
 , metal::texture2d<float, metal::access::sample> ceilingTexture [[texture(2)]]
-, metal::sampler ceilingSampler [[sampler(2)]]
 , metal::texture2d<float, metal::access::sample> sphereTexture [[texture(3)]]
-, metal::sampler sphereSampler [[sampler(3)]]
 , metal::texture2d<float, metal::access::sample> bookTexture [[texture(4)]]
-, metal::sampler bookSampler [[sampler(4)]]
 , metal::texture2d<float, metal::access::sample> chairTexture [[texture(5)]]
-, metal::sampler chairSampler [[sampler(5)]]
+, metal::sampler sharedSampler [[sampler(0)]]
+, constant SceneUniforms& uniforms [[buffer(0)]]
 ) {
     const VertexOutput input = { position, varyings.surfaceType, {}, varyings.uv, varyings.normal, varyings.worldPos };
     metal::float3 baseColor = {};
     float diff = {};
     metal::float3 color = {};
-    metal::float4 floorColor = floorTexture.sample(floorSampler, input.uv);
-    metal::float4 wallColor = wallTexture.sample(wallSampler, input.uv);
-    metal::float4 ceilingColor = ceilingTexture.sample(ceilingSampler, input.uv);
-    metal::float4 sphereColor = sphereTexture.sample(sphereSampler, input.uv);
-    metal::float4 bookColor = bookTexture.sample(bookSampler, input.uv);
-    metal::float4 chairColor = chairTexture.sample(chairSampler, input.uv);
+    metal::float4 floorColor = floorTexture.sample(sharedSampler, input.uv);
+    metal::float4 wallColor = wallTexture.sample(sharedSampler, input.uv);
+    metal::float4 ceilingColor = ceilingTexture.sample(sharedSampler, input.uv);
+    metal::float4 sphereColor = sphereTexture.sample(sharedSampler, input.uv);
+    metal::float4 bookColor = bookTexture.sample(sharedSampler, input.uv);
+    metal::float4 chairColor = chairTexture.sample(sharedSampler, input.uv);
     if (input.surfaceType < 0.5) {
         baseColor = floorColor.xyz;
     } else {
@@ -98,17 +93,14 @@ fragment main_Output main_(
     if ((input.surfaceType >= 1.5) && (input.surfaceType < 2.5)) {
         diff = 1.0;
     }
-    if ((input.surfaceType >= 3.5) && (input.surfaceType < 4.5)) {
-        diff = 1.0;
-    }
-    metal::float4 _e87 = uniforms.cameraPos;
-    float fogFactor = metal::exp(-(metal::distance(input.worldPos, _e87.xyz)) * 0.08);
-    metal::float3 _e94 = baseColor;
-    float _e95 = diff;
-    color = _e94 * _e95;
-    metal::float4 _e100 = uniforms.fogColor;
-    metal::float3 _e102 = color;
-    color = metal::mix(_e100.xyz, _e102, fogFactor);
-    metal::float3 _e104 = color;
-    return main_Output { metal::float4(_e104, 1.0) };
+    metal::float4 _e79 = uniforms.cameraPos;
+    float fogFactor = metal::exp(-(metal::distance(input.worldPos, _e79.xyz)) * 0.08);
+    metal::float3 _e86 = baseColor;
+    float _e87 = diff;
+    color = _e86 * _e87;
+    metal::float4 _e92 = uniforms.fogColor;
+    metal::float3 _e94 = color;
+    color = metal::mix(_e92.xyz, _e94, fogFactor);
+    metal::float3 _e96 = color;
+    return main_Output { metal::float4(_e96, 1.0) };
 }

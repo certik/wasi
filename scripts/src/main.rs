@@ -187,7 +187,7 @@ fn generate_msl(
     let (msl_source, _) = msl::write_string(module, module_info, &options, &pipeline_options)
         .map_err(|e| format!("MSL generation error: {:?}", e))?;
 
-    // Naga generates "main_" for MSL - keep it as-is (no post-processing needed)
+    // WGSL uses main_() directly, so Naga generates main_() for all backends
     let msl_final = msl_source;
 
     // Add header comment (each line prefixed with //)
@@ -308,8 +308,8 @@ fn generate_hlsl(
     // Post-process HLSL for SDL3 D3D12 compatibility
     let mut hlsl_fixed = fix_hlsl_for_sdl3(&hlsl_source);
 
-    // Naga generates "main" for HLSL but "main_" for MSL
-    // Rename to "main_" for consistency across all backends
+    // Naga always generates "main" for HLSL regardless of WGSL function name
+    // Rename to "main_" for consistency with SPIRV and MSL
     hlsl_fixed = hlsl_fixed.replace("main(", "main_(");
 
     // Add header comment (each line prefixed with //)
@@ -518,9 +518,11 @@ fn generate_spirv(
     header_comment: &str,
 ) -> Result<(), String> {
     // Configure SPIR-V options
+    // NOTE: Do not use ADJUST_COORDINATE_SPACE flag - SDL3 GPU handles coordinate system
+    // conversion automatically. Using the flag would cause double-flipping on Vulkan.
     let options = spv::Options {
         lang_version: (1, 0),
-        flags: spv::WriterFlags::DEBUG | spv::WriterFlags::ADJUST_COORDINATE_SPACE,
+        flags: spv::WriterFlags::DEBUG,
         capabilities: None,
         bounds_check_policies: Default::default(),
         zero_initialize_workgroup_memory: spv::ZeroInitializeWorkgroupMemoryMode::Polyfill,
@@ -555,5 +557,3 @@ fn generate_spirv(
 
     Ok(())
 }
-
-
