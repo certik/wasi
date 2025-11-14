@@ -1,4 +1,12 @@
 const MAX_STATIC_LIGHTS: u32 = 16u;
+const MATERIAL_COUNT: u32 = 7u;
+
+struct Material {
+    metalness: f32,
+    roughness: f32,
+    ior: f32,
+    emissiveIntensity: f32,
+};
 
 struct SceneUniforms {
     mvp: mat4x4f,
@@ -11,6 +19,7 @@ struct SceneUniforms {
     flashlightDir: vec4f,
     flashlightParams: vec4f,
     screenParams: vec4f,
+    materials: array<Material, MATERIAL_COUNT>,
 };
 
 struct VertexInput {

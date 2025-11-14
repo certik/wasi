@@ -79,6 +79,7 @@ typedef __builtin_va_list __gnuc_va_list;
 #define OBJ_MAX_TEMP_VERTICES 8000
 #define KEY_SHIFT 16
 #define KEY_CTRL 17
+#define MATERIAL_COUNT 7
 
 typedef struct {
     float *positions;
@@ -161,6 +162,13 @@ _Static_assert(offsetof(OverlayVertex, color) == sizeof(float) * 4, "OverlayVert
 _Static_assert(sizeof(OverlayVertex) == sizeof(float) * 8, "OverlayVertex unexpected size");
 
 typedef struct {
+    float metalness;
+    float roughness;
+    float ior;
+    float emissive_intensity;
+} SceneMaterial;
+
+typedef struct {
     mat4 mvp;
     float camera_pos[4];
     float fog_color[4];
@@ -171,7 +179,18 @@ typedef struct {
     float flashlight_direction[4];
     float flashlight_params[4];
     float screen_params[4];
+    SceneMaterial materials[MATERIAL_COUNT];
 } SceneUniforms;
+
+static const SceneMaterial g_default_materials[MATERIAL_COUNT] = {
+    {0.02f, 0.85f, 1.45f, 0.0f}, // Floor
+    {0.05f, 0.35f, 1.50f, 1.5f}, // Walls (PBR debug)
+    {0.02f, 0.80f, 1.40f, 0.0f}, // Ceiling tiles
+    {0.02f, 0.55f, 1.45f, 0.0f}, // Checker panels / accents
+    {1.00f, 0.20f, 2.00f, 0.0f}, // Sphere
+    {0.05f, 0.40f, 1.45f, 0.0f}, // Book
+    {0.05f, 0.45f, 1.45f, 0.0f}, // Chair and others
+};
 
 typedef struct {
     SDL_Window *window;
@@ -194,6 +213,11 @@ typedef struct {
     SDL_GPUTexture *sphere_texture;
     SDL_GPUTexture *book_texture;
     SDL_GPUTexture *chair_texture;
+    SDL_GPUTexture *debug_albedo_texture;
+    SDL_GPUTexture *debug_normal_texture;
+    SDL_GPUTexture *debug_metallic_roughness_texture;
+    SDL_GPUTexture *debug_emissive_texture;
+    SDL_GPUTexture *debug_height_texture;
     SDL_GPUSampler *floor_sampler;   // slot 0
     SDL_GPUSampler *wall_sampler;    // slot 1
     SDL_GPUSampler *ceiling_sampler; // slot 2
@@ -246,6 +270,11 @@ static Arena *g_shader_arena = NULL;
 #define SPHERE_TEXTURE_PATH "assets/Land_ocean_ice_2048.jpg"
 #define BOOK_TEXTURE_PATH "assets/checker_board_4k.png"
 #define CHAIR_TEXTURE_PATH "assets/chair_02_diff_1k.jpg"
+#define DEBUG_ALBEDO_TEXTURE_PATH "assets/debug_albedo.png"
+#define DEBUG_NORMAL_TEXTURE_PATH "assets/debug_normal.png"
+#define DEBUG_METALLIC_ROUGHNESS_TEXTURE_PATH "assets/debug_metallic_roughness.png"
+#define DEBUG_EMISSIVE_TEXTURE_PATH "assets/debug_emissive.png"
+#define DEBUG_HEIGHT_TEXTURE_PATH "assets/debug_height.png"
 #define SPHERE_OBJ_PATH "assets/equirectangular_sphere.obj"
 #define BOOK_OBJ_PATH "assets/book.obj"
 #define CHAIR_OBJ_PATH "assets/chair.obj"
@@ -2752,6 +2781,11 @@ static int complete_gpu_setup(GameApp *app) {
         {SPHERE_TEXTURE_PATH, "sphere", &app->sphere_texture},
         {BOOK_TEXTURE_PATH, "book", &app->book_texture},
         {CHAIR_TEXTURE_PATH, "chair", &app->chair_texture},
+        {DEBUG_ALBEDO_TEXTURE_PATH, "debug_albedo", &app->debug_albedo_texture},
+        {DEBUG_NORMAL_TEXTURE_PATH, "debug_normal", &app->debug_normal_texture},
+        {DEBUG_METALLIC_ROUGHNESS_TEXTURE_PATH, "debug_metallic_roughness", &app->debug_metallic_roughness_texture},
+        {DEBUG_EMISSIVE_TEXTURE_PATH, "debug_emissive", &app->debug_emissive_texture},
+        {DEBUG_HEIGHT_TEXTURE_PATH, "debug_height", &app->debug_height_texture},
     };
 
     for (size_t i = 0; i < SDL_arraysize(texture_requests); i++) {
@@ -3002,6 +3036,7 @@ static void update_game(GameApp *app) {
     float min_dim = (float)((app->window_width < app->window_height) ? app->window_width : app->window_height);
     app->scene_uniforms.screen_params[2] = min_dim;
     app->scene_uniforms.screen_params[3] = state->normal_debug ? 1.0f : 0.0f;
+    base_memcpy(app->scene_uniforms.materials, g_default_materials, sizeof(g_default_materials));
 
     build_overlay(app);
 
@@ -3080,25 +3115,34 @@ static int render_game(GameApp *app) {
     SDL_PushGPUFragmentUniformData(cmdbuf, 0, &app->scene_uniforms, sizeof(SceneUniforms));
 
     // Bind scene textures and sampler
-    if (!app->floor_texture || !app->wall_texture || !app->ceiling_texture || !app->floor_sampler) {
+    if (!app->floor_texture || !app->wall_texture || !app->ceiling_texture ||
+        !app->sphere_texture || !app->book_texture || !app->chair_texture ||
+        !app->debug_albedo_texture || !app->debug_normal_texture ||
+        !app->debug_metallic_roughness_texture || !app->debug_emissive_texture ||
+        !app->debug_height_texture || !app->floor_sampler) {
         SDL_Log("ERROR: Missing textures or sampler!");
         SDL_EndGPURenderPass(render_pass);
         return -1;
     }
 
-    // Bind all resources: 6 textures + 1 sampler = 7 total bindings in set 2
-    SDL_GPUTextureSamplerBinding texture_bindings[7] = {
+    // Bind all resources: 11 textures + 1 sampler = 12 total bindings in set 2
+    SDL_GPUTextureSamplerBinding texture_bindings[12] = {
         { .texture = app->floor_texture, .sampler = app->floor_sampler },
         { .texture = app->wall_texture, .sampler = app->floor_sampler },
         { .texture = app->ceiling_texture, .sampler = app->floor_sampler },
         { .texture = app->sphere_texture, .sampler = app->floor_sampler },
         { .texture = app->book_texture, .sampler = app->floor_sampler },
         { .texture = app->chair_texture, .sampler = app->floor_sampler },
+        { .texture = app->debug_albedo_texture, .sampler = app->floor_sampler },
+        { .texture = app->debug_normal_texture, .sampler = app->floor_sampler },
+        { .texture = app->debug_metallic_roughness_texture, .sampler = app->floor_sampler },
+        { .texture = app->debug_emissive_texture, .sampler = app->floor_sampler },
+        { .texture = app->debug_height_texture, .sampler = app->floor_sampler },
         { .texture = app->floor_texture, .sampler = app->floor_sampler },  // Dummy for sampler binding
     };
 
     SDL_Log("render_game: Binding fragment samplers");
-    SDL_BindGPUFragmentSamplers(render_pass, 0, texture_bindings, 7);
+    SDL_BindGPUFragmentSamplers(render_pass, 0, texture_bindings, 12);
     SDL_Log("render_game: Fragment samplers bound");
 
 
@@ -3212,6 +3256,26 @@ static void shutdown_game(GameApp *app) {
     if (app->chair_texture) {
         SDL_ReleaseGPUTexture(app->device, app->chair_texture);
         app->chair_texture = NULL;
+    }
+    if (app->debug_albedo_texture) {
+        SDL_ReleaseGPUTexture(app->device, app->debug_albedo_texture);
+        app->debug_albedo_texture = NULL;
+    }
+    if (app->debug_normal_texture) {
+        SDL_ReleaseGPUTexture(app->device, app->debug_normal_texture);
+        app->debug_normal_texture = NULL;
+    }
+    if (app->debug_metallic_roughness_texture) {
+        SDL_ReleaseGPUTexture(app->device, app->debug_metallic_roughness_texture);
+        app->debug_metallic_roughness_texture = NULL;
+    }
+    if (app->debug_emissive_texture) {
+        SDL_ReleaseGPUTexture(app->device, app->debug_emissive_texture);
+        app->debug_emissive_texture = NULL;
+    }
+    if (app->debug_height_texture) {
+        SDL_ReleaseGPUTexture(app->device, app->debug_height_texture);
+        app->debug_height_texture = NULL;
     }
     if (app->sphere_sampler) {
         SDL_ReleaseGPUSampler(app->device, app->sphere_sampler);
