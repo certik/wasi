@@ -11,15 +11,12 @@ using metal::uint;
 struct type_4 {
     metal::float4 inner[16];
 };
-struct type_6 {
-    metal::float3 inner[16];
-};
 struct SceneUniforms {
     metal::float4x4 mvp;
     metal::float4 cameraPos;
     metal::float4 fogColor;
     type_4 staticLights;
-    type_6 staticLightColors;
+    type_4 staticLightColors;
     metal::float4 staticLightParams;
     metal::float4 flashlightPos;
     metal::float4 flashlightDir;

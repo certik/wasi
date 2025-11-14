@@ -7,8 +7,7 @@ struct SceneUniforms {
     float4 cameraPos;
     float4 fogColor;
     float4 staticLights[16];
-    float3 staticLightColors[16];
-    int _pad5_0;
+    float4 staticLightColors[16];
     float4 staticLightParams;
     float4 flashlightPos;
     float4 flashlightDir;
@@ -54,8 +53,7 @@ cbuffer SceneUniforms : register(b0, space3) {
     float4 cameraPos;
     float4 fogColor;
     float4 staticLights[16];
-    float3 staticLightColors[16];
-    int _pad5_0;
+    float4 staticLightColors[16];
     float4 staticLightParams;
     float4 flashlightPos;
     float4 flashlightDir;
@@ -153,8 +151,8 @@ StaticLightContribution compute_static_lighting(float3 normal, float3 world_pos,
     bool loop_init = true;
     while(true) {
         if (!loop_init) {
-            int _e104 = i;
-            i = asint(asuint(_e104) + asuint(int(1)));
+            int _e105 = i;
+            i = asint(asuint(_e105) + asuint(int(1)));
         }
         loop_init = false;
         int _e37 = i;
@@ -188,16 +186,17 @@ StaticLightContribution compute_static_lighting(float3 normal, float3 world_pos,
             float3 H = normalize((dir + view_dir_1));
             float spec = pow(max(dot(normal, H), 0.0), shininess);
             int _e88 = i;
-            float3 light_color = staticLightColors[min(uint(uint(_e88)), 15u)];
-            float3 _e94 = total_diffuse;
-            total_diffuse = (_e94 + ((ndotl * attenuation) * light_color));
-            float3 _e102 = total_specular;
-            total_specular = (_e102 + ((((material.specularStrength * spec) * attenuation) * light_color) * 0.5));
+            float4 _e91 = staticLightColors[min(uint(uint(_e88)), 15u)];
+            float3 light_color = _e91.xyz;
+            float3 _e95 = total_diffuse;
+            total_diffuse = (_e95 + ((ndotl * attenuation) * light_color));
+            float3 _e103 = total_specular;
+            total_specular = (_e103 + ((((material.specularStrength * spec) * attenuation) * light_color) * 0.5));
         }
     }
-    float3 _e107 = total_diffuse;
-    float3 _e108 = total_specular;
-    const StaticLightContribution staticlightcontribution_1 = ConstructStaticLightContribution(_e107, _e108);
+    float3 _e108 = total_diffuse;
+    float3 _e109 = total_specular;
+    const StaticLightContribution staticlightcontribution_1 = ConstructStaticLightContribution(_e108, _e109);
     return staticlightcontribution_1;
 }
 

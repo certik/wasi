@@ -5,7 +5,7 @@ struct SceneUniforms {
     cameraPos: vec4f,
     fogColor: vec4f,
     staticLights: array<vec4f, MAX_STATIC_LIGHTS>,
-    staticLightColors: array<vec3f, MAX_STATIC_LIGHTS>,
+    staticLightColors: array<vec4f, MAX_STATIC_LIGHTS>,
     staticLightParams: vec4f,
     flashlightPos: vec4f,
     flashlightDir: vec4f,
@@ -102,7 +102,7 @@ fn compute_static_lighting(normal: vec3f, world_pos: vec3f, view_dir: vec3f, mat
         let attenuation = inv * range_falloff;
         let H = normalize(dir + view_dir);
         let spec = pow(max(dot(normal, H), 0.0), shininess);
-        let light_color = uniforms.staticLightColors[u32(i)];
+        let light_color = uniforms.staticLightColors[u32(i)].xyz;
         total_diffuse += ndotl * attenuation * light_color;
         total_specular += material.specularStrength * spec * attenuation * light_color * 0.5;
     }
