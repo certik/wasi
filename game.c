@@ -165,6 +165,7 @@ typedef struct {
     float camera_pos[4];
     float fog_color[4];
     float static_lights[MAX_STATIC_LIGHTS][4];
+    float static_light_colors[MAX_STATIC_LIGHTS][4];
     float static_light_params[4];
     float flashlight_position[4];
     float flashlight_direction[4];
@@ -210,6 +211,7 @@ typedef struct {
     SceneUniforms scene_uniforms;
     uint32_t static_light_count;
     float static_light_positions[MAX_STATIC_LIGHTS][3];
+    float static_light_colors[MAX_STATIC_LIGHTS][3];
 
     int window_width;
     int window_height;
@@ -1585,8 +1587,17 @@ static const int g_default_map[MAP_HEIGHT][MAP_WIDTH] = {
 
 static int g_map_data[MAP_WIDTH * MAP_HEIGHT];
 
+static const float g_light_color_palette[][3] = {
+    {1.00f, 0.95f, 0.85f}, // Warm white
+    {0.90f, 0.95f, 1.00f}, // Cool tint
+    {0.96f, 0.90f, 1.00f}, // Soft magenta hue
+};
+
 static void load_map_with_lights(GameApp *app) {
     app->static_light_count = 0;
+    base_memset(app->static_light_positions, 0, sizeof(app->static_light_positions));
+    base_memset(app->static_light_colors, 0, sizeof(app->static_light_colors));
+    const size_t palette_count = SDL_arraysize(g_light_color_palette);
     for (int z = 0; z < MAP_HEIGHT; z++) {
         for (int x = 0; x < MAP_WIDTH; x++) {
             int cell = g_default_map[z][x];
@@ -1596,6 +1607,17 @@ static void load_map_with_lights(GameApp *app) {
                     pos[0] = (float)x + 0.5f;
                     pos[1] = CEILING_LIGHT_HEIGHT;
                     pos[2] = (float)z + 0.5f;
+                    float *color = app->static_light_colors[app->static_light_count];
+                    if (palette_count > 0) {
+                        const float *palette = g_light_color_palette[app->static_light_count % palette_count];
+                        color[0] = palette[0] * CEILING_LIGHT_INTENSITY;
+                        color[1] = palette[1] * CEILING_LIGHT_INTENSITY;
+                        color[2] = palette[2] * CEILING_LIGHT_INTENSITY;
+                    } else {
+                        color[0] = CEILING_LIGHT_INTENSITY;
+                        color[1] = CEILING_LIGHT_INTENSITY;
+                        color[2] = CEILING_LIGHT_INTENSITY;
+                    }
                     app->static_light_count++;
                 } else {
                     SDL_Log("WARNING: Max static lights reached, ignoring cell (%d,%d)", x, z);
@@ -2921,6 +2943,7 @@ static void update_game(GameApp *app) {
     app->scene_uniforms.fog_color[3] = 1.0f;
 
     base_memset(app->scene_uniforms.static_lights, 0, sizeof(app->scene_uniforms.static_lights));
+    base_memset(app->scene_uniforms.static_light_colors, 0, sizeof(app->scene_uniforms.static_light_colors));
     uint32_t light_count = app->static_light_count;
     if (light_count > MAX_STATIC_LIGHTS) {
         light_count = MAX_STATIC_LIGHTS;
@@ -2929,7 +2952,11 @@ static void update_game(GameApp *app) {
         app->scene_uniforms.static_lights[i][0] = app->static_light_positions[i][0];
         app->scene_uniforms.static_lights[i][1] = app->static_light_positions[i][1];
         app->scene_uniforms.static_lights[i][2] = app->static_light_positions[i][2];
-        app->scene_uniforms.static_lights[i][3] = CEILING_LIGHT_INTENSITY;
+        app->scene_uniforms.static_lights[i][3] = 0.0f;
+        app->scene_uniforms.static_light_colors[i][0] = app->static_light_colors[i][0];
+        app->scene_uniforms.static_light_colors[i][1] = app->static_light_colors[i][1];
+        app->scene_uniforms.static_light_colors[i][2] = app->static_light_colors[i][2];
+        app->scene_uniforms.static_light_colors[i][3] = 0.0f;
     }
     app->scene_uniforms.static_light_params[0] = (float)light_count;
     app->scene_uniforms.static_light_params[1] = CEILING_LIGHT_RANGE;

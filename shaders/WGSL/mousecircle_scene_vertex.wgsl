@@ -5,6 +5,7 @@ struct SceneUniforms {
     cameraPos: vec4f,
     fogColor: vec4f,
     staticLights: array<vec4f, MAX_STATIC_LIGHTS>,
+    staticLightColors: array<vec3f, MAX_STATIC_LIGHTS>,
     staticLightParams: vec4f,
     flashlightPos: vec4f,
     flashlightDir: vec4f,
