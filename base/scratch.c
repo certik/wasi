@@ -1,7 +1,6 @@
 #include <base/scratch.h>
 #include <base/wasi.h>
 #include <base/exit.h>
-#include <base/base_io.h>
 
 Scratch scratch_begin_from_arena(Arena *arena) {
     return (Scratch){.arena=arena, .saved_pos=arena_get_pos(arena)};
