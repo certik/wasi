@@ -355,6 +355,7 @@ export function createWasmSDLHost(device, canvas) {
                 } else if (cmdbuf.textureBindGroupDirty) {
                     const samplerBindingInfo = pipelineInfo.samplerBindingInfo || [];
                     const entries = [];
+                    const samplerResourceMap = new Map();
                     let missing = false;
 
                     for (const bindingInfo of samplerBindingInfo) {
@@ -364,10 +365,21 @@ export function createWasmSDLHost(device, canvas) {
                             break;
                         }
                         entries.push({ binding: bindingInfo.textureBinding, resource: bound.view });
-                        entries.push({ binding: bindingInfo.samplerBinding, resource: bound.sampler });
+                        if (!samplerResourceMap.has(bindingInfo.samplerBinding)) {
+                            samplerResourceMap.set(bindingInfo.samplerBinding, bound.sampler);
+                        }
                     }
 
-                    if (!missing && entries.length === samplerBindingInfo.length * 2 && entries.length > 0) {
+                    if (!missing) {
+                        for (const [binding, sampler] of samplerResourceMap.entries()) {
+                            entries.push({ binding, resource: sampler });
+                        }
+                    }
+
+                    const uniqueSamplerCount = samplerResourceMap.size;
+                    const expectedEntryCount = samplerBindingInfo.length + uniqueSamplerCount;
+
+                    if (!missing && entries.length === expectedEntryCount && entries.length > 0) {
                         cmdbuf.textureBindGroup = device.createBindGroup({
                             layout: samplerLayout,
                             entries
