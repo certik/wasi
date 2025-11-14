@@ -9,3 +9,4 @@ path = "src/main.rs"
 
 [dependencies]
 naga = { version = "26.0", features = ["wgsl-in", "msl-out", "hlsl-out", "spv-out"] }
+regex = "1"

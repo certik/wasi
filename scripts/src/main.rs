@@ -340,14 +340,8 @@ fn fix_hlsl_for_sdl3(hlsl_source: &str) -> String {
     result = fix_cbuffer_syntax(&result);
 
     // 4. Remove "uniforms." prefix since cbuffer fields are now directly accessible
-    result = result.replace("uniforms.mvp", "mvp");
-    result = result.replace("uniforms.cameraPos", "cameraPos");
-    result = result.replace("uniforms.fogColor", "fogColor");
-    result = result.replace("uniforms.staticLights", "staticLights");
-    result = result.replace("uniforms.staticLightParams", "staticLightParams");
-    result = result.replace("uniforms.flashlightPos", "flashlightPos");
-    result = result.replace("uniforms.flashlightDir", "flashlightDir");
-    result = result.replace("uniforms.flashlightParams", "flashlightParams");
+    // This handles any uniform field access, not just hardcoded ones
+    result = remove_uniforms_prefix(&result);
 
     // 5. Remove unnecessary wrapper structs and simplify main function
     // Naga generates VertexOutput_main wrapper structs that aren't needed for SDL3
@@ -506,6 +500,15 @@ fn fix_cbuffer_syntax(hlsl: &str) -> String {
     }
 
     result
+}
+
+fn remove_uniforms_prefix(hlsl: &str) -> String {
+    // Remove "uniforms." prefix from all uniform field accesses
+    // This works for any field name: uniforms.fieldName -> fieldName
+    // Uses word boundary to avoid partial matches (e.g., won't touch "my_uniforms.field")
+    use regex::Regex;
+    let re = Regex::new(r"\buniforms\.").unwrap();
+    re.replace_all(hlsl, "").to_string()
 }
 
 fn simplify_stage_io(hlsl: &str) -> String {
