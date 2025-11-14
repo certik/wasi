@@ -137,7 +137,7 @@ void test_buddy(void) {
     buddy_init();
 
     // Allocate a small block (will round up to MIN_PAGE_SIZE)
-    void* p1 = buddy_alloc(100);
+    void* p1 = buddy_alloc(100, NULL);
     if (!p1) {
         print("Allocation failed\n");
         wasi_proc_exit(1);
@@ -145,7 +145,7 @@ void test_buddy(void) {
     print("Allocated p1\n");
 
     // Allocate a larger block
-    void* p2 = buddy_alloc(8192);
+    void* p2 = buddy_alloc(8192, NULL);
     if (!p2) {
         print("Allocation failed\n");
         wasi_proc_exit(1);
@@ -157,7 +157,7 @@ void test_buddy(void) {
     print("Freed p1\n");
 
     // Allocate again to demonstrate reuse
-    void* p3 = buddy_alloc(200);
+    void* p3 = buddy_alloc(200, NULL);
     if (!p3) {
         print("Allocation failed\n");
         wasi_proc_exit(1);
@@ -1008,8 +1008,8 @@ void test_args(void) {
     println(str_lit("{}"), (int)argv_buf_size);
 
     // Allocate buffers
-    char** argv = (char**)buddy_alloc(argc * sizeof(char*));
-    char* argv_buf = (char*)buddy_alloc(argv_buf_size);
+    char** argv = (char**)buddy_alloc(argc * sizeof(char*), NULL);
+    char* argv_buf = (char*)buddy_alloc(argv_buf_size, NULL);
     assert(argv != NULL);
     assert(argv_buf != NULL);
 
@@ -1047,8 +1047,8 @@ int check_test_input_flag(void) {
     int ret = wasi_args_sizes_get(&argc, &argv_buf_size);
 
     if (ret == 0 && argc > 1) {
-        char** argv = (char**)buddy_alloc(argc * sizeof(char*));
-        char* argv_buf = (char*)buddy_alloc(argv_buf_size);
+        char** argv = (char**)buddy_alloc(argc * sizeof(char*), NULL);
+        char* argv_buf = (char*)buddy_alloc(argv_buf_size, NULL);
 
         if (argv && argv_buf) {
             wasi_args_get(argv, argv_buf);

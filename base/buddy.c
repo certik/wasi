@@ -11,7 +11,7 @@
 #ifdef __wasi__
 __attribute__((export_name("wasm_buddy_alloc")))
 void *wasm_buddy_alloc(size_t size) {
-    return buddy_alloc(size);
+    return buddy_alloc(size, NULL);
 }
 
 __attribute__((export_name("wasm_buddy_free")))
@@ -471,16 +471,16 @@ static void *buddy_alloc_order(int order) {
     return (void *)(p + 1);
 }
 
-void *buddy_alloc(size_t size) {
+void *buddy_alloc(size_t size, size_t *actual_size) {
     assert(size > 0);
 
     // Add space for our header to the requested size
-    size += sizeof(struct buddy_block);
+    size_t size_with_header = size + sizeof(struct buddy_block);
 
     // Calculate the order required for the allocation
     int order = 0;
     size_t block_size = MIN_PAGE_SIZE;
-    while (block_size < size) {
+    while (block_size < size_with_header) {
         block_size <<= 1;
         order++;
         if (order > MAX_ORDER) {
@@ -491,9 +491,14 @@ void *buddy_alloc(size_t size) {
     static int large_alloc_log_count = 0;
     if (order >= 7 && large_alloc_log_count < 20) {
         large_alloc_log_count++;
-        writeln_int(WASI_STDERR_FD, "[buddy_alloc] large request bytes =", size);
+        writeln_int(WASI_STDERR_FD, "[buddy_alloc] large request bytes =", size_with_header);
         writeln_int(WASI_STDERR_FD, "[buddy_alloc] order =", order);
         writeln_int(WASI_STDERR_FD, "[buddy_alloc] committed MiB =", wasi_heap_size() >> 20);
+    }
+
+    // If caller wants to know the actual size, calculate it
+    if (actual_size) {
+        *actual_size = block_size - sizeof(struct buddy_block);
     }
 
     return buddy_alloc_order(order);

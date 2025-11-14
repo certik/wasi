@@ -34,7 +34,7 @@ static inline uintptr_t align_up(uintptr_t val) {
 
 Arena *arena_new(size_t initial_size) {
     // Allocate the arena controller struct itself.
-    Arena *arena = buddy_alloc(sizeof(Arena));
+    Arena *arena = buddy_alloc(sizeof(Arena), NULL);
     if (!arena) {
         FATAL_ERROR("buddy_alloc failed for Arena");
     }
@@ -47,7 +47,7 @@ Arena *arena_new(size_t initial_size) {
 
     // Allocate the first chunk.
     size_t total_alloc_size = sizeof(struct arena_chunk) + initial_size;
-    struct arena_chunk *first = buddy_alloc(total_alloc_size);
+    struct arena_chunk *first = buddy_alloc(total_alloc_size, NULL);
     if (!first) {
         //buddy_free(arena);
         FATAL_ERROR("buddy_alloc failed for size");
@@ -103,16 +103,20 @@ try_alloc:
         new_chunk_data_size = aligned_size; // Ensure the new chunk is large enough.
     }
 
-    // Add extra space for header and alignment to ensure we have enough usable space
+    // Request: header + data + alignment padding
     // The usable data area starts at align_up(chunk + 1), so we may lose up to ARENA_ALIGNMENT bytes
-    size_t total_alloc_size = sizeof(struct arena_chunk) + new_chunk_data_size + ARENA_ALIGNMENT;
-    struct arena_chunk *new_chunk = buddy_alloc(total_alloc_size);
+    size_t requested_size = sizeof(struct arena_chunk) + new_chunk_data_size + ARENA_ALIGNMENT;
+
+    // Allocate and get the actual size buddy provides (rounded up to power-of-2)
+    size_t actual_size;
+    struct arena_chunk *new_chunk = buddy_alloc(requested_size, &actual_size);
     if (!new_chunk) {
         FATAL_ERROR("buddy_alloc failed");
     }
 
     new_chunk->next = NULL;
-    new_chunk->size = total_alloc_size;
+    // Store the actual size we got from buddy, not what we requested
+    new_chunk->size = actual_size;
 
     // Link the new chunk to the end of the list.
     if (arena->current_chunk) {
@@ -123,8 +127,10 @@ try_alloc:
     arena->current_chunk = new_chunk;
 
     // Set the allocation pointer to the start of the new chunk.
+    // data_start is after the arena_chunk header, aligned up
     uintptr_t data_start = align_up((uintptr_t)(new_chunk + 1));
-    uintptr_t chunk_end = (uintptr_t)new_chunk + total_alloc_size;
+    // chunk_end is based on the actual size buddy gave us
+    uintptr_t chunk_end = (uintptr_t)new_chunk + actual_size;
     arena->current_ptr = (char *)data_start;
     arena->remaining_in_chunk = (data_start < chunk_end) ? (chunk_end - data_start) : 0;
 

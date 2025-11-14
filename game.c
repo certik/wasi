@@ -1745,7 +1745,7 @@ static bool export_mesh_to_obj(MeshData *mesh, const char *filename) {
     if (estimated_size < 64 * 1024) estimated_size = 64 * 1024;  // Minimum 64KB
 
     ensure_runtime_heap();
-    char *obj_buffer = (char *)buddy_alloc(estimated_size);
+    char *obj_buffer = (char *)buddy_alloc(estimated_size, NULL);
     if (!obj_buffer) {
         SDL_Log("Failed to allocate memory for OBJ export (needed %zu bytes)", estimated_size);
         return false;

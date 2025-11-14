@@ -4,8 +4,11 @@
 
 void buddy_init(void);
 
-// Returns NULL on allocation failure
-void *buddy_alloc(size_t size);
+// Allocate memory from the buddy allocator.
+// Returns NULL on allocation failure.
+// If actual_size is not NULL, stores the actual usable size allocated (which may be
+// larger than requested due to power-of-2 rounding).
+void *buddy_alloc(size_t size, size_t *actual_size);
 
 void buddy_free(void *ptr);
 
