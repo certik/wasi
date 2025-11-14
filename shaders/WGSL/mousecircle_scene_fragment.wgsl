@@ -217,18 +217,30 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
     // Use camera direction for parallax
     let cam_dir = uniforms.cameraDir.xyz;
 
-    // Project camera direction onto the wall plane
-    let cam_on_surface = cam_dir - dot(cam_dir, n) * n;
+    // Construct tangent space basis from normal
+    var tangent = vec3f(1.0, 0.0, 0.0);
+    var bitangent = vec3f(0.0, 1.0, 0.0);
 
-    // Simple parallax: offset UV based on camera direction
+    // Choose tangent based on normal orientation
+    if (abs(n.x) > abs(n.z)) {
+        tangent = vec3f(0.0, 0.0, 1.0);
+    }
+
+    // Make sure bitangent is orthogonal
+    bitangent = normalize(cross(n, tangent));
+    tangent = cross(bitangent, n);
+
+    // Transform camera direction to tangent space
+    let cam_tangent = vec3f(
+        dot(cam_dir, tangent),
+        dot(cam_dir, bitangent),
+        dot(cam_dir, n)
+    );
+
+    // Apply full parallax occlusion mapping
     var uv = input.uv;
     if (input.surfaceType >= 0.5 && input.surfaceType < 1.5) {  // Walls only
-        let h = get_debug_height(input.uv);
-        if (h > 0.0) {
-            // Offset proportional to camera direction and height
-            let offset_scale = 0.3;  // Exaggerated for visibility
-            uv = input.uv - cam_on_surface.xy * h * offset_scale;
-        }
+        uv = parallax_occlusion(input.uv, cam_tangent, 0.1, 32);
     }
 
     // Sample textures unconditionally (required for uniform control flow)
@@ -244,22 +256,8 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
         // Floor: use sampled texture
         baseColor = floorColor.rgb;
     } else if (input.surfaceType < 1.5) {
-        // Walls: use the offset texture (POM applied)
+        // Walls: use POM texture
         baseColor = wallColor.rgb;
-
-        // DEBUG: Show texture with grid overlay in debug region
-        if (input.uv.x <= 0.2 && input.uv.y <= 0.2) {
-            // Show the offset texture
-            baseColor = wallColor.rgb;
-
-            // Draw a grid based on the OFFSET uv to see it shifting
-            let grid_size = 0.1;
-            let grid_x = fract(uv.x / grid_size);
-            let grid_y = fract(uv.y / grid_size);
-            if (grid_x < 0.05 || grid_y < 0.05) {
-                baseColor = vec3f(1.0, 1.0, 0.0);  // Yellow grid
-            }
-        }
     } else if (input.surfaceType < 2.5) {
         baseColor = ceilingColor.rgb;
     } else if (input.surfaceType < 3.5) {
