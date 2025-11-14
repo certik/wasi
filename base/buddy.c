@@ -11,7 +11,7 @@
 #ifdef __wasi__
 __attribute__((export_name("wasm_buddy_alloc")))
 void *wasm_buddy_alloc(size_t size) {
-    return buddy_alloc(size);
+    return buddy_alloc(size, NULL);
 }
 
 __attribute__((export_name("wasm_buddy_free")))
@@ -413,27 +413,6 @@ void buddy_print_stats() {
 static void *buddy_alloc_order(int order) {
     assert(order >= 0 && order <= MAX_ORDER);
 
-    size_t total_free_bytes = 0;
-    size_t free_counts[MAX_ORDER + 1];
-    for (int o = 0; o <= MAX_ORDER; o++) {
-        size_t count = 0;
-        struct buddy_block *block = free_lists[o].first;
-        while (block) {
-            total_free_bytes += (MIN_PAGE_SIZE << o);
-            count++;
-            block = block->next;
-        }
-        free_counts[o] = count;
-    }
-    size_t committed_bytes = wasi_heap_size();
-    writeln_int(WASI_STDERR_FD, "committed (MiB) =", committed_bytes >> 20);
-    writeln_int(WASI_STDERR_FD, "free (MiB)      =", total_free_bytes >> 20);
-
-    // Count large blocks (order >= 9, which is 2 MiB)
-    if (order >= 9 && free_counts[order] > 0) {
-        writeln_int(WASI_STDERR_FD, "free blocks at requested order =", free_counts[order]);
-    }
-
     // Find the smallest available block that is large enough
     int current_order;
     for (current_order = order; current_order <= MAX_ORDER; current_order++) {
@@ -492,22 +471,36 @@ static void *buddy_alloc_order(int order) {
     return (void *)(p + 1);
 }
 
-void *buddy_alloc(size_t size) {
+void *buddy_alloc(size_t size, size_t *actual_size) {
     assert(size > 0);
 
     // Add space for our header to the requested size
-    size += sizeof(struct buddy_block);
+    size_t size_with_header = size + sizeof(struct buddy_block);
 
     // Calculate the order required for the allocation
     int order = 0;
     size_t block_size = MIN_PAGE_SIZE;
-    while (block_size < size) {
+    while (block_size < size_with_header) {
         block_size <<= 1;
         order++;
         if (order > MAX_ORDER) {
             return NULL; // Request is too large
         }
     }
+
+    static int large_alloc_log_count = 0;
+    if (order >= 7 && large_alloc_log_count < 20) {
+        large_alloc_log_count++;
+        writeln_int(WASI_STDERR_FD, "[buddy_alloc] large request bytes =", size_with_header);
+        writeln_int(WASI_STDERR_FD, "[buddy_alloc] order =", order);
+        writeln_int(WASI_STDERR_FD, "[buddy_alloc] committed MiB =", wasi_heap_size() >> 20);
+    }
+
+    // If caller wants to know the actual size, calculate it
+    if (actual_size) {
+        *actual_size = block_size - sizeof(struct buddy_block);
+    }
+
     return buddy_alloc_order(order);
 }
 
