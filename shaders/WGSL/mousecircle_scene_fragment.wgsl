@@ -233,7 +233,14 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
     let bitangent = vec3f(0.0, 1.0, 0.0);
 
     // Tangent is perpendicular to both normal and bitangent
-    let tangent = normalize(cross(bitangent, n));
+    // The cross product order matters for getting consistent handedness
+    var tangent = normalize(cross(bitangent, n));
+
+    // For walls facing negative X or Z (west/south), we need to flip tangent
+    // to maintain consistent UV space orientation
+    if (n.x < -0.1 || n.z < -0.1) {
+        tangent = -tangent;
+    }
 
     // Transform camera direction to tangent space
     let cam_tangent = vec3f(
