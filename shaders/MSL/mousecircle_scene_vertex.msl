@@ -50,6 +50,7 @@ struct VertexOutput {
 };
 constant uint MAX_STATIC_LIGHTS = 16u;
 constant uint MATERIAL_COUNT = 7u;
+constant float DEBUG_EXTRUDE_DISTANCE = 1.0;
 
 struct main_Input {
     metal::float3 position [[attribute(0)]];
@@ -70,14 +71,28 @@ vertex main_Output main_(
 ) {
     const VertexInput input = { varyings.position, varyings.surfaceType, varyings.uv, {}, varyings.normal };
     VertexOutput output = {};
-    metal::float4 world = metal::float4(input.position, 1.0);
-    metal::float4x4 _e8 = uniforms.mvp;
-    output.position = _e8 * world;
+    metal::float3 world_pos = {};
+    world_pos = input.position;
+    if ((input.surfaceType > 0.5) && (input.surfaceType < 1.5)) {
+        metal::float2 base_tile = metal::floor(input.uv);
+        metal::float2 local_uv = metal::fract(input.uv);
+        bool tile_matches = (base_tile.x == 0.0) && (base_tile.y == 0.0);
+        if ((tile_matches && (local_uv.x <= 0.2)) && (local_uv.y <= 0.2)) {
+            metal::float3 normal_dir = metal::normalize(input.normal);
+            metal::float3 _e34 = world_pos;
+            world_pos = _e34 + (normal_dir * DEBUG_EXTRUDE_DISTANCE);
+        }
+    }
+    metal::float3 _e36 = world_pos;
+    metal::float4 world = metal::float4(_e36, 1.0);
+    metal::float4x4 _e42 = uniforms.mvp;
+    output.position = _e42 * world;
     output.surfaceType = input.surfaceType;
     output.uv = input.uv;
     output.normal = input.normal;
-    output.worldPos = input.position;
-    VertexOutput _e18 = output;
-    const auto _tmp = _e18;
+    metal::float3 _e51 = world_pos;
+    output.worldPos = _e51;
+    VertexOutput _e52 = output;
+    const auto _tmp = _e52;
     return main_Output { _tmp.position, _tmp.surfaceType, _tmp.uv, _tmp.normal, _tmp.worldPos };
 }

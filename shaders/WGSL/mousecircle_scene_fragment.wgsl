@@ -238,18 +238,18 @@ fn parallax_occlusion(uv: vec2f, view_ts: vec3f, _normal: vec3f, height_scale: f
     if (abs(view_dir.z) < 0.001) {
         return uv;
     }
-    let offset_dir = view_dir.xy / view_dir.z * height_scale;
+    let offset_dir = view_dir.xy / max(view_dir.z, 0.0001) * height_scale;
     var current_uv = uv;
-    var prev_depth_map = 0.0;
     var prev_uv = uv;
+    var prev_depth_map = 1.0 - textureSample(heightTexture, sharedSampler, uv).r;
     for (var i = 0; i < num_steps; i = i + 1) {
         current_uv -= offset_dir * layer_depth;
-        let depth_map = textureSample(heightTexture, sharedSampler, current_uv).r;
+        let depth_map = 1.0 - textureSample(heightTexture, sharedSampler, current_uv).r;
         if (current_depth >= depth_map) {
             let delta = vec2f(prev_depth_map - current_depth + layer_depth, depth_map - current_depth);
             let denom = max(delta.x - delta.y, 0.0001);
-            let weight = delta.x / denom;
-            return prev_uv - offset_dir * (weight * layer_depth);
+            let weight = clamp(delta.x / denom, 0.0, 1.0);
+            return mix(prev_uv, current_uv, weight);
         }
         prev_uv = current_uv;
         prev_depth_map = depth_map;
@@ -303,9 +303,10 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
         baseColor = chairColor.rgb;
     }
 
+    let world_pos = input.worldPos;
     var n = normalize(input.normal);
     let material = uniforms.materials[compute_material_index(input.surfaceType)];
-    var view_dir = uniforms.cameraPos.xyz - input.worldPos;
+    var view_dir = uniforms.cameraPos.xyz - world_pos;
     let view_len = length(view_dir);
     if (view_len > 0.0001) {
         view_dir = view_dir / view_len;
@@ -321,10 +322,8 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
     if (use_pbr_debug) {
         let tbn = build_tbn(n);
         let view_ts = transpose(tbn) * view_dir;
-        var uv = input.uv * 8.0;
-        if (distance(uniforms.cameraPos.xyz, input.worldPos) < 15.0) {
-            uv = parallax_occlusion(uv, view_ts, n, 0.35, 72);
-        }
+        var uv = input.uv * 10.0;
+        uv = parallax_occlusion(uv, view_ts, n, 0.6, 96);
         sampledAlbedo = textureSample(debugAlbedoTexture, sharedSampler, uv).rgb;
         sampledNormal = textureSample(normalTexture, sharedSampler, uv).rgb * 2.0 - 1.0;
         sampledMR = textureSample(metallicRoughnessTexture, sharedSampler, uv).rg;
@@ -340,6 +339,14 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
         emissive = vec3f(0.0);
     }
 
+    if (use_pbr_debug) {
+        let tile = floor(input.uv);
+        let local = fract(input.uv);
+        if (tile.x == 0.0 && tile.y == 0.0 && local.x <= 0.2 && local.y <= 0.2) {
+            baseColor = vec3f(1.0, 0.05, 0.05);
+        }
+    }
+
     if (uniforms.screenParams.w > 0.5) {
         let mapped = n * 0.5 + vec3f(0.5);
         return vec4f(mapped, 1.0);
@@ -349,10 +356,10 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
     let dielectric_f0 = pow((dielectric_ior - 1.0) / (dielectric_ior + 1.0), 2.0);
     let base_reflectance = vec3f(dielectric_f0);
     let f0 = mix(base_reflectance, baseColor, vec3f(metallic));
-    let staticLight = compute_static_lighting(n, input.worldPos, view_dir, baseColor, metallic, roughness, f0);
-    let flashlight = compute_flashlight(n, input.worldPos, frag_coord, view_dir, baseColor, metallic, roughness, f0);
+    let staticLight = compute_static_lighting(n, world_pos, view_dir, baseColor, metallic, roughness, f0);
+    let flashlight = compute_flashlight(n, world_pos, frag_coord, view_dir, baseColor, metallic, roughness, f0);
     let ambient = uniforms.staticLightParams.z;
-    let fogFactor = exp(-distance(input.worldPos, uniforms.cameraPos.xyz) * 0.08);
+    let fogFactor = exp(-distance(world_pos, uniforms.cameraPos.xyz) * 0.08);
     var color = baseColor * (ambient + flashlight.screenIntensity);
     color += staticLight;
     color += flashlight.shading;

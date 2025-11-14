@@ -40,6 +40,7 @@ struct VertexOutput {
 
 static const uint MAX_STATIC_LIGHTS = 16u;
 static const uint MATERIAL_COUNT = 7u;
+static const float DEBUG_EXTRUDE_DISTANCE = 1.0;
 
 cbuffer SceneUniforms : register(b0, space1) {
     row_major float4x4 mvp;
@@ -66,16 +67,30 @@ struct VertexOutput_main {
 VertexOutput_main main_(VertexInput input)
 {
     VertexOutput output = (VertexOutput)0;
+    float3 world_pos = (float3)0;
 
-    float4 world = float4(input.position, 1.0);
-    float4x4 _e8 = mvp;
-    output.position = mul(world, _e8);
+    world_pos = input.position;
+    if (((input.surfaceType > 0.5) && (input.surfaceType < 1.5))) {
+        float2 base_tile = floor(input.uv);
+        float2 local_uv = frac(input.uv);
+        bool tile_matches = ((base_tile.x == 0.0) && (base_tile.y == 0.0));
+        if (((tile_matches && (local_uv.x <= 0.2)) && (local_uv.y <= 0.2))) {
+            float3 normal_dir = normalize(input.normal);
+            float3 _e34 = world_pos;
+            world_pos = (_e34 + (normal_dir * DEBUG_EXTRUDE_DISTANCE));
+        }
+    }
+    float3 _e36 = world_pos;
+    float4 world = float4(_e36, 1.0);
+    float4x4 _e42 = mvp;
+    output.position = mul(world, _e42);
     output.surfaceType = input.surfaceType;
     output.uv = input.uv;
     output.normal = input.normal;
-    output.worldPos = input.position;
-    VertexOutput _e18 = output;
-    const VertexOutput vertexoutput = _e18;
+    float3 _e51 = world_pos;
+    output.worldPos = _e51;
+    VertexOutput _e52 = output;
+    const VertexOutput vertexoutput = _e52;
     const VertexOutput_main vertexoutput_1 = { vertexoutput.surfaceType, vertexoutput.uv, vertexoutput.normal, vertexoutput.worldPos, vertexoutput.position };
     return vertexoutput_1;
 }
