@@ -9,14 +9,19 @@ struct SceneUniforms {
     flashlightPos: vec4f,
     flashlightDir: vec4f,
     flashlightParams: vec4f,
+    screenParams: vec4f,
 };
 
-struct VertexOutput {
-    @builtin(position) position: vec4f,
+struct FragmentInput {
     @location(0) surfaceType: f32,
     @location(1) uv: vec2f,
     @location(2) normal: vec3f,
     @location(3) worldPos: vec3f,
+};
+
+struct FlashlightContribution {
+    diffuse: f32,
+    specular: f32,
 };
 
 // SDL3 SPIRV requirement: fragment textures in set 2, uniforms in set 3
@@ -60,41 +65,63 @@ fn compute_static_lighting(normal: vec3f, world_pos: vec3f) -> f32 {
     return total;
 }
 
-fn compute_flashlight(normal: vec3f, world_pos: vec3f) -> f32 {
+fn compute_flashlight(normal: vec3f, world_pos: vec3f, frag_coord: vec4f) -> FlashlightContribution {
     if (uniforms.flashlightParams.x < 0.5) {
-        return 0.0;
+        return FlashlightContribution(0.0, 0.0);
     }
 
-    let light_vec = uniforms.flashlightPos.xyz - world_pos;
-    let dist = length(light_vec);
-    if (dist <= 0.0001 || dist > uniforms.flashlightPos.w) {
-        return 0.0;
+    let width = uniforms.screenParams.x;
+    let height = uniforms.screenParams.y;
+    let min_dim = uniforms.screenParams.z;
+    if (width <= 0.0 || height <= 0.0 || min_dim <= 0.0) {
+        return FlashlightContribution(0.0, 0.0);
     }
 
-    let dir_to_light = light_vec / dist;
-    let ndotl = max(dot(normal, dir_to_light), 0.0);
-    if (ndotl <= 0.0) {
-        return 0.0;
+    let pixel = frag_coord.xy;
+    let center = vec2f(width * 0.5, height * 0.5);
+    let delta = (pixel - center) / min_dim;
+    let radius = uniforms.flashlightParams.w;
+    if (radius <= 0.0) {
+        return FlashlightContribution(0.0, 0.0);
+    }
+    let dist = length(delta);
+    if (dist > radius) {
+        return FlashlightContribution(0.0, 0.0);
     }
 
+    let falloff = clamp(dist / radius, 0.0, 1.0);
+    let base_intensity = (1.0 - falloff * falloff) * uniforms.flashlightParams.y * 0.35;
+
+    if (uniforms.flashlightDir.w <= 0.0) {
+        return FlashlightContribution(base_intensity, 0.0);
+    }
+
+    let to_fragment = world_pos - uniforms.flashlightPos.xyz;
+    let dist_along_axis = dot(to_fragment, uniforms.flashlightDir.xyz);
+    if (dist_along_axis <= 0.0 || dist_along_axis > uniforms.flashlightPos.w) {
+        return FlashlightContribution(base_intensity, 0.0);
+    }
+
+    let dir_norm = normalize(to_fragment);
+    let spot = dot(dir_norm, uniforms.flashlightDir.xyz);
     let cutoff = uniforms.flashlightDir.w;
-    let softness = clamp(uniforms.flashlightParams.z, 0.05, 0.95);
-    let inner = mix(cutoff, 1.0, softness);
-    let dir_from_light = -dir_to_light;
-    let spot = dot(dir_from_light, uniforms.flashlightDir.xyz);
     if (spot <= cutoff) {
-        return 0.0;
+        return FlashlightContribution(base_intensity, 0.0);
     }
 
-    let denom = max(inner - cutoff, 0.001);
-    var focus = clamp((spot - cutoff) / denom, 0.0, 1.0);
-    focus = focus * focus;
-    let attenuation = pow(max(1.0 - dist / uniforms.flashlightPos.w, 0.0), 2.0);
-    return ndotl * focus * attenuation * uniforms.flashlightParams.y;
+    let focus = pow((spot - cutoff) / max(1.0 - cutoff, 0.001), 2.0);
+    let ndotl = max(dot(normal, uniforms.flashlightDir.xyz), 0.0);
+    let distance_atten = clamp(1.0 - dist_along_axis / uniforms.flashlightPos.w, 0.0, 1.0);
+    let spec_dir = normalize(uniforms.flashlightDir.xyz + vec3f(0.0, 1.0, 0.0));
+    let spec = pow(max(dot(normal, spec_dir), 0.0), 24.0);
+    var beam = base_intensity + focus * ndotl * distance_atten * uniforms.flashlightParams.y * 0.5;
+    beam = min(beam, uniforms.flashlightParams.y * 0.7);
+    let specular = spec * focus * distance_atten * 0.15 * uniforms.flashlightParams.y;
+    return FlashlightContribution(beam, specular);
 }
 
 @fragment
-fn main_(input: VertexOutput) -> @location(0) vec4f {
+fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @location(0) vec4f {
     // Sample textures unconditionally (required for uniform control flow)
     let floorColor = textureSample(floorTexture, sharedSampler, input.uv);
     let wallColor = textureSample(wallTexture, sharedSampler, input.uv);
@@ -126,12 +153,13 @@ fn main_(input: VertexOutput) -> @location(0) vec4f {
 
     let n = normalize(input.normal);
     let staticLight = compute_static_lighting(n, input.worldPos);
-    let flashlightLight = compute_flashlight(n, input.worldPos);
+    let flashlight = compute_flashlight(n, input.worldPos, frag_coord);
     let ambient = uniforms.staticLightParams.z;
-    var lighting = ambient + staticLight + flashlightLight;
+    var lighting = ambient + staticLight;
     lighting = clamp(lighting, ambient, 6.0);
     let fogFactor = exp(-distance(input.worldPos, uniforms.cameraPos.xyz) * 0.08);
-    var color = baseColor * lighting;
+    var color = baseColor * (lighting + flashlight.diffuse);
+    color += flashlight.specular * vec3f(1.0, 0.95, 0.85);
     color = mix(uniforms.fogColor.xyz, color, fogFactor);
     return vec4f(color, 1.0);
 }

@@ -9,6 +9,7 @@ struct SceneUniforms {
     flashlightPos: vec4f,
     flashlightDir: vec4f,
     flashlightParams: vec4f,
+    screenParams: vec4f,
 };
 
 struct VertexInput {

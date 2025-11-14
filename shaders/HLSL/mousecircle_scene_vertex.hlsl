@@ -11,6 +11,7 @@ struct SceneUniforms {
     float4 flashlightPos;
     float4 flashlightDir;
     float4 flashlightParams;
+    float4 screenParams;
 };
 
 struct VertexInput {
@@ -39,6 +40,7 @@ cbuffer SceneUniforms : register(b0, space1) {
     float4 flashlightPos;
     float4 flashlightDir;
     float4 flashlightParams;
+    float4 screenParams;
 }
 
 struct VertexOutput_main {

@@ -54,9 +54,10 @@ typedef __builtin_va_list __gnuc_va_list;
 #define CEILING_LIGHT_INTENSITY 1.4f
 #define MIN_AMBIENT_LIGHT 0.03f
 #define FLASHLIGHT_RANGE 9.0f
-#define FLASHLIGHT_INTENSITY 3.0f
-#define FLASHLIGHT_SOFTNESS 0.35f
+#define FLASHLIGHT_INTENSITY 2.5f
 #define FLASHLIGHT_COS_CUTOFF 0.9f
+#define FLASHLIGHT_SCREEN_RADIUS 0.18f
+#define FLASHLIGHT_RING_THICKNESS 0.01f
 
 // Overlay layout constants
 #define GLYPH_PIXEL_SIZE 1.0f
@@ -167,6 +168,7 @@ typedef struct {
     float flashlight_position[4];
     float flashlight_direction[4];
     float flashlight_params[4];
+    float screen_params[4];
 } SceneUniforms;
 
 typedef struct {
@@ -2959,8 +2961,13 @@ static void update_game(GameApp *app) {
 
     app->scene_uniforms.flashlight_params[0] = state->flashlight_enabled ? 1.0f : 0.0f;
     app->scene_uniforms.flashlight_params[1] = FLASHLIGHT_INTENSITY;
-    app->scene_uniforms.flashlight_params[2] = FLASHLIGHT_SOFTNESS;
-    app->scene_uniforms.flashlight_params[3] = 0.0f;
+    app->scene_uniforms.flashlight_params[2] = FLASHLIGHT_RING_THICKNESS;
+    app->scene_uniforms.flashlight_params[3] = FLASHLIGHT_SCREEN_RADIUS;
+    app->scene_uniforms.screen_params[0] = (float)app->window_width;
+    app->scene_uniforms.screen_params[1] = (float)app->window_height;
+    float min_dim = (float)((app->window_width < app->window_height) ? app->window_width : app->window_height);
+    app->scene_uniforms.screen_params[2] = min_dim;
+    app->scene_uniforms.screen_params[3] = 0.0f;
 
     build_overlay(app);
 
