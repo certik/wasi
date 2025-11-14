@@ -202,7 +202,7 @@ static void write_gltf_json(const char *filename, uint32_t vertex_count, uint32_
                             float max_x, float max_y, float max_z) {
     // Pre-calculate JSON size (generous estimate)
     const size_t json_size = 4096;
-    char *json = (char*)buddy_alloc(json_size);
+    char *json = (char*)buddy_alloc(json_size, NULL);
     if (!json) return;
 
     int pos = 0;
@@ -238,7 +238,7 @@ static void generate_gltf(MeshBuilder *mb, const char *bin_filename, const char 
     size_t total_size = pos_size + norm_size + idx_size;
 
     // Allocate buffer directly from buddy
-    uint8_t *buffer = (uint8_t*)buddy_alloc(total_size);
+    uint8_t *buffer = (uint8_t*)buddy_alloc(total_size, NULL);
     if (!buffer) return;
 
     // Write positions

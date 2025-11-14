@@ -1731,6 +1731,7 @@ static bool export_mtl_file(const char *obj_filename) {
 
 // Export mesh to OBJ file
 static bool export_mesh_to_obj(MeshData *mesh, const char *filename) {
+    Scratch scratch = scratch_begin();
     if (!mesh || !filename) {
         SDL_Log("export_mesh_to_obj: invalid arguments");
         return false;
@@ -1745,11 +1746,7 @@ static bool export_mesh_to_obj(MeshData *mesh, const char *filename) {
     if (estimated_size < 64 * 1024) estimated_size = 64 * 1024;  // Minimum 64KB
 
     ensure_runtime_heap();
-    char *obj_buffer = (char *)buddy_alloc(estimated_size, NULL);
-    if (!obj_buffer) {
-        SDL_Log("Failed to allocate memory for OBJ export (needed %zu bytes)", estimated_size);
-        return false;
-    }
+    char *obj_buffer = (char *)arena_alloc(scratch.arena, estimated_size);
 
     int pos = 0;
 
@@ -2011,8 +2008,7 @@ static bool export_mesh_to_obj(MeshData *mesh, const char *filename) {
         SDL_Log("Successfully exported OBJ file: %s", filename);
     }
 
-    // Free the allocated buffer
-    buddy_free(obj_buffer);
+    scratch_end(scratch);
 
     return success;
 }

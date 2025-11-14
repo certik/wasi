@@ -4,6 +4,7 @@
 #include "SDL3/SDL.h"
 #include <stdint.h>
 #include <stddef.h>
+#include <base/buddy.h>
 #include <base/stdarg.h>
 #include <base/numconv.h>
 #include <base/mem.h>
@@ -713,12 +714,11 @@ struct SDL_IOStream {
     size_t size;       // Size of the data
     size_t offset;     // Current read position
     const char* path;  // File path (for images loaded via IMG_Load)
+    bool owns_data;    // True if this stream owns the data buffer and should free it
 };
 
 SDL_IOStream* SDL_IOFromConstMem(const void* mem, size_t size) {
-    extern void* buddy_alloc(size_t size);
-
-    SDL_IOStream* stream = (SDL_IOStream*)buddy_alloc(sizeof(SDL_IOStream));
+    SDL_IOStream* stream = (SDL_IOStream*)buddy_alloc(sizeof(SDL_IOStream), NULL);
     if (!stream) {
         return NULL;
     }
@@ -727,13 +727,12 @@ SDL_IOStream* SDL_IOFromConstMem(const void* mem, size_t size) {
     stream->size = size;
     stream->offset = 0;
     stream->path = NULL;
+    stream->owns_data = false;  // Const memory is owned by caller
 
     return stream;
 }
 
 SDL_IOStream* SDL_IOFromFile(const char* file, const char* mode) {
-    extern void* buddy_alloc(size_t size);
-    extern void buddy_free(void* ptr);
     (void)mode; // Ignored for WASM
 
     // Use WASI wrappers from native/wasi_wasm.c
@@ -742,7 +741,8 @@ SDL_IOStream* SDL_IOFromFile(const char* file, const char* mode) {
     extern int wasi_fd_close(int fd);
     extern int wasi_fd_seek(int fd, int64_t offset, int whence, uint64_t* newoffset);
 
-    int fd = wasi_path_open(file, base_strlen(file), 0, 0);
+    // Request read rights (includes FD_READ, FD_SEEK, FD_TELL)
+    int fd = wasi_path_open(file, base_strlen(file), WASI_RIGHTS_READ, 0);
     if (fd < 0) {
         SDL_Log("SDL_IOFromFile: failed to open %s (fd=%d)", file, fd);
         return NULL;
@@ -762,7 +762,7 @@ SDL_IOStream* SDL_IOFromFile(const char* file, const char* mode) {
     wasi_fd_seek(fd, 0, 0, &pos);  // SEEK_SET = 0
 
     // Allocate buffer for file data
-    void* data = buddy_alloc((size_t)file_size);
+    void* data = buddy_alloc((size_t)file_size, NULL);
     if (!data) {
         SDL_Log("SDL_IOFromFile: failed to allocate %llu bytes for %s", file_size, file);
         wasi_fd_close(fd);
@@ -782,7 +782,7 @@ SDL_IOStream* SDL_IOFromFile(const char* file, const char* mode) {
     }
 
     // Create stream
-    SDL_IOStream* stream = (SDL_IOStream*)buddy_alloc(sizeof(SDL_IOStream));
+    SDL_IOStream* stream = (SDL_IOStream*)buddy_alloc(sizeof(SDL_IOStream), NULL);
     if (!stream) {
         buddy_free(data);
         return NULL;
@@ -792,6 +792,7 @@ SDL_IOStream* SDL_IOFromFile(const char* file, const char* mode) {
     stream->size = (size_t)file_size;
     stream->offset = 0;
     stream->path = file;
+    stream->owns_data = true;  // We allocated the data buffer, so we own it
 
     return stream;
 }
@@ -830,7 +831,8 @@ void SDL_CloseIO(SDL_IOStream* stream) {
     extern void buddy_free(void* ptr);
 
     if (stream) {
-        if (stream->data) {
+        // Only free data if this stream owns it
+        if (stream->data && stream->owns_data) {
             buddy_free(stream->data);
         }
         buddy_free(stream);
@@ -841,9 +843,6 @@ void SDL_CloseIO(SDL_IOStream* stream) {
 #include <SDL3_image/SDL_image.h>
 
 SDL_Surface* IMG_Load(const char* file) {
-    extern void* buddy_alloc(size_t size);
-    extern void buddy_free(void* ptr);
-
     if (!file) {
         SDL_Log("IMG_Load: null file path");
         return NULL;
@@ -856,14 +855,14 @@ SDL_Surface* IMG_Load(const char* file) {
         return NULL;
     }
 
-    SDL_Surface* surface = (SDL_Surface*)buddy_alloc(sizeof(SDL_Surface));
+    SDL_Surface* surface = (SDL_Surface*)buddy_alloc(sizeof(SDL_Surface), NULL);
     if (!surface) {
         SDL_Log("IMG_Load: failed to allocate surface");
         return NULL;
     }
 
     uint32_t pixel_size = width * height * 4;
-    void* pixels = buddy_alloc(pixel_size);
+    void* pixels = buddy_alloc(pixel_size, NULL);
     if (!pixels) {
         SDL_Log("IMG_Load: failed to allocate pixel buffer");
         buddy_free(surface);
