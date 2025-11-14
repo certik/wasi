@@ -738,6 +738,7 @@ build_all_platforms = { depends-on=["build_wasm", "build_linux", "build_macos", 
 [dependencies]
 # on macOS we want system Clang
 #clang = ">=20.1.4,<21"
+shell = "*"
 
 [environments]
 default = { solve-group = "default" }

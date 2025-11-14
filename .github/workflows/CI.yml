@@ -53,17 +53,17 @@ jobs:
 
               # Native
               pixi run -e windows test_windows a1 b2 c3 || exit /b 1
-              echo test input data | pixi run -e windows ./arena_windows.exe --test-input || exit /b 1
+              pixi run shell -c "printf 'test input data' | pixi run -e windows ./arena_windows.exe --test-input" || exit /b 1
               pixi run -e windows test_wordfreq_windows || exit /b 1
               pixi run test_game --test-frames 5 || exit /b 1
 
               # WASM
-              pixi run -e wasm test_wasm a1 b2 c3
-              pixi run -e wasm test_base_wasm a1 b2 c3
-              echo "test input data" | pixi run -e wasm wasmtime --dir . arena.wasm --test-input
-              echo "test input data" | pixi run -e wasm wasmtime --dir . arena_base.wasm --test-input
-              pixi run -e wasm test_wordfreq_wasm
-              pixi run -e wasm build_game_wasm
+              pixi run -e wasm test_wasm a1 b2 c3 || exit /b 1
+              pixi run -e wasm test_base_wasm a1 b2 c3 || exit /b 1
+              pixi run shell -c "printf 'test input data' | pixi run -e wasm wasmtime --dir . arena.wasm --test-input" || exit /b 1
+              pixi run shell -c "printf 'test input data' | pixi run -e wasm wasmtime --dir . arena_base.wasm --test-input" || exit /b 1
+              pixi run -e wasm test_wordfreq_wasm || exit /b 1
+              pixi run -e wasm build_game_wasm || exit /b 1
           - platform: wasm
             os: ubuntu-latest
             pixi-command: |
