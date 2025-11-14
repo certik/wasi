@@ -8,10 +8,18 @@
 
 using metal::uint;
 
+struct type_4 {
+    metal::float4 inner[16];
+};
 struct SceneUniforms {
     metal::float4x4 mvp;
     metal::float4 cameraPos;
     metal::float4 fogColor;
+    type_4 staticLights;
+    metal::float4 staticLightParams;
+    metal::float4 flashlightPos;
+    metal::float4 flashlightDir;
+    metal::float4 flashlightParams;
 };
 struct VertexOutput {
     metal::float4 position;
@@ -21,6 +29,7 @@ struct VertexOutput {
     metal::float3 normal;
     metal::float3 worldPos;
 };
+constant uint MAX_STATIC_LIGHTS = 16u;
 
 float checker(
     metal::float2 uv
@@ -28,6 +37,98 @@ float checker(
     metal::float2 scaled = metal::floor(uv * 4.0);
     float v = metal::fmod(scaled.x + scaled.y, 2.0);
     return (v < 0.5) ? 1.0 : 0.7;
+}
+
+int naga_f2i32(float value) {
+    return static_cast<int>(metal::clamp(value, -2147483600.0, 2147483500.0));
+}
+
+float compute_static_lighting(
+    metal::float3 normal,
+    metal::float3 world_pos,
+    constant SceneUniforms& uniforms
+) {
+    float total = 0.0;
+    int i = 0;
+    float _e5 = uniforms.staticLightParams.x;
+    int light_count = metal::clamp(naga_f2i32(_e5), 0, 16);
+    float range = uniforms.staticLightParams.y;
+    if ((range <= 0.0) || (light_count == 0)) {
+        return 0.0;
+    }
+    bool loop_init = true;
+    while(true) {
+        if (!loop_init) {
+            int _e58 = i;
+            i = as_type<int>(as_type<uint>(_e58) + as_type<uint>(1));
+        }
+        loop_init = false;
+        int _e24 = i;
+        if (_e24 < light_count) {
+        } else {
+            break;
+        }
+        {
+            int _e28 = i;
+            metal::float4 light = uniforms.staticLights.inner[static_cast<uint>(_e28)];
+            metal::float3 to_light = light.xyz - world_pos;
+            float dist = metal::length(to_light);
+            if ((dist > 0.0001) && (dist < range)) {
+                metal::float3 dir = to_light / metal::float3(dist);
+                float ndotl = metal::max(metal::dot(normal, dir), 0.0);
+                if (ndotl > 0.0) {
+                    float attenuation = metal::pow(metal::max(1.0 - (dist / range), 0.0), 2.0);
+                    float _e56 = total;
+                    total = _e56 + ((ndotl * attenuation) * light.w);
+                }
+            }
+        }
+    }
+    float _e61 = total;
+    return _e61;
+}
+
+float compute_flashlight(
+    metal::float3 normal_1,
+    metal::float3 world_pos_1,
+    constant SceneUniforms& uniforms
+) {
+    float focus = {};
+    float _e5 = uniforms.flashlightParams.x;
+    if (_e5 < 0.5) {
+        return 0.0;
+    }
+    metal::float4 _e11 = uniforms.flashlightPos;
+    metal::float3 light_vec = _e11.xyz - world_pos_1;
+    float dist_1 = metal::length(light_vec);
+    float _e20 = uniforms.flashlightPos.w;
+    if ((dist_1 <= 0.0001) || (dist_1 > _e20)) {
+        return 0.0;
+    }
+    metal::float3 dir_1 = light_vec / metal::float3(dist_1);
+    float ndotl_1 = metal::max(metal::dot(normal_1, dir_1), 0.0);
+    if (ndotl_1 <= 0.0) {
+        return 0.0;
+    }
+    float cutoff = uniforms.flashlightDir.w;
+    float _e39 = uniforms.flashlightParams.z;
+    float softness = metal::clamp(_e39, 0.05, 0.95);
+    float inner = metal::mix(cutoff, 1.0, softness);
+    metal::float4 _e47 = uniforms.flashlightDir;
+    float spot = metal::dot(dir_1, _e47.xyz);
+    if (spot <= cutoff) {
+        return 0.0;
+    }
+    float denom = metal::max(inner - cutoff, 0.001);
+    focus = metal::clamp((spot - cutoff) / denom, 0.0, 1.0);
+    float _e61 = focus;
+    float _e62 = focus;
+    focus = _e61 * _e62;
+    float _e67 = uniforms.flashlightPos.w;
+    float attenuation_1 = metal::pow(metal::max(1.0 - (dist_1 / _e67), 0.0), 2.0);
+    float _e75 = focus;
+    float _e81 = uniforms.flashlightParams.y;
+    return ((ndotl_1 * _e75) * attenuation_1) * _e81;
 }
 
 struct main_Input {
@@ -53,7 +154,7 @@ fragment main_Output main_(
 ) {
     const VertexOutput input = { position, varyings.surfaceType, {}, varyings.uv, varyings.normal, varyings.worldPos };
     metal::float3 baseColor = {};
-    float diff = {};
+    float lighting = {};
     metal::float3 color = {};
     metal::float4 floorColor = floorTexture.sample(sharedSampler, input.uv);
     metal::float4 wallColor = wallTexture.sample(sharedSampler, input.uv);
@@ -88,19 +189,20 @@ fragment main_Output main_(
         }
     }
     metal::float3 n = metal::normalize(input.normal);
-    metal::float3 lightDir = metal::normalize(metal::float3(0.35, 1.0, 0.45));
-    diff = metal::max(metal::dot(n, lightDir), 0.15);
-    if ((input.surfaceType >= 1.5) && (input.surfaceType < 2.5)) {
-        diff = 1.0;
-    }
-    metal::float4 _e79 = uniforms.cameraPos;
-    float fogFactor = metal::exp(-(metal::distance(input.worldPos, _e79.xyz)) * 0.08);
-    metal::float3 _e86 = baseColor;
-    float _e87 = diff;
-    color = _e86 * _e87;
-    metal::float4 _e92 = uniforms.fogColor;
-    metal::float3 _e94 = color;
-    color = metal::mix(_e92.xyz, _e94, fogFactor);
-    metal::float3 _e96 = color;
-    return main_Output { metal::float4(_e96, 1.0) };
+    float _e60 = compute_static_lighting(n, input.worldPos, uniforms);
+    float _e62 = compute_flashlight(n, input.worldPos, uniforms);
+    float ambient = uniforms.staticLightParams.z;
+    lighting = (ambient + _e60) + _e62;
+    float _e70 = lighting;
+    lighting = metal::clamp(_e70, ambient, 6.0);
+    metal::float4 _e76 = uniforms.cameraPos;
+    float fogFactor = metal::exp(-(metal::distance(input.worldPos, _e76.xyz)) * 0.08);
+    metal::float3 _e83 = baseColor;
+    float _e84 = lighting;
+    color = _e83 * _e84;
+    metal::float4 _e89 = uniforms.fogColor;
+    metal::float3 _e91 = color;
+    color = metal::mix(_e89.xyz, _e91, fogFactor);
+    metal::float3 _e93 = color;
+    return main_Output { metal::float4(_e93, 1.0) };
 }

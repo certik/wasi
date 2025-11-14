@@ -1,7 +1,14 @@
+const MAX_STATIC_LIGHTS: u32 = 16u;
+
 struct SceneUniforms {
     mvp: mat4x4f,
     cameraPos: vec4f,
     fogColor: vec4f,
+    staticLights: array<vec4f, MAX_STATIC_LIGHTS>,
+    staticLightParams: vec4f,
+    flashlightPos: vec4f,
+    flashlightDir: vec4f,
+    flashlightParams: vec4f,
 };
 
 struct VertexOutput {
@@ -27,6 +34,62 @@ fn checker(uv: vec2f) -> f32 {
     let scaled = floor(uv * 4.0);
     let v = (scaled.x + scaled.y) % 2.0;
     return select(0.7, 1.0, v < 0.5);
+}
+
+fn compute_static_lighting(normal: vec3f, world_pos: vec3f) -> f32 {
+    let light_count = clamp(i32(uniforms.staticLightParams.x), 0, i32(MAX_STATIC_LIGHTS));
+    let range = uniforms.staticLightParams.y;
+    if (range <= 0.0 || light_count == 0) {
+        return 0.0;
+    }
+
+    var total = 0.0;
+    for (var i = 0; i < light_count; i = i + 1) {
+        let light = uniforms.staticLights[u32(i)];
+        let to_light = light.xyz - world_pos;
+        let dist = length(to_light);
+        if (dist > 0.0001 && dist < range) {
+            let dir = to_light / dist;
+            let ndotl = max(dot(normal, dir), 0.0);
+            if (ndotl > 0.0) {
+                let attenuation = pow(max(1.0 - dist / range, 0.0), 2.0);
+                total += ndotl * attenuation * light.w;
+            }
+        }
+    }
+    return total;
+}
+
+fn compute_flashlight(normal: vec3f, world_pos: vec3f) -> f32 {
+    if (uniforms.flashlightParams.x < 0.5) {
+        return 0.0;
+    }
+
+    let light_vec = uniforms.flashlightPos.xyz - world_pos;
+    let dist = length(light_vec);
+    if (dist <= 0.0001 || dist > uniforms.flashlightPos.w) {
+        return 0.0;
+    }
+
+    let dir = light_vec / dist;
+    let ndotl = max(dot(normal, dir), 0.0);
+    if (ndotl <= 0.0) {
+        return 0.0;
+    }
+
+    let cutoff = uniforms.flashlightDir.w;
+    let softness = clamp(uniforms.flashlightParams.z, 0.05, 0.95);
+    let inner = mix(cutoff, 1.0, softness);
+    let spot = dot(dir, uniforms.flashlightDir.xyz);
+    if (spot <= cutoff) {
+        return 0.0;
+    }
+
+    let denom = max(inner - cutoff, 0.001);
+    var focus = clamp((spot - cutoff) / denom, 0.0, 1.0);
+    focus = focus * focus;
+    let attenuation = pow(max(1.0 - dist / uniforms.flashlightPos.w, 0.0), 2.0);
+    return ndotl * focus * attenuation * uniforms.flashlightParams.y;
 }
 
 @fragment
@@ -61,16 +124,13 @@ fn main_(input: VertexOutput) -> @location(0) vec4f {
     }
 
     let n = normalize(input.normal);
-    let lightDir = normalize(vec3f(0.35, 1.0, 0.45));
-    var diff = max(dot(n, lightDir), 0.15);
-
-    // Make ceiling brighter - it should be well-lit
-    if (input.surfaceType >= 1.5 && input.surfaceType < 2.5) {
-        diff = 1.0;  // Full brightness for ceiling
-    }
-
+    let staticLight = compute_static_lighting(n, input.worldPos);
+    let flashlightLight = compute_flashlight(n, input.worldPos);
+    let ambient = uniforms.staticLightParams.z;
+    var lighting = ambient + staticLight + flashlightLight;
+    lighting = clamp(lighting, ambient, 6.0);
     let fogFactor = exp(-distance(input.worldPos, uniforms.cameraPos.xyz) * 0.08);
-    var color = baseColor * diff;
+    var color = baseColor * lighting;
     color = mix(uniforms.fogColor.xyz, color, fogFactor);
     return vec4f(color, 1.0);
 }

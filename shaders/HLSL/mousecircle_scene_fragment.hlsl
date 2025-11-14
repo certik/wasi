@@ -6,6 +6,11 @@ struct SceneUniforms {
     row_major float4x4 mvp;
     float4 cameraPos;
     float4 fogColor;
+    float4 staticLights[16];
+    float4 staticLightParams;
+    float4 flashlightPos;
+    float4 flashlightDir;
+    float4 flashlightParams;
 };
 
 struct VertexOutput {
@@ -15,6 +20,8 @@ struct VertexOutput {
     float3 normal : TEXCOORD2;
     float3 worldPos : TEXCOORD3;
 };
+
+static const uint MAX_STATIC_LIGHTS = 16u;
 
 Texture2D<float4> floorTexture : register(t0, space2);
 Texture2D<float4> wallTexture : register(t1, space2);
@@ -27,12 +34,17 @@ cbuffer SceneUniforms : register(b0, space3) {
     row_major float4x4 mvp;
     float4 cameraPos;
     float4 fogColor;
+    float4 staticLights[16];
+    float4 staticLightParams;
+    float4 flashlightPos;
+    float4 flashlightDir;
+    float4 flashlightParams;
 }
 
 struct FragmentInput_main {
     float surfaceType : TEXCOORD0;
     float2 uv_1 : TEXCOORD1;
-    float3 normal : TEXCOORD2;
+    float3 normal_2 : TEXCOORD2;
     float3 worldPos : TEXCOORD3;
     float4 position : SV_Position;
 };
@@ -48,11 +60,99 @@ float checker(float2 uv)
     return ((v < 0.5) ? 1.0 : 0.7);
 }
 
+int naga_f2i32(float value) {
+    return int(clamp(value, -2147483600.0, 2147483500.0));
+}
+
+float compute_static_lighting(float3 normal, float3 world_pos)
+{
+    float total = 0.0;
+    int i = int(0);
+
+    float _e5 = uniforms.staticLightParams.x;
+    int light_count = clamp(naga_f2i32(_e5), int(0), int(16));
+    float range = uniforms.staticLightParams.y;
+    if (((range <= 0.0) || (light_count == int(0)))) {
+        return 0.0;
+    }
+    bool loop_init = true;
+    while(true) {
+        if (!loop_init) {
+            int _e58 = i;
+            i = asint(asuint(_e58) + asuint(int(1)));
+        }
+        loop_init = false;
+        int _e24 = i;
+        if ((_e24 < light_count)) {
+        } else {
+            break;
+        }
+        {
+            int _e28 = i;
+            float4 light = uniforms.staticLights[min(uint(uint(_e28)), 15u)];
+            float3 to_light = (light.xyz - world_pos);
+            float dist = length(to_light);
+            if (((dist > 0.0001) && (dist < range))) {
+                float3 dir = (to_light / (dist).xxx);
+                float ndotl = max(dot(normal, dir), 0.0);
+                if ((ndotl > 0.0)) {
+                    float attenuation = pow(max((1.0 - (dist / range)), 0.0), 2.0);
+                    float _e56 = total;
+                    total = (_e56 + ((ndotl * attenuation) * light.w));
+                }
+            }
+        }
+    }
+    float _e61 = total;
+    return _e61;
+}
+
+float compute_flashlight(float3 normal_1, float3 world_pos_1)
+{
+    float focus = (float)0;
+
+    float _e5 = uniforms.flashlightParams.x;
+    if ((_e5 < 0.5)) {
+        return 0.0;
+    }
+    float4 _e11 = uniforms.flashlightPos;
+    float3 light_vec = (_e11.xyz - world_pos_1);
+    float dist_1 = length(light_vec);
+    float _e20 = uniforms.flashlightPos.w;
+    if (((dist_1 <= 0.0001) || (dist_1 > _e20))) {
+        return 0.0;
+    }
+    float3 dir_1 = (light_vec / (dist_1).xxx);
+    float ndotl_1 = max(dot(normal_1, dir_1), 0.0);
+    if ((ndotl_1 <= 0.0)) {
+        return 0.0;
+    }
+    float cutoff = uniforms.flashlightDir.w;
+    float _e39 = uniforms.flashlightParams.z;
+    float softness = clamp(_e39, 0.05, 0.95);
+    float inner = lerp(cutoff, 1.0, softness);
+    float4 _e47 = uniforms.flashlightDir;
+    float spot = dot(dir_1, _e47.xyz);
+    if ((spot <= cutoff)) {
+        return 0.0;
+    }
+    float denom = max((inner - cutoff), 0.001);
+    focus = clamp(((spot - cutoff) / denom), 0.0, 1.0);
+    float _e61 = focus;
+    float _e62 = focus;
+    focus = (_e61 * _e62);
+    float _e67 = uniforms.flashlightPos.w;
+    float attenuation_1 = pow(max((1.0 - (dist_1 / _e67)), 0.0), 2.0);
+    float _e75 = focus;
+    float _e81 = uniforms.flashlightParams.y;
+    return (((ndotl_1 * _e75) * attenuation_1) * _e81);
+}
+
 float4 main_(FragmentInput_main fragmentinput_main) : SV_Target0
 {
-    VertexOutput input = { fragmentinput_main.position, fragmentinput_main.surfaceType, fragmentinput_main.uv_1, fragmentinput_main.normal, fragmentinput_main.worldPos };
+    VertexOutput input = { fragmentinput_main.position, fragmentinput_main.surfaceType, fragmentinput_main.uv_1, fragmentinput_main.normal_2, fragmentinput_main.worldPos };
     float3 baseColor = (float3)0;
-    float diff = (float)0;
+    float lighting = (float)0;
     float3 color = (float3)0;
 
     float4 floorColor = floorTexture.Sample(sharedSampler, input.uv);
@@ -88,19 +188,20 @@ float4 main_(FragmentInput_main fragmentinput_main) : SV_Target0
         }
     }
     float3 n = normalize(input.normal);
-    float3 lightDir = normalize(float3(0.35, 1.0, 0.45));
-    diff = max(dot(n, lightDir), 0.15);
-    if (((input.surfaceType >= 1.5) && (input.surfaceType < 2.5))) {
-        diff = 1.0;
-    }
-    float4 _e79 = cameraPos;
-    float fogFactor = exp((-(distance(input.worldPos, _e79.xyz)) * 0.08));
-    float3 _e86 = baseColor;
-    float _e87 = diff;
-    color = (_e86 * _e87);
-    float4 _e92 = fogColor;
-    float3 _e94 = color;
-    color = lerp(_e92.xyz, _e94, fogFactor);
-    float3 _e96 = color;
-    return float4(_e96, 1.0);
+    const float _e60 = compute_static_lighting(n, input.worldPos);
+    const float _e62 = compute_flashlight(n, input.worldPos);
+    float ambient = uniforms.staticLightParams.z;
+    lighting = ((ambient + _e60) + _e62);
+    float _e70 = lighting;
+    lighting = clamp(_e70, ambient, 6.0);
+    float4 _e76 = cameraPos;
+    float fogFactor = exp((-(distance(input.worldPos, _e76.xyz)) * 0.08));
+    float3 _e83 = baseColor;
+    float _e84 = lighting;
+    color = (_e83 * _e84);
+    float4 _e89 = fogColor;
+    float3 _e91 = color;
+    color = lerp(_e89.xyz, _e91, fogFactor);
+    float3 _e93 = color;
+    return float4(_e93, 1.0);
 }

@@ -8,10 +8,18 @@
 
 using metal::uint;
 
+struct type_4 {
+    metal::float4 inner[16];
+};
 struct SceneUniforms {
     metal::float4x4 mvp;
     metal::float4 cameraPos;
     metal::float4 fogColor;
+    type_4 staticLights;
+    metal::float4 staticLightParams;
+    metal::float4 flashlightPos;
+    metal::float4 flashlightDir;
+    metal::float4 flashlightParams;
 };
 struct VertexInput {
     metal::packed_float3 position;
@@ -28,6 +36,7 @@ struct VertexOutput {
     metal::float3 normal;
     metal::float3 worldPos;
 };
+constant uint MAX_STATIC_LIGHTS = 16u;
 
 struct main_Input {
     metal::float3 position [[attribute(0)]];
