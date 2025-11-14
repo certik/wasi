@@ -163,6 +163,7 @@ _Static_assert(sizeof(OverlayVertex) == sizeof(float) * 8, "OverlayVertex unexpe
 typedef struct {
     mat4 mvp;
     float camera_pos[4];
+    float camera_dir[4];  // Camera forward direction
     float fog_color[4];
     float static_lights[MAX_STATIC_LIGHTS][4];
     float static_light_colors[MAX_STATIC_LIGHTS][4];
@@ -1500,7 +1501,8 @@ static void update_camera(GameState *state) {
     float right_x = -sin_yaw;
     float right_z = cos_yaw;
 
-    float speed_multiplier = state->keys[KEY_SHIFT] ? 2.0f : 1.0f;
+    // 'z' key makes you go slower for precise debugging (10x slower)
+    float speed_multiplier = state->keys['z'] ? 0.1f : 1.0f;
     float base_speed = state->move_speed * speed_multiplier;
 
     float dx = 0.0f;
@@ -2937,6 +2939,23 @@ static void update_game(GameApp *app) {
     app->scene_uniforms.camera_pos[1] = state->camera_y;
     app->scene_uniforms.camera_pos[2] = state->camera_z;
     app->scene_uniforms.camera_pos[3] = 1.0f;
+
+    // Calculate camera forward direction
+    float cos_pitch = fast_cos(state->pitch);
+    float sin_pitch = fast_sin(state->pitch);
+    float cos_yaw = fast_cos(state->yaw);
+    float sin_yaw = fast_sin(state->yaw);
+    float cam_dir_x = cos_pitch * cos_yaw;
+    float cam_dir_y = sin_pitch;
+    float cam_dir_z = cos_pitch * sin_yaw;
+
+    // Store camera direction in new field
+    app->scene_uniforms.camera_dir[0] = cam_dir_x;
+    app->scene_uniforms.camera_dir[1] = cam_dir_y;
+    app->scene_uniforms.camera_dir[2] = cam_dir_z;
+    app->scene_uniforms.camera_dir[3] = 0.0f;
+
+    // Restore fog color
     app->scene_uniforms.fog_color[0] = 0.5f;
     app->scene_uniforms.fog_color[1] = 0.65f;
     app->scene_uniforms.fog_color[2] = 0.9f;
@@ -2968,14 +2987,10 @@ static void update_game(GameApp *app) {
     app->scene_uniforms.flashlight_position[2] = state->camera_z;
     app->scene_uniforms.flashlight_position[3] = FLASHLIGHT_RANGE;
 
-    float cos_pitch = fast_cos(state->pitch);
-    float sin_pitch = fast_sin(state->pitch);
-    float cos_yaw = fast_cos(state->yaw);
-    float sin_yaw = fast_sin(state->yaw);
-
-    float dir_x = cos_pitch * cos_yaw;
-    float dir_y = sin_pitch;
-    float dir_z = cos_pitch * sin_yaw;
+    // Reuse the camera direction we calculated above
+    float dir_x = cam_dir_x;
+    float dir_y = cam_dir_y;
+    float dir_z = cam_dir_z;
     float length = fast_sqrtf(dir_x * dir_x + dir_y * dir_y + dir_z * dir_z);
     if (length > 0.0001f) {
         float inv = 1.0f / length;

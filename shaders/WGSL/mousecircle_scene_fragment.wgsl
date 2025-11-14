@@ -3,6 +3,7 @@ const MAX_STATIC_LIGHTS: u32 = 16u;
 struct SceneUniforms {
     mvp: mat4x4f,
     cameraPos: vec4f,
+    cameraDir: vec4f,
     fogColor: vec4f,
     staticLights: array<vec4f, MAX_STATIC_LIGHTS>,
     staticLightColors: array<vec4f, MAX_STATIC_LIGHTS>,
@@ -60,25 +61,33 @@ fn get_debug_height(uv: vec2f) -> f32 {
     return 0.0;
 }
 
-fn parallax_occlusion(uv: vec2f, v: vec3f, n: vec3f, height_scale: f32, steps: i32) -> vec2f {
+fn parallax_occlusion(uv: vec2f, view_tangent: vec3f, height_scale: f32, steps: i32) -> vec2f {
     let layer_depth = 1.0 / f32(steps);
     var current_depth = 0.0;
-    let offset = v.xy / v.z * height_scale;  // Parallax dir
+    // Note: we march in the OPPOSITE direction of view (towards surface)
+    let parallax_dir = -view_tangent.xy / max(abs(view_tangent.z), 0.01) * height_scale;
     var current_uv = uv;
-    var prev_depth_map = 0.0;
     var prev_uv = uv;
+    var prev_depth_map = get_debug_height(uv);
+
     for (var i = 0; i < steps; i = i + 1) {
-        current_uv -= offset * layer_depth;
+        current_depth += layer_depth;
+        current_uv += parallax_dir * layer_depth;
         let depth_map = get_debug_height(current_uv);
+
+        // Found intersection
         if (current_depth >= depth_map) {
-            let delta = vec2f(prev_depth_map - current_depth + layer_depth, depth_map - current_depth);
-            return prev_uv - offset * (delta.x / (delta.x - delta.y) * layer_depth);
+            // Linear interpolation for smoother result
+            let after_depth = depth_map - current_depth;
+            let before_depth = prev_depth_map - (current_depth - layer_depth);
+            let weight = after_depth / (after_depth - before_depth);
+            return mix(current_uv, prev_uv, weight);
         }
+
         prev_uv = current_uv;
         prev_depth_map = depth_map;
-        current_depth += layer_depth;
     }
-    return uv;  // No occlusion
+    return current_uv;
 }
 
 fn get_material_properties(surface_type: f32) -> MaterialProperties {
@@ -205,18 +214,20 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
         view_dir = vec3f(0.0, 0.0, 1.0);
     }
 
-    // Apply parallax occlusion mapping for walls when camera is close
+    // Use camera direction for parallax
+    let cam_dir = uniforms.cameraDir.xyz;
+
+    // Project camera direction onto the wall plane
+    let cam_on_surface = cam_dir - dot(cam_dir, n) * n;
+
+    // Simple parallax: offset UV based on camera direction
     var uv = input.uv;
-    var debug_pom = false;
     if (input.surfaceType >= 0.5 && input.surfaceType < 1.5) {  // Walls only
-        if (distance(uniforms.cameraPos.xyz, input.worldPos) < 5.0) {
-            // Simple test: just offset UV based on height to verify it works
-            let h = get_debug_height(input.uv);
-            if (h > 0.0) {
-                // Offset UV dramatically to test
-                uv = input.uv + vec2f(0.3, 0.3) * h;
-            }
-            debug_pom = true;
+        let h = get_debug_height(input.uv);
+        if (h > 0.0) {
+            // Offset proportional to camera direction and height
+            let offset_scale = 0.3;  // Exaggerated for visibility
+            uv = input.uv - cam_on_surface.xy * h * offset_scale;
         }
     }
 
@@ -233,11 +244,21 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
         // Floor: use sampled texture
         baseColor = floorColor.rgb;
     } else if (input.surfaceType < 1.5) {
-        // Walls: color debug region red
+        // Walls: use the offset texture (POM applied)
+        baseColor = wallColor.rgb;
+
+        // DEBUG: Show texture with grid overlay in debug region
         if (input.uv.x <= 0.2 && input.uv.y <= 0.2) {
-            baseColor = vec3f(1.0, 0.0, 0.0);  // Red for debug region
-        } else {
+            // Show the offset texture
             baseColor = wallColor.rgb;
+
+            // Draw a grid based on the OFFSET uv to see it shifting
+            let grid_size = 0.1;
+            let grid_x = fract(uv.x / grid_size);
+            let grid_y = fract(uv.y / grid_size);
+            if (grid_x < 0.05 || grid_y < 0.05) {
+                baseColor = vec3f(1.0, 1.0, 0.0);  // Yellow grid
+            }
         }
     } else if (input.surfaceType < 2.5) {
         baseColor = ceilingColor.rgb;
