@@ -9,6 +9,7 @@
 typedef uint8_t Uint8;
 typedef uint32_t Uint32;
 typedef int32_t Sint32;
+typedef int64_t Sint64;
 
 // Opaque types
 typedef struct SDL_Window SDL_Window;
@@ -402,6 +403,9 @@ Uint32 SDL_GetTicks(void);
 // IOStream API for loading images
 SDL_IOStream* SDL_IOFromConstMem(const void* mem, size_t size);
 SDL_IOStream* SDL_IOFromFile(const char* file, const char* mode);
+Sint64 SDL_GetIOSize(SDL_IOStream* stream);
+size_t SDL_ReadIO(SDL_IOStream* stream, void* ptr, size_t size);
+void SDL_CloseIO(SDL_IOStream* stream);
 void SDL_DestroySurface(SDL_Surface* surface);
 SDL_Surface* SDL_ConvertSurface(SDL_Surface* surface, SDL_PixelFormat format);
 
