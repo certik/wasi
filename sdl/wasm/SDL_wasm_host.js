@@ -553,32 +553,73 @@ export function createWasmSDLHost(device, canvas) {
             });
 
             // Map JS key codes to SDL key codes
-                function jsKeyToSDLKey(key) {
-                    const keyMap = {
-                        'KeyW': 'w'.charCodeAt(0),
-                        'KeyA': 'a'.charCodeAt(0),
-                        'KeyS': 's'.charCodeAt(0),
-                        'KeyD': 'd'.charCodeAt(0),
-                        'KeyQ': 'q'.charCodeAt(0),
-                        'KeyM': 'm'.charCodeAt(0),
-                        'KeyR': 'r'.charCodeAt(0),
-                        'KeyH': 'h'.charCodeAt(0),
-                        'KeyT': 't'.charCodeAt(0),
-                        'KeyI': 'i'.charCodeAt(0),
-                        'KeyB': 'b'.charCodeAt(0),
-                        'KeyF': 'f'.charCodeAt(0),
-                        'Space': 0x20,
-                        'ShiftLeft': 16,
-                        'ControlLeft': 17,
-                        'Escape': 0x1B,
-                        // SDL arrow key codes (not DOM keyCodes)
-                        'ArrowLeft': 0x40000050,  // SDLK_LEFT
-                        'ArrowUp': 0x40000052,    // SDLK_UP
-                        'ArrowRight': 0x4000004f, // SDLK_RIGHT
-                        'ArrowDown': 0x40000051,  // SDLK_DOWN
-                    };
-                    return keyMap[key] || 0;
+            function jsKeyToSDLKey(code) {
+                const specialMap = {
+                    'Space': 0x20,
+                    'Enter': 0x0D,
+                    'Tab': 0x09,
+                    'Backspace': 0x08,
+                    'Escape': 0x1B,
+                    'ShiftLeft': 16,
+                    'ShiftRight': 16,
+                    'ControlLeft': 17,
+                    'ControlRight': 17,
+                    'AltLeft': 18,
+                    'AltRight': 18,
+                    'MetaLeft': 0x400000E3,   // SDLK_LGUI
+                    'MetaRight': 0x400000E7,  // SDLK_RGUI
+                    'ArrowLeft': 0x40000050,  // SDLK_LEFT
+                    'ArrowUp': 0x40000052,    // SDLK_UP
+                    'ArrowRight': 0x4000004f, // SDLK_RIGHT
+                    'ArrowDown': 0x40000051,  // SDLK_DOWN
+                    'CapsLock': 0x40000039,
+                    'Delete': 0x7F,
+                    'Insert': 0x40000049,
+                    'Home': 0x4000004A,
+                    'End': 0x4000004D,
+                    'PageUp': 0x4000004B,
+                    'PageDown': 0x4000004E,
+                    'NumpadEnter': 0x40000058,
+                };
+
+                if (specialMap[code]) {
+                    return specialMap[code];
                 }
+
+                if (code.startsWith('Key') && code.length >= 4) {
+                    const letter = code.slice(3);
+                    if (letter.length === 1) {
+                        return letter.toLowerCase().charCodeAt(0);
+                    }
+                }
+
+                if (code.startsWith('Digit') && code.length === 6) {
+                    const digit = code.charAt(5);
+                    if (digit >= '0' && digit <= '9') {
+                        return digit.charCodeAt(0);
+                    }
+                }
+
+                const punctuationMap = {
+                    'Minus': '-'.charCodeAt(0),
+                    'Equal': '='.charCodeAt(0),
+                    'BracketLeft': '['.charCodeAt(0),
+                    'BracketRight': ']'.charCodeAt(0),
+                    'Backslash': '\\'.charCodeAt(0),
+                    'Semicolon': ';'.charCodeAt(0),
+                    'Quote': '\''.charCodeAt(0),
+                    'Comma': ','.charCodeAt(0),
+                    'Period': '.'.charCodeAt(0),
+                    'Slash': '/'.charCodeAt(0),
+                    'Backquote': '`'.charCodeAt(0),
+                };
+
+                if (punctuationMap[code]) {
+                    return punctuationMap[code];
+                }
+
+                return 0;
+            }
 
             window.addEventListener('keydown', (e) => {
                 const sdlKey = jsKeyToSDLKey(e.code);
