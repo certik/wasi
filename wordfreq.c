@@ -1,5 +1,6 @@
 #include <base/io.h>
 #include <base/arena.h>
+#include <base/scratch.h>
 #include <base/buddy.h>
 #include <base/base_string.h>
 #include <base/hashtable.h>
@@ -152,25 +153,28 @@ static bool parse_int(string s, int64_t *result) {
 
 int main(void) {
     // Get command line arguments
+    Scratch scratch = scratch_begin();
+
     size_t argc;
     size_t argv_buf_size;
     if (wasi_args_sizes_get(&argc, &argv_buf_size) != 0) {
         println(str_lit("Error: Failed to get argument sizes"));
+        scratch_end(scratch);
         return 1;
     }
 
-    char **argv = (char **)buddy_alloc(argc * sizeof(char*));
-    char *argv_buf = (char *)buddy_alloc(argv_buf_size);
+    char **argv = (char **)arena_alloc(scratch.arena, argc * sizeof(char*));
+    char *argv_buf = (char *)arena_alloc(scratch.arena, argv_buf_size);
     if (wasi_args_get(argv, argv_buf) != 0) {
         println(str_lit("Error: Failed to get arguments"));
-        buddy_free(argv);
-        buddy_free(argv_buf);
+        scratch_end(scratch);
         return 1;
     }
 
     // Parse arguments
     if (argc < 2) {
         print_usage(argv[0]);
+        scratch_end(scratch);
         return 1;
     }
 
@@ -181,6 +185,7 @@ int main(void) {
     if (argc >= 3) {
         if (!parse_int(str_from_cstr_view(argv[2]), &top_n)) {
             println(str_lit("Error: Invalid top_n value"));
+            scratch_end(scratch);
             return 1;
         }
     }
@@ -188,12 +193,13 @@ int main(void) {
     if (argc >= 4) {
         if (!parse_int(str_from_cstr_view(argv[3]), &bottom_n)) {
             println(str_lit("Error: Invalid bottom_n value"));
+            scratch_end(scratch);
             return 1;
         }
     }
 
     // Now create an arena for the rest of the work
-    Arena *arena = arena_new(1024 * 1024); // 1MB initial
+    Arena *arena = scratch.arena;
 
     println(str_lit("Reading file..."));
 
@@ -296,8 +302,7 @@ int main(void) {
                 str_lit(COLOR_RESET));
     }
 
-    arena_free(arena);
-    buddy_free(argv);
-    buddy_free(argv_buf);
+    scratch_end(scratch);
+
     return 0;
 }

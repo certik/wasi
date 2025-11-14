@@ -137,7 +137,7 @@ void test_buddy(void) {
     buddy_init();
 
     // Allocate a small block (will round up to MIN_PAGE_SIZE)
-    void* p1 = buddy_alloc(100);
+    void* p1 = buddy_alloc(100, NULL);
     if (!p1) {
         print("Allocation failed\n");
         wasi_proc_exit(1);
@@ -145,7 +145,7 @@ void test_buddy(void) {
     print("Allocated p1\n");
 
     // Allocate a larger block
-    void* p2 = buddy_alloc(8192);
+    void* p2 = buddy_alloc(8192, NULL);
     if (!p2) {
         print("Allocation failed\n");
         wasi_proc_exit(1);
@@ -157,7 +157,7 @@ void test_buddy(void) {
     print("Freed p1\n");
 
     // Allocate again to demonstrate reuse
-    void* p3 = buddy_alloc(200);
+    void* p3 = buddy_alloc(200, NULL);
     if (!p3) {
         print("Allocation failed\n");
         wasi_proc_exit(1);
@@ -264,9 +264,9 @@ void test_arena(void) {
     assert(arena_current_chunk_index(expand_arena) == 0);
 
     // Force expansion by allocating more than remaining space in first chunk
-    // First chunk has MIN_CHUNK_SIZE=4096 bytes (plus chunk header), we used 2048
-    // so allocating 3072 bytes should trigger expansion to a second chunk
-    char *block2 = arena_alloc(expand_arena, 3072);
+    // With actual_size optimization, buddy rounds up MIN_CHUNK_SIZE+header to 8192
+    // So after 2048, we have ~6000 bytes left. Allocating 7000 forces expansion.
+    char *block2 = arena_alloc(expand_arena, 7000);
     if (!block2) {
         print("Error: Failed to expand arena.\n");
         wasi_proc_exit(1);
@@ -308,7 +308,7 @@ void test_arena(void) {
     arena_pos_t pos_after_block1 = arena_get_pos(expand_arena);
     // Note: we need to save position after block1, before expansion
 
-    Arena *reset_test_arena = arena_new(512); // Will be rounded to MIN_CHUNK_SIZE=4096
+    Arena *reset_test_arena = arena_new(512); // Will be rounded to MIN_CHUNK_SIZE=4096, buddy gives 8192
     char *r1 = arena_alloc(reset_test_arena, 2048);
     base_strcpy(r1, "R1");
     arena_pos_t pos_after_r1 = arena_get_pos(reset_test_arena);
@@ -317,8 +317,8 @@ void test_arena(void) {
     assert(arena_chunk_count(reset_test_arena) == 1);
     assert(arena_current_chunk_index(reset_test_arena) == 0);
 
-    // Force expansion - allocate more than remaining space in first chunk
-    char *r2 = arena_alloc(reset_test_arena, 3072);
+    // Force expansion - allocate more than remaining space in first chunk (~6000 bytes left)
+    char *r2 = arena_alloc(reset_test_arena, 7000);
     base_strcpy(r2, "R2 in second chunk");
 
     // Verify expansion occurred: 2 chunks, at index 1
@@ -468,10 +468,11 @@ void test_scratch(void) {
         assert(arena_current_chunk_index(scratch.arena) == 0);
 
         // Scratch arenas start with 1024 bytes which gets rounded to MIN_CHUNK_SIZE=4096
-        // After alignment, we have slightly less than 4096 usable bytes
-        // Allocate multiple smaller blocks to fill the first chunk, then force expansion
-        char *fill1 = arena_alloc(scratch.arena, 2000);
-        char *fill2 = arena_alloc(scratch.arena, 2000);
+        // With actual_size optimization, buddy provides 8192 bytes
+        // After alignment, we have ~8100 usable bytes in first chunk
+        // Allocate to fill most of it, then force expansion
+        char *fill1 = arena_alloc(scratch.arena, 4000);
+        char *fill2 = arena_alloc(scratch.arena, 4000);
 
         // Now allocate more to force expansion
         char *large1 = arena_alloc(scratch.arena, 1000);
@@ -517,9 +518,9 @@ void test_scratch(void) {
         print(", at index 0\n");
 
         // Allocate enough to move through chunks (if multi-chunk) or expand (if single-chunk)
-        // Fill chunks to ensure we're at a later chunk
+        // With actual_size optimization, we have ~8KB per chunk, so allocate more to force progression
         for (int i = 0; i < 3; i++) {
-            arena_alloc(scratch.arena, 2000);
+            arena_alloc(scratch.arena, 3500);
         }
 
         // Verify we moved forward in chunks
@@ -1008,8 +1009,8 @@ void test_args(void) {
     println(str_lit("{}"), (int)argv_buf_size);
 
     // Allocate buffers
-    char** argv = (char**)buddy_alloc(argc * sizeof(char*));
-    char* argv_buf = (char*)buddy_alloc(argv_buf_size);
+    char** argv = (char**)buddy_alloc(argc * sizeof(char*), NULL);
+    char* argv_buf = (char*)buddy_alloc(argv_buf_size, NULL);
     assert(argv != NULL);
     assert(argv_buf != NULL);
 
@@ -1047,8 +1048,8 @@ int check_test_input_flag(void) {
     int ret = wasi_args_sizes_get(&argc, &argv_buf_size);
 
     if (ret == 0 && argc > 1) {
-        char** argv = (char**)buddy_alloc(argc * sizeof(char*));
-        char* argv_buf = (char*)buddy_alloc(argv_buf_size);
+        char** argv = (char**)buddy_alloc(argc * sizeof(char*), NULL);
+        char* argv_buf = (char*)buddy_alloc(argv_buf_size, NULL);
 
         if (argv && argv_buf) {
             wasi_args_get(argv, argv_buf);

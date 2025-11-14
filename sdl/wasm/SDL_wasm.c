@@ -4,9 +4,11 @@
 #include "SDL3/SDL.h"
 #include <stdint.h>
 #include <stddef.h>
+#include <base/buddy.h>
 #include <base/stdarg.h>
 #include <base/numconv.h>
 #include <base/mem.h>
+#include <base/wasi.h>  // For iovec_t
 
 #define WASM_IMPORT(module, name) __attribute__((import_module(module), import_name(name)))
 
@@ -708,49 +710,139 @@ Uint32 SDL_GetTicks(void) {
 
 // IOStream implementation
 struct SDL_IOStream {
-    const void* mem;
-    size_t size;
-    const char* path;  // For WASM, stores the file path to look up pre-decoded images
+    void* data;        // File data loaded into memory
+    size_t size;       // Size of the data
+    size_t offset;     // Current read position
+    const char* path;  // File path (for images loaded via IMG_Load)
+    bool owns_data;    // True if this stream owns the data buffer and should free it
 };
 
 SDL_IOStream* SDL_IOFromConstMem(const void* mem, size_t size) {
-    extern void* buddy_alloc(size_t size);
-
-    SDL_IOStream* stream = (SDL_IOStream*)buddy_alloc(sizeof(SDL_IOStream));
+    SDL_IOStream* stream = (SDL_IOStream*)buddy_alloc(sizeof(SDL_IOStream), NULL);
     if (!stream) {
         return NULL;
     }
 
-    stream->mem = mem;
+    stream->data = (void*)mem;
     stream->size = size;
+    stream->offset = 0;
     stream->path = NULL;
+    stream->owns_data = false;  // Const memory is owned by caller
 
     return stream;
 }
 
 SDL_IOStream* SDL_IOFromFile(const char* file, const char* mode) {
-    extern void* buddy_alloc(size_t size);
     (void)mode; // Ignored for WASM
 
-    SDL_IOStream* stream = (SDL_IOStream*)buddy_alloc(sizeof(SDL_IOStream));
-    if (!stream) {
+    // Use WASI wrappers from native/wasi_wasm.c
+    extern int wasi_path_open(const char* path, size_t path_len, uint64_t rights, int oflags);
+    extern int wasi_fd_read(int fd, const iovec_t* iovs, size_t iovs_len, size_t* nread);
+    extern int wasi_fd_close(int fd);
+    extern int wasi_fd_seek(int fd, int64_t offset, int whence, uint64_t* newoffset);
+
+    // Request read rights (includes FD_READ, FD_SEEK, FD_TELL)
+    int fd = wasi_path_open(file, base_strlen(file), WASI_RIGHTS_READ, 0);
+    if (fd < 0) {
+        SDL_Log("SDL_IOFromFile: failed to open %s (fd=%d)", file, fd);
         return NULL;
     }
 
-    stream->mem = NULL;
-    stream->size = 0;
-    stream->path = file;  // Store the file path for WASM
+    // Seek to end to get file size
+    uint64_t file_size = 0;
+    int result = wasi_fd_seek(fd, 0, 2, &file_size);  // SEEK_END = 2
+    if (result != 0) {
+        SDL_Log("SDL_IOFromFile: failed to seek %s (result=%d)", file, result);
+        wasi_fd_close(fd);
+        return NULL;
+    }
+
+    // Seek back to beginning
+    uint64_t pos = 0;
+    wasi_fd_seek(fd, 0, 0, &pos);  // SEEK_SET = 0
+
+    // Allocate buffer for file data
+    void* data = buddy_alloc((size_t)file_size, NULL);
+    if (!data) {
+        SDL_Log("SDL_IOFromFile: failed to allocate %llu bytes for %s", file_size, file);
+        wasi_fd_close(fd);
+        return NULL;
+    }
+
+    // Read file data using iovec
+    iovec_t iov = { data, (size_t)file_size };
+    size_t nread = 0;
+    result = wasi_fd_read(fd, &iov, 1, &nread);
+    wasi_fd_close(fd);
+
+    if (result != 0 || nread != (size_t)file_size) {
+        SDL_Log("SDL_IOFromFile: failed to read %s (read %zu of %llu, result=%d)", file, nread, file_size, result);
+        buddy_free(data);
+        return NULL;
+    }
+
+    // Create stream
+    SDL_IOStream* stream = (SDL_IOStream*)buddy_alloc(sizeof(SDL_IOStream), NULL);
+    if (!stream) {
+        buddy_free(data);
+        return NULL;
+    }
+
+    stream->data = data;
+    stream->size = (size_t)file_size;
+    stream->offset = 0;
+    stream->path = file;
+    stream->owns_data = true;  // We allocated the data buffer, so we own it
 
     return stream;
+}
+
+Sint64 SDL_GetIOSize(SDL_IOStream* stream) {
+    if (!stream) {
+        return -1;
+    }
+    return (Sint64)stream->size;
+}
+
+size_t SDL_ReadIO(SDL_IOStream* stream, void* ptr, size_t size) {
+    if (!stream || !ptr || size == 0) {
+        return 0;
+    }
+
+    if (!stream->data) {
+        return 0;
+    }
+
+    // Calculate how much we can read
+    size_t available = stream->size - stream->offset;
+    if (size > available) {
+        size = available;
+    }
+
+    if (size > 0) {
+        base_memcpy(ptr, (char*)stream->data + stream->offset, size);
+        stream->offset += size;
+    }
+
+    return size;
+}
+
+void SDL_CloseIO(SDL_IOStream* stream) {
+    extern void buddy_free(void* ptr);
+
+    if (stream) {
+        // Only free data if this stream owns it
+        if (stream->data && stream->owns_data) {
+            buddy_free(stream->data);
+        }
+        buddy_free(stream);
+    }
 }
 
 // SDL_Image implementation for WASM
 #include <SDL3_image/SDL_image.h>
 
 SDL_Surface* IMG_Load(const char* file) {
-    extern void* buddy_alloc(size_t size);
-    extern void buddy_free(void* ptr);
-
     if (!file) {
         SDL_Log("IMG_Load: null file path");
         return NULL;
@@ -763,14 +855,14 @@ SDL_Surface* IMG_Load(const char* file) {
         return NULL;
     }
 
-    SDL_Surface* surface = (SDL_Surface*)buddy_alloc(sizeof(SDL_Surface));
+    SDL_Surface* surface = (SDL_Surface*)buddy_alloc(sizeof(SDL_Surface), NULL);
     if (!surface) {
         SDL_Log("IMG_Load: failed to allocate surface");
         return NULL;
     }
 
     uint32_t pixel_size = width * height * 4;
-    void* pixels = buddy_alloc(pixel_size);
+    void* pixels = buddy_alloc(pixel_size, NULL);
     if (!pixels) {
         SDL_Log("IMG_Load: failed to allocate pixel buffer");
         buddy_free(surface);
@@ -802,8 +894,9 @@ SDL_Surface* IMG_Load_IO(SDL_IOStream* src, bool closeio) {
     }
 
     const char* path = src->path;
-    if (!path && src->mem) {
-        path = (const char*)src->mem;
+    if (!path && src->data) {
+        // If data is set but no path, assume data is a string path
+        path = (const char*)src->data;
     }
 
     SDL_Surface* surface = NULL;
@@ -815,7 +908,8 @@ SDL_Surface* IMG_Load_IO(SDL_IOStream* src, bool closeio) {
 
     // Close IOStream if requested
     if (closeio && src) {
-        buddy_free(src);
+        // Use SDL_CloseIO which properly frees data
+        SDL_CloseIO(src);
     }
 
     return surface;

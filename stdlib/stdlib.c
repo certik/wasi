@@ -9,7 +9,7 @@
 #include <string.h>
 
 void* malloc(size_t size) {
-    return buddy_alloc(size);
+    return buddy_alloc(size, NULL);
 }
 
 void free(void* ptr) {
