@@ -15,4 +15,3 @@ fn main_(input: VertexInput) -> VertexOutput {
     output.color = input.color;
     return output;
 }
-

@@ -555,5 +555,3 @@ fn generate_spirv(
 
     Ok(())
 }
-
-

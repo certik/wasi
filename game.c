@@ -197,8 +197,6 @@ typedef struct {
 
     bool export_obj_mode;     // If true, export OBJ and exit
     char export_obj_path[256]; // Output path for OBJ file
-
-    bool minimal_mode;        // If true, skip GPU setup for testing
 } GameApp;
 
 static GameApp g_App;
@@ -342,9 +340,7 @@ static Uint32 shader_code_size(string source) {
     if (source.size == 0) {
         return 0;
     }
-    // Return full size for binary shader files (SPIRV, DXIL, etc.)
-    // Don't subtract 1 like we would for null-terminated text
-    return (Uint32)(source.size-1);
+    return (Uint32)(source.size - 1);
 }
 
 // ============================================================================
@@ -1907,72 +1903,23 @@ static bool create_scene_pipeline(GameApp *app, SDL_GPUShader *vertex_shader, SD
     SDL_GPUDepthStencilState depth_state = {
         .enable_depth_test = true,
         .enable_depth_write = true,
-        .enable_stencil_test = false,
         .compare_op = SDL_GPU_COMPAREOP_LESS,
-        .back_stencil_state = {
-            .fail_op = SDL_GPU_STENCILOP_KEEP,
-            .pass_op = SDL_GPU_STENCILOP_KEEP,
-            .depth_fail_op = SDL_GPU_STENCILOP_KEEP,
-            .compare_op = SDL_GPU_COMPAREOP_ALWAYS,
-        },
-        .front_stencil_state = {
-            .fail_op = SDL_GPU_STENCILOP_KEEP,
-            .pass_op = SDL_GPU_STENCILOP_KEEP,
-            .depth_fail_op = SDL_GPU_STENCILOP_KEEP,
-            .compare_op = SDL_GPU_COMPAREOP_ALWAYS,
-        },
-        .compare_mask = 0,
-        .write_mask = 0,
-    };
-
-    SDL_GPURasterizerState rasterizer_state = {
-        .fill_mode = SDL_GPU_FILLMODE_FILL,
-        .cull_mode = SDL_GPU_CULLMODE_BACK,
-        .front_face = SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE,
-        .depth_bias_constant_factor = 0.0f,
-        .depth_bias_clamp = 0.0f,
-        .depth_bias_slope_factor = 0.0f,
-        .enable_depth_bias = false,
-        .enable_depth_clip = false,
-    };
-
-    SDL_GPUMultisampleState multisample_state = {
-        .sample_count = SDL_GPU_SAMPLECOUNT_1,
-        .sample_mask = 0,
-        .enable_mask = false,
-        .enable_alpha_to_coverage = false,
     };
 
     SDL_GPUGraphicsPipelineCreateInfo info = {
         .vertex_shader = vertex_shader,
         .fragment_shader = fragment_shader,
         .vertex_input_state = vertex_state,
-        .primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
-        .rasterizer_state = rasterizer_state,
-        .multisample_state = multisample_state,
         .depth_stencil_state = depth_state,
         .target_info = {
             .num_color_targets = 1,
             .color_target_descriptions = (SDL_GPUColorTargetDescription[]){
-                {
-                    .format = SDL_GetGPUSwapchainTextureFormat(app->device, app->window),
-                    .blend_state = {
-                        .enable_blend = false,
-                        .enable_color_write_mask = false,
-                        .color_write_mask = 0,
-                        .src_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE,
-                        .dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ZERO,
-                        .color_blend_op = SDL_GPU_BLENDOP_ADD,
-                        .src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE,
-                        .dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ZERO,
-                        .alpha_blend_op = SDL_GPU_BLENDOP_ADD,
-                    },
-                }
+                {.format = SDL_GetGPUSwapchainTextureFormat(app->device, app->window)}
             },
             .depth_stencil_format = SDL_GPU_TEXTUREFORMAT_D16_UNORM,
             .has_depth_stencil_target = true,
         },
-        .props = 0,
+        .primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
     };
 
     app->scene_pipeline = SDL_CreateGPUGraphicsPipeline(app->device, &info);
@@ -2001,72 +1948,23 @@ static bool create_overlay_pipeline(GameApp *app, SDL_GPUShader *vertex_shader, 
     SDL_GPUDepthStencilState depth_state = {
         .enable_depth_test = false,
         .enable_depth_write = false,
-        .enable_stencil_test = false,
         .compare_op = SDL_GPU_COMPAREOP_LESS,
-        .back_stencil_state = {
-            .fail_op = SDL_GPU_STENCILOP_KEEP,
-            .pass_op = SDL_GPU_STENCILOP_KEEP,
-            .depth_fail_op = SDL_GPU_STENCILOP_KEEP,
-            .compare_op = SDL_GPU_COMPAREOP_ALWAYS,
-        },
-        .front_stencil_state = {
-            .fail_op = SDL_GPU_STENCILOP_KEEP,
-            .pass_op = SDL_GPU_STENCILOP_KEEP,
-            .depth_fail_op = SDL_GPU_STENCILOP_KEEP,
-            .compare_op = SDL_GPU_COMPAREOP_ALWAYS,
-        },
-        .compare_mask = 0,
-        .write_mask = 0,
-    };
-
-    SDL_GPURasterizerState rasterizer_state = {
-        .fill_mode = SDL_GPU_FILLMODE_FILL,
-        .cull_mode = SDL_GPU_CULLMODE_NONE,
-        .front_face = SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE,
-        .depth_bias_constant_factor = 0.0f,
-        .depth_bias_clamp = 0.0f,
-        .depth_bias_slope_factor = 0.0f,
-        .enable_depth_bias = false,
-        .enable_depth_clip = false,
-    };
-
-    SDL_GPUMultisampleState multisample_state = {
-        .sample_count = SDL_GPU_SAMPLECOUNT_1,
-        .sample_mask = 0,
-        .enable_mask = false,
-        .enable_alpha_to_coverage = false,
     };
 
     SDL_GPUGraphicsPipelineCreateInfo info = {
         .vertex_shader = vertex_shader,
         .fragment_shader = fragment_shader,
         .vertex_input_state = vertex_state,
-        .primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
-        .rasterizer_state = rasterizer_state,
-        .multisample_state = multisample_state,
         .depth_stencil_state = depth_state,
         .target_info = {
             .num_color_targets = 1,
             .color_target_descriptions = (SDL_GPUColorTargetDescription[]){
-                {
-                    .format = SDL_GetGPUSwapchainTextureFormat(app->device, app->window),
-                    .blend_state = {
-                        .enable_blend = true,
-                        .enable_color_write_mask = false,
-                        .color_write_mask = 0,
-                        .src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA,
-                        .dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
-                        .color_blend_op = SDL_GPU_BLENDOP_ADD,
-                        .src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE,
-                        .dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ZERO,
-                        .alpha_blend_op = SDL_GPU_BLENDOP_ADD,
-                    },
-                }
+                {.format = SDL_GetGPUSwapchainTextureFormat(app->device, app->window)}
             },
             .depth_stencil_format = SDL_GPU_TEXTUREFORMAT_D16_UNORM,
             .has_depth_stencil_target = true,
         },
-        .props = 0,
+        .primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
     };
 
     app->overlay_pipeline = SDL_CreateGPUGraphicsPipeline(app->device, &info);
@@ -2372,20 +2270,6 @@ static int init_game(GameApp *app) {
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
         return -1;
-    }
-
-    // Minimal mode: just create window, no GPU
-    if (app->minimal_mode) {
-        SDL_Log("Minimal mode: creating window only");
-        app->window_width = 1280;
-        app->window_height = 720;
-        app->window = SDL_CreateWindow("GM SDL (Minimal)", app->window_width, app->window_height, SDL_WINDOW_RESIZABLE);
-        if (app->window == NULL) {
-            SDL_Log("SDL_CreateWindow failed: %s", SDL_GetError());
-            return -1;
-        }
-        SDL_Log("Minimal mode: window created successfully");
-        return 0;
     }
 
     // Select shader format and backend based on platform (following SDL_gpu_examples pattern)
@@ -2754,14 +2638,11 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     g_App.test_frames_count = 0;
     g_App.export_obj_mode = false;
     g_App.export_obj_path[0] = '\0';
-    g_App.minimal_mode = false;
 
     for (int i = 1; i < argc; i++) {
         if (base_strcmp(argv[i], "--test-frames") == 0 && i + 1 < argc) {
             g_App.test_frames_max = simple_atoi(argv[i + 1]);
             i++;  // Skip the next argument since we consumed it
-        } else if (base_strcmp(argv[i], "--minimal") == 0) {
-            g_App.minimal_mode = true;
         } else if (base_strcmp(argv[i], "--export-obj") == 0 && i + 1 < argc) {
             g_App.export_obj_mode = true;
             // Copy the filename
@@ -2875,19 +2756,6 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
     if (app->quit_requested) {
         return SDL_APP_SUCCESS;
-    }
-
-    // Minimal mode: just count frames, no rendering
-    if (app->minimal_mode) {
-        if (app->test_frames_max > 0) {
-            app->test_frames_count++;
-            SDL_Log("Minimal mode frame %d/%d", app->test_frames_count, app->test_frames_max);
-            if (app->test_frames_count >= app->test_frames_max) {
-                return SDL_APP_SUCCESS;
-            }
-        }
-        SDL_Delay(16);  // ~60 FPS
-        return SDL_APP_CONTINUE;
     }
 
     update_game(app);
