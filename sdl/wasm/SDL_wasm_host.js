@@ -56,6 +56,7 @@ export function createWasmSDLHost(device, canvas) {
             const buffers = new Map();
             const transferBuffers = new Map();
             const textureViews = new Map();
+            const cachedEmptyBindGroups = new Map();
             const imageAssets = globalThis.__SDL_IMAGE_ASSETS || (globalThis.__SDL_IMAGE_ASSETS = new Map());
 
             // Mouse state
@@ -474,6 +475,58 @@ export function createWasmSDLHost(device, canvas) {
                 ensureBindGroups(cmdbuf);
             }
 
+            function getEmptyBindGroup(layout) {
+                if (!layout) {
+                    return null;
+                }
+                let bindGroup = cachedEmptyBindGroups.get(layout);
+                if (!bindGroup) {
+                    bindGroup = device.createBindGroup({ layout, entries: [] });
+                    cachedEmptyBindGroups.set(layout, bindGroup);
+                }
+                return bindGroup;
+            }
+
+            function bindPipelineBindGroups(passEntry, cmdbuf, pipelineInfo) {
+                const boundIndices = new Set();
+
+                if (cmdbuf.uniformBindGroup &&
+                    cmdbuf.uniformBindGroupPipeline === cmdbuf.currentPipeline &&
+                    pipelineInfo.uniformGroupIndex !== null) {
+                    passEntry.pass.setBindGroup(pipelineInfo.uniformGroupIndex, cmdbuf.uniformBindGroup);
+                    boundIndices.add(pipelineInfo.uniformGroupIndex);
+                }
+
+                if (cmdbuf.fragmentUniformBindGroup &&
+                    cmdbuf.fragmentUniformBindGroupPipeline === cmdbuf.currentPipeline &&
+                    pipelineInfo.fragmentUniformGroupIndex !== null) {
+                    passEntry.pass.setBindGroup(pipelineInfo.fragmentUniformGroupIndex, cmdbuf.fragmentUniformBindGroup);
+                    boundIndices.add(pipelineInfo.fragmentUniformGroupIndex);
+                }
+
+                if (cmdbuf.textureBindGroup &&
+                    cmdbuf.textureBindGroupPipeline === cmdbuf.currentPipeline &&
+                    pipelineInfo.samplerGroupIndex !== null) {
+                    passEntry.pass.setBindGroup(pipelineInfo.samplerGroupIndex, cmdbuf.textureBindGroup);
+                    boundIndices.add(pipelineInfo.samplerGroupIndex);
+                }
+
+                const emptyIndices = pipelineInfo.emptyBindGroupIndices || [];
+                if (emptyIndices.length > 0) {
+                    const layouts = pipelineInfo.bindGroupLayouts || [];
+                    for (const groupIndex of emptyIndices) {
+                        if (boundIndices.has(groupIndex)) {
+                            continue;
+                        }
+                        const layout = layouts[groupIndex];
+                        const emptyBindGroup = getEmptyBindGroup(layout);
+                        if (emptyBindGroup) {
+                            passEntry.pass.setBindGroup(groupIndex, emptyBindGroup);
+                        }
+                    }
+                }
+            }
+
             // Set up event listeners
             canvas.addEventListener('mousemove', (e) => {
                 if (mouseLocked) {
@@ -789,6 +842,7 @@ export function createWasmSDLHost(device, canvas) {
                     const samplerBindingInfo = [];
                     let samplerLayout = null;
                     let samplerGroupIndex = null;
+                    const emptyBindGroupIndices = [];
 
                     const usingWGSLLayout = Boolean(vertexUniformBinding || fragmentUniformBinding || fragmentSamplerBindings.length > 0);
 
@@ -881,6 +935,7 @@ export function createWasmSDLHost(device, canvas) {
                                     bindGroupLayouts[group] = fragmentUniformLayout;
                                 } else {
                                     bindGroupLayouts[group] = emptyLayout;
+                                    emptyBindGroupIndices.push(group);
                                 }
                             }
                         }
@@ -1067,7 +1122,8 @@ export function createWasmSDLHost(device, canvas) {
                             samplerGroupIndex,
                             uniformBindingIndex,
                             fragmentUniformBindingIndex,
-                            samplerBindingInfo
+                            samplerBindingInfo,
+                            emptyBindGroupIndices
                         });
                         return handle;
                     } catch (e) {
@@ -1606,17 +1662,7 @@ export function createWasmSDLHost(device, canvas) {
 
                         const pipelineInfo = pipelines.get(cmdbuf.currentPipeline);
                         if (pipelineInfo) {
-                            if (cmdbuf.uniformBindGroup && cmdbuf.uniformBindGroupPipeline === cmdbuf.currentPipeline && pipelineInfo.uniformGroupIndex !== null) {
-                                passEntry.pass.setBindGroup(pipelineInfo.uniformGroupIndex, cmdbuf.uniformBindGroup);
-                            }
-
-                            if (cmdbuf.fragmentUniformBindGroup && cmdbuf.fragmentUniformBindGroupPipeline === cmdbuf.currentPipeline && pipelineInfo.fragmentUniformGroupIndex !== null) {
-                                passEntry.pass.setBindGroup(pipelineInfo.fragmentUniformGroupIndex, cmdbuf.fragmentUniformBindGroup);
-                            }
-
-                            if (cmdbuf.textureBindGroup && cmdbuf.textureBindGroupPipeline === cmdbuf.currentPipeline && pipelineInfo.samplerGroupIndex !== null) {
-                                passEntry.pass.setBindGroup(pipelineInfo.samplerGroupIndex, cmdbuf.textureBindGroup);
-                            }
+                            bindPipelineBindGroups(passEntry, cmdbuf, pipelineInfo);
                         }
                     }
 
@@ -1751,17 +1797,7 @@ export function createWasmSDLHost(device, canvas) {
 
                         const pipelineInfo = pipelines.get(cmdbuf.currentPipeline);
                         if (pipelineInfo) {
-                            if (cmdbuf.uniformBindGroup && cmdbuf.uniformBindGroupPipeline === cmdbuf.currentPipeline && pipelineInfo.uniformGroupIndex !== null) {
-                                passEntry.pass.setBindGroup(pipelineInfo.uniformGroupIndex, cmdbuf.uniformBindGroup);
-                            }
-
-                            if (cmdbuf.fragmentUniformBindGroup && cmdbuf.fragmentUniformBindGroupPipeline === cmdbuf.currentPipeline && pipelineInfo.fragmentUniformGroupIndex !== null) {
-                                passEntry.pass.setBindGroup(pipelineInfo.fragmentUniformGroupIndex, cmdbuf.fragmentUniformBindGroup);
-                            }
-
-                            if (cmdbuf.textureBindGroup && cmdbuf.textureBindGroupPipeline === cmdbuf.currentPipeline && pipelineInfo.samplerGroupIndex !== null) {
-                                passEntry.pass.setBindGroup(pipelineInfo.samplerGroupIndex, cmdbuf.textureBindGroup);
-                            }
+                            bindPipelineBindGroups(passEntry, cmdbuf, pipelineInfo);
                         }
                     }
 
