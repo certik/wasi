@@ -2511,7 +2511,7 @@ static int render_game(GameApp *app) {
     SDL_DrawGPUIndexedPrimitives(render_pass, app->scene_index_count, 1, 0, 0, 0);
 
     // Temporarily disable overlay to test scene stability
-    if (false && app->overlay_vertex_count > 0) {
+    if (app->overlay_vertex_count > 0) {
         SDL_Log("render_game: Binding overlay pipeline (ptr=%p)", (void*)app->overlay_pipeline);
         if (!app->overlay_pipeline) {
             SDL_Log("ERROR: overlay_pipeline is NULL!");
