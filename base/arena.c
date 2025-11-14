@@ -46,21 +46,22 @@ Arena *arena_new(size_t initial_size) {
     arena->first_chunk = NULL;
 
     // Allocate the first chunk.
-    size_t total_alloc_size = sizeof(struct arena_chunk) + initial_size;
-    struct arena_chunk *first = buddy_alloc(total_alloc_size, NULL);
+    size_t requested_size = sizeof(struct arena_chunk) + initial_size;
+    size_t actual_size;
+    struct arena_chunk *first = buddy_alloc(requested_size, &actual_size);
     if (!first) {
         //buddy_free(arena);
         FATAL_ERROR("buddy_alloc failed for size");
     }
     first->next = NULL;
-    first->size = total_alloc_size;
+    first->size = actual_size;
 
     // Initialize arena state to point to the start of the first chunk.
     arena->first_chunk = first;
     arena->current_chunk = first;
 
     uintptr_t data_start = align_up((uintptr_t)(first + 1));
-    uintptr_t chunk_end = (uintptr_t)first + total_alloc_size;
+    uintptr_t chunk_end = (uintptr_t)first + actual_size;
 
     arena->current_ptr = (char *)data_start;
     arena->remaining_in_chunk = (data_start < chunk_end) ? (chunk_end - data_start) : 0;
