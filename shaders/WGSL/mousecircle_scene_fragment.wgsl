@@ -52,6 +52,35 @@ fn checker(uv: vec2f) -> f32 {
     return select(0.7, 1.0, v < 0.5);
 }
 
+fn get_debug_height(uv: vec2f) -> f32 {
+    // Debug: extrude region where 0 <= u,v <= 0.2
+    if (uv.x <= 0.2 && uv.y <= 0.2) {
+        return 1.0;  // Full height for debug region
+    }
+    return 0.0;
+}
+
+fn parallax_occlusion(uv: vec2f, v: vec3f, n: vec3f, height_scale: f32, steps: i32) -> vec2f {
+    let layer_depth = 1.0 / f32(steps);
+    var current_depth = 0.0;
+    let offset = v.xy / v.z * height_scale;  // Parallax dir
+    var current_uv = uv;
+    var prev_depth_map = 0.0;
+    var prev_uv = uv;
+    for (var i = 0; i < steps; i = i + 1) {
+        current_uv -= offset * layer_depth;
+        let depth_map = get_debug_height(current_uv);
+        if (current_depth >= depth_map) {
+            let delta = vec2f(prev_depth_map - current_depth + layer_depth, depth_map - current_depth);
+            return prev_uv - offset * (delta.x / (delta.x - delta.y) * layer_depth);
+        }
+        prev_uv = current_uv;
+        prev_depth_map = depth_map;
+        current_depth += layer_depth;
+    }
+    return uv;  // No occlusion
+}
+
 fn get_material_properties(surface_type: f32) -> MaterialProperties {
     if (surface_type < 0.5) {
         return MaterialProperties(12.0, 0.15); // Floor: mostly matte
@@ -166,9 +195,27 @@ fn compute_flashlight(normal: vec3f, world_pos: vec3f, frag_coord: vec4f, view_d
 
 @fragment
 fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @location(0) vec4f {
+    // Calculate view direction early for POM
+    let n = normalize(input.normal);
+    var view_dir = uniforms.cameraPos.xyz - input.worldPos;
+    let view_len = length(view_dir);
+    if (view_len > 0.0001) {
+        view_dir = view_dir / view_len;
+    } else {
+        view_dir = vec3f(0.0, 0.0, 1.0);
+    }
+
+    // Apply parallax occlusion mapping for walls when camera is close
+    var uv = input.uv;
+    if (input.surfaceType >= 0.5 && input.surfaceType < 1.5) {  // Walls only
+        if (distance(uniforms.cameraPos.xyz, input.worldPos) < 5.0) {
+            uv = parallax_occlusion(input.uv, view_dir, n, 0.05, 32);
+        }
+    }
+
     // Sample textures unconditionally (required for uniform control flow)
     let floorColor = textureSample(floorTexture, sharedSampler, input.uv);
-    let wallColor = textureSample(wallTexture, sharedSampler, input.uv);
+    let wallColor = textureSample(wallTexture, sharedSampler, uv);
     let ceilingColor = textureSample(ceilingTexture, sharedSampler, input.uv);
     let sphereColor = textureSample(sphereTexture, sharedSampler, input.uv);
     let bookColor = textureSample(bookTexture, sharedSampler, input.uv);
@@ -195,15 +242,7 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
         baseColor = chairColor.rgb;
     }
 
-    let n = normalize(input.normal);
     let material = get_material_properties(input.surfaceType);
-    var view_dir = uniforms.cameraPos.xyz - input.worldPos;
-    let view_len = length(view_dir);
-    if (view_len > 0.0001) {
-        view_dir = view_dir / view_len;
-    } else {
-        view_dir = vec3f(0.0, 0.0, 1.0);
-    }
     let staticLight = compute_static_lighting(n, input.worldPos, view_dir, material);
     let flashlight = compute_flashlight(n, input.worldPos, frag_coord, view_dir, material);
     if (uniforms.screenParams.w > 0.5) {

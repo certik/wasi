@@ -45,11 +45,72 @@ struct MaterialProperties {
 constant uint MAX_STATIC_LIGHTS = 16u;
 
 float checker(
-    metal::float2 uv
+    metal::float2 uv_1
 ) {
-    metal::float2 scaled = metal::floor(uv * 4.0);
-    float v = metal::fmod(scaled.x + scaled.y, 2.0);
-    return (v < 0.5) ? 1.0 : 0.7;
+    metal::float2 scaled = metal::floor(uv_1 * 4.0);
+    float v_1 = metal::fmod(scaled.x + scaled.y, 2.0);
+    return (v_1 < 0.5) ? 1.0 : 0.7;
+}
+
+float get_debug_height(
+    metal::float2 uv_2
+) {
+    if ((uv_2.x <= 0.2) && (uv_2.y <= 0.2)) {
+        return 1.0;
+    }
+    return 0.0;
+}
+
+metal::float2 parallax_occlusion(
+    metal::float2 uv_3,
+    metal::float3 v,
+    metal::float3 n,
+    float height_scale,
+    int steps
+) {
+    float current_depth = 0.0;
+    metal::float2 current_uv = {};
+    float prev_depth_map = 0.0;
+    metal::float2 prev_uv = {};
+    int i = 0;
+    float layer_depth = 1.0 / static_cast<float>(steps);
+    metal::float2 offset = (v.xy / metal::float2(v.z)) * height_scale;
+    current_uv = uv_3;
+    prev_uv = uv_3;
+    bool loop_init = true;
+    while(true) {
+        if (!loop_init) {
+            int _e49 = i;
+            i = as_type<int>(as_type<uint>(_e49) + as_type<uint>(1));
+        }
+        loop_init = false;
+        int _e21 = i;
+        if (_e21 < steps) {
+        } else {
+            break;
+        }
+        {
+            metal::float2 _e24 = current_uv;
+            current_uv = _e24 - (offset * layer_depth);
+            metal::float2 _e26 = current_uv;
+            float _e27 = get_debug_height(_e26);
+            float _e28 = current_depth;
+            if (_e28 >= _e27) {
+                float _e30 = prev_depth_map;
+                float _e31 = current_depth;
+                float _e34 = current_depth;
+                metal::float2 delta = metal::float2((_e30 - _e31) + layer_depth, _e27 - _e34);
+                metal::float2 _e37 = prev_uv;
+                return _e37 - (offset * ((delta.x / (delta.x - delta.y)) * layer_depth));
+            }
+            metal::float2 _e46 = current_uv;
+            prev_uv = _e46;
+            prev_depth_map = _e27;
+            float _e47 = current_depth;
+            current_depth = _e47 + layer_depth;
+        }
+    }
+    return uv_3;
 }
 
 MaterialProperties get_material_properties(
@@ -94,7 +155,7 @@ StaticLightContribution compute_static_lighting(
 ) {
     metal::float3 total_diffuse = metal::float3(0.0);
     metal::float3 total_specular = metal::float3(0.0);
-    int i = 0;
+    int i_1 = 0;
     float range_falloff = {};
     float _e7 = uniforms.staticLightParams.x;
     int light_count = metal::clamp(naga_f2i32(_e7), 0, 16);
@@ -103,20 +164,20 @@ StaticLightContribution compute_static_lighting(
         return StaticLightContribution {metal::float3(0.0), metal::float3(0.0)};
     }
     float shininess = metal::max(material.shininess, 1.0);
-    bool loop_init = true;
+    bool loop_init_1 = true;
     while(true) {
-        if (!loop_init) {
-            int _e105 = i;
-            i = as_type<int>(as_type<uint>(_e105) + as_type<uint>(1));
+        if (!loop_init_1) {
+            int _e105 = i_1;
+            i_1 = as_type<int>(as_type<uint>(_e105) + as_type<uint>(1));
         }
-        loop_init = false;
-        int _e37 = i;
+        loop_init_1 = false;
+        int _e37 = i_1;
         if (_e37 < light_count) {
         } else {
             break;
         }
         {
-            int _e41 = i;
+            int _e41 = i_1;
             metal::float4 light_data = uniforms.staticLights.inner[static_cast<uint>(_e41)];
             metal::float3 to_light = light_data.xyz - world_pos;
             float dist = metal::length(to_light);
@@ -140,7 +201,7 @@ StaticLightContribution compute_static_lighting(
             float attenuation = inv * _e78;
             metal::float3 H = metal::normalize(dir + view_dir_1);
             float spec = metal::pow(metal::max(metal::dot(normal, H), 0.0), shininess);
-            int _e88 = i;
+            int _e88 = i_1;
             metal::float4 _e91 = uniforms.staticLightColors.inner[static_cast<uint>(_e88)];
             metal::float3 light_color = _e91.xyz;
             metal::float3 _e95 = total_diffuse;
@@ -175,12 +236,12 @@ FlashlightContribution compute_flashlight(
     }
     metal::float2 pixel = frag_coord_1.xy;
     metal::float2 center = metal::float2(width * 0.5, height * 0.5);
-    metal::float2 delta = (pixel - center) / metal::float2(min_dim);
+    metal::float2 delta_1 = (pixel - center) / metal::float2(min_dim);
     float radius = uniforms.flashlightParams.w;
     if (radius <= 0.0) {
         return FlashlightContribution {0.0, 0.0};
     }
-    float dist_1 = metal::length(delta);
+    float dist_1 = metal::length(delta_1);
     if (dist_1 > radius) {
         return FlashlightContribution {0.0, 0.0};
     }
@@ -247,11 +308,33 @@ fragment main_Output main_(
 , constant SceneUniforms& uniforms [[buffer(0)]]
 ) {
     const FragmentInput input = { varyings.surfaceType, {}, varyings.uv, varyings.normal, varyings.worldPos };
-    metal::float3 baseColor = {};
     metal::float3 view_dir = {};
+    metal::float2 uv = {};
+    metal::float3 baseColor = {};
     metal::float3 color = {};
+    metal::float3 n_1 = metal::normalize(input.normal);
+    metal::float4 _e6 = uniforms.cameraPos;
+    view_dir = _e6.xyz - input.worldPos;
+    metal::float3 _e11 = view_dir;
+    float view_len = metal::length(_e11);
+    if (view_len > 0.0001) {
+        metal::float3 _e15 = view_dir;
+        view_dir = _e15 / metal::float3(view_len);
+    } else {
+        view_dir = metal::float3(0.0, 0.0, 1.0);
+    }
+    uv = input.uv;
+    if ((input.surfaceType >= 0.5) && (input.surfaceType < 1.5)) {
+        metal::float4 _e33 = uniforms.cameraPos;
+        if (metal::distance(_e33.xyz, input.worldPos) < 5.0) {
+            metal::float3 _e40 = view_dir;
+            metal::float2 _e43 = parallax_occlusion(input.uv, _e40, n_1, 0.05, 32);
+            uv = _e43;
+        }
+    }
     metal::float4 floorColor = floorTexture.sample(sharedSampler, input.uv);
-    metal::float4 wallColor = wallTexture.sample(sharedSampler, input.uv);
+    metal::float2 _e50 = uv;
+    metal::float4 wallColor = wallTexture.sample(sharedSampler, _e50);
     metal::float4 ceilingColor = ceilingTexture.sample(sharedSampler, input.uv);
     metal::float4 sphereColor = sphereTexture.sample(sharedSampler, input.uv);
     metal::float4 bookColor = bookTexture.sample(sharedSampler, input.uv);
@@ -266,8 +349,8 @@ fragment main_Output main_(
                 baseColor = ceilingColor.xyz;
             } else {
                 if (input.surfaceType < 3.5) {
-                    float _e47 = checker(input.uv);
-                    baseColor = metal::float3(0.7, 0.5, 0.3) * _e47;
+                    float _e89 = checker(input.uv);
+                    baseColor = metal::float3(0.7, 0.5, 0.3) * _e89;
                 } else {
                     if (input.surfaceType < 4.5) {
                         baseColor = sphereColor.xyz;
@@ -282,42 +365,31 @@ fragment main_Output main_(
             }
         }
     }
-    metal::float3 n = metal::normalize(input.normal);
-    MaterialProperties _e61 = get_material_properties(input.surfaceType);
-    metal::float4 _e64 = uniforms.cameraPos;
-    view_dir = _e64.xyz - input.worldPos;
-    metal::float3 _e69 = view_dir;
-    float view_len = metal::length(_e69);
-    if (view_len > 0.0001) {
-        metal::float3 _e73 = view_dir;
-        view_dir = _e73 / metal::float3(view_len);
-    } else {
-        view_dir = metal::float3(0.0, 0.0, 1.0);
-    }
-    metal::float3 _e81 = view_dir;
-    StaticLightContribution _e82 = compute_static_lighting(n, input.worldPos, _e81, _e61, uniforms);
-    metal::float3 _e84 = view_dir;
-    FlashlightContribution _e85 = compute_flashlight(n, input.worldPos, frag_coord, _e84, _e61, uniforms);
-    float _e89 = uniforms.screenParams.w;
-    if (_e89 > 0.5) {
+    MaterialProperties _e101 = get_material_properties(input.surfaceType);
+    metal::float3 _e103 = view_dir;
+    StaticLightContribution _e104 = compute_static_lighting(n_1, input.worldPos, _e103, _e101, uniforms);
+    metal::float3 _e106 = view_dir;
+    FlashlightContribution _e107 = compute_flashlight(n_1, input.worldPos, frag_coord, _e106, _e101, uniforms);
+    float _e111 = uniforms.screenParams.w;
+    if (_e111 > 0.5) {
         metal::float3 mapped = (metal::normalize(input.normal) * 0.5) + metal::float3(0.5);
         return main_Output { metal::float4(mapped, 1.0) };
     }
     float ambient = uniforms.staticLightParams.z;
-    metal::float4 _e108 = uniforms.cameraPos;
-    float fogFactor = metal::exp(-(metal::distance(input.worldPos, _e108.xyz)) * 0.08);
-    metal::float3 _e115 = baseColor;
-    color = _e115 * (ambient + _e85.diffuse);
-    metal::float3 _e120 = baseColor;
-    metal::float3 _e123 = color;
-    color = _e123 + (_e120 * _e82.diffuse);
-    metal::float3 _e126 = color;
-    color = _e126 + _e82.specular;
-    metal::float3 _e134 = color;
-    color = _e134 + (_e85.specular * metal::float3(1.0, 0.95, 0.85));
-    metal::float4 _e138 = uniforms.fogColor;
-    metal::float3 _e140 = color;
-    color = metal::mix(_e138.xyz, _e140, fogFactor);
-    metal::float3 _e142 = color;
-    return main_Output { metal::float4(_e142, 1.0) };
+    metal::float4 _e130 = uniforms.cameraPos;
+    float fogFactor = metal::exp(-(metal::distance(input.worldPos, _e130.xyz)) * 0.08);
+    metal::float3 _e137 = baseColor;
+    color = _e137 * (ambient + _e107.diffuse);
+    metal::float3 _e142 = baseColor;
+    metal::float3 _e145 = color;
+    color = _e145 + (_e142 * _e104.diffuse);
+    metal::float3 _e148 = color;
+    color = _e148 + _e104.specular;
+    metal::float3 _e156 = color;
+    color = _e156 + (_e107.specular * metal::float3(1.0, 0.95, 0.85));
+    metal::float4 _e160 = uniforms.fogColor;
+    metal::float3 _e162 = color;
+    color = metal::mix(_e160.xyz, _e162, fogFactor);
+    metal::float3 _e164 = color;
+    return main_Output { metal::float4(_e164, 1.0) };
 }
