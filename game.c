@@ -2940,7 +2940,7 @@ static void update_game(GameApp *app) {
     float dir_x = cos_pitch * cos_yaw;
     float dir_y = sin_pitch;
     float dir_z = cos_pitch * sin_yaw;
-    float length = sqrtf(dir_x * dir_x + dir_y * dir_y + dir_z * dir_z);
+    float length = fast_sqrtf(dir_x * dir_x + dir_y * dir_y + dir_z * dir_z);
     if (length > 0.0001f) {
         float inv = 1.0f / length;
         dir_x *= inv;
