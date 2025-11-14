@@ -306,7 +306,5 @@ int main(void) {
     }
 
     arena_free(arena);
-    buddy_free(argv);
-    buddy_free(argv_buf);
     return 0;
 }
