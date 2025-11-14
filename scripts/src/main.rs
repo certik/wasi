@@ -518,9 +518,11 @@ fn generate_spirv(
     header_comment: &str,
 ) -> Result<(), String> {
     // Configure SPIR-V options
+    // NOTE: Do not use ADJUST_COORDINATE_SPACE flag - SDL3 GPU handles coordinate system
+    // conversion automatically. Using the flag would cause double-flipping on Vulkan.
     let options = spv::Options {
         lang_version: (1, 0),
-        flags: spv::WriterFlags::DEBUG | spv::WriterFlags::ADJUST_COORDINATE_SPACE,
+        flags: spv::WriterFlags::DEBUG,
         capabilities: None,
         bounds_check_policies: Default::default(),
         zero_initialize_workgroup_memory: spv::ZeroInitializeWorkgroupMemoryMode::Polyfill,
