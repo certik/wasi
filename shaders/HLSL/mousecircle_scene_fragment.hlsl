@@ -6,15 +6,27 @@ struct SceneUniforms {
     row_major float4x4 mvp;
     float4 cameraPos;
     float4 fogColor;
+    float4 staticLights[16];
+    float4 staticLightParams;
+    float4 flashlightPos;
+    float4 flashlightDir;
+    float4 flashlightParams;
+    float4 screenParams;
 };
 
-struct VertexOutput {
-    float4 position : SV_Position;
+struct FragmentInput {
     float surfaceType : TEXCOORD0;
     float2 uv : TEXCOORD1;
     float3 normal : TEXCOORD2;
     float3 worldPos : TEXCOORD3;
 };
+
+struct FlashlightContribution {
+    float diffuse;
+    float specular;
+};
+
+static const uint MAX_STATIC_LIGHTS = 16u;
 
 Texture2D<float4> floorTexture : register(t0, space2);
 Texture2D<float4> wallTexture : register(t1, space2);
@@ -27,14 +39,20 @@ cbuffer SceneUniforms : register(b0, space3) {
     row_major float4x4 mvp;
     float4 cameraPos;
     float4 fogColor;
+    float4 staticLights[16];
+    float4 staticLightParams;
+    float4 flashlightPos;
+    float4 flashlightDir;
+    float4 flashlightParams;
+    float4 screenParams;
 }
 
 struct FragmentInput_main {
     float surfaceType : TEXCOORD0;
     float2 uv_1 : TEXCOORD1;
-    float3 normal : TEXCOORD2;
+    float3 normal_2 : TEXCOORD2;
     float3 worldPos : TEXCOORD3;
-    float4 position : SV_Position;
+    float4 frag_coord_2 : SV_Position;
 };
 
 float naga_mod(float lhs, float rhs) {
@@ -48,11 +66,140 @@ float checker(float2 uv)
     return ((v < 0.5) ? 1.0 : 0.7);
 }
 
+int naga_f2i32(float value) {
+    return int(clamp(value, -2147483600.0, 2147483500.0));
+}
+
+float compute_static_lighting(float3 normal, float3 world_pos)
+{
+    float total = 0.0;
+    int i = int(0);
+
+    float _e5 = staticLightParams.x;
+    int light_count = clamp(naga_f2i32(_e5), int(0), int(16));
+    float range = staticLightParams.y;
+    if (((range <= 0.0) || (light_count == int(0)))) {
+        return 0.0;
+    }
+    bool loop_init = true;
+    while(true) {
+        if (!loop_init) {
+            int _e58 = i;
+            i = asint(asuint(_e58) + asuint(int(1)));
+        }
+        loop_init = false;
+        int _e24 = i;
+        if ((_e24 < light_count)) {
+        } else {
+            break;
+        }
+        {
+            int _e28 = i;
+            float4 light = staticLights[min(uint(uint(_e28)), 15u)];
+            float3 to_light = (light.xyz - world_pos);
+            float dist = length(to_light);
+            if (((dist > 0.0001) && (dist < range))) {
+                float3 dir = (to_light / (dist).xxx);
+                float ndotl = max(dot(normal, dir), 0.0);
+                if ((ndotl > 0.0)) {
+                    float attenuation = pow(max((1.0 - (dist / range)), 0.0), 2.0);
+                    float _e56 = total;
+                    total = (_e56 + ((ndotl * attenuation) * light.w));
+                }
+            }
+        }
+    }
+    float _e61 = total;
+    return _e61;
+}
+
+FlashlightContribution ConstructFlashlightContribution(float arg0, float arg1) {
+    FlashlightContribution ret = (FlashlightContribution)0;
+    ret.diffuse = arg0;
+    ret.specular = arg1;
+    return ret;
+}
+
+FlashlightContribution compute_flashlight(float3 normal_1, float3 world_pos_1, float4 frag_coord_1)
+{
+    float beam = (float)0;
+
+    float _e6 = flashlightParams.x;
+    if ((_e6 < 0.5)) {
+        const FlashlightContribution flashlightcontribution = ConstructFlashlightContribution(0.0, 0.0);
+        return flashlightcontribution;
+    }
+    float width = screenParams.x;
+    float height = screenParams.y;
+    float min_dim = screenParams.z;
+    if ((((width <= 0.0) || (height <= 0.0)) || (min_dim <= 0.0))) {
+        const FlashlightContribution flashlightcontribution_1 = ConstructFlashlightContribution(0.0, 0.0);
+        return flashlightcontribution_1;
+    }
+    float2 pixel = frag_coord_1.xy;
+    float2 center_ = float2((width * 0.5), (height * 0.5));
+    float2 delta = ((pixel - center_) / (min_dim).xx);
+    float radius = flashlightParams.w;
+    if ((radius <= 0.0)) {
+        const FlashlightContribution flashlightcontribution_2 = ConstructFlashlightContribution(0.0, 0.0);
+        return flashlightcontribution_2;
+    }
+    float dist_1 = length(delta);
+    if ((dist_1 > radius)) {
+        const FlashlightContribution flashlightcontribution_3 = ConstructFlashlightContribution(0.0, 0.0);
+        return flashlightcontribution_3;
+    }
+    float falloff = clamp((dist_1 / radius), 0.0, 1.0);
+    float _e68 = flashlightParams.y;
+    float base_intensity = (((1.0 - (falloff * falloff)) * _e68) * 0.35);
+    float _e75 = flashlightDir.w;
+    if ((_e75 <= 0.0)) {
+        const FlashlightContribution flashlightcontribution_4 = ConstructFlashlightContribution(base_intensity, 0.0);
+        return flashlightcontribution_4;
+    }
+    float4 _e82 = flashlightPos;
+    float3 to_fragment = (world_pos_1 - _e82.xyz);
+    float4 _e87 = flashlightDir;
+    float dist_along_axis = dot(to_fragment, _e87.xyz);
+    float _e95 = flashlightPos.w;
+    if (((dist_along_axis <= 0.0) || (dist_along_axis > _e95))) {
+        const FlashlightContribution flashlightcontribution_5 = ConstructFlashlightContribution(base_intensity, 0.0);
+        return flashlightcontribution_5;
+    }
+    float3 dir_norm = normalize(to_fragment);
+    float4 _e103 = flashlightDir;
+    float spot = dot(dir_norm, _e103.xyz);
+    float cutoff = flashlightDir.w;
+    if ((spot <= cutoff)) {
+        const FlashlightContribution flashlightcontribution_6 = ConstructFlashlightContribution(base_intensity, 0.0);
+        return flashlightcontribution_6;
+    }
+    float focus = pow(((spot - cutoff) / max((1.0 - cutoff), 0.001)), 2.0);
+    float4 _e123 = flashlightDir;
+    float ndotl_1 = max(dot(normal_1, _e123.xyz), 0.0);
+    float _e131 = flashlightPos.w;
+    float distance_atten = clamp((1.0 - (dist_along_axis / _e131)), 0.0, 1.0);
+    float4 _e140 = flashlightDir;
+    float3 spec_dir = normalize((_e140.xyz + float3(0.0, 1.0, 0.0)));
+    float spec = pow(max(dot(normal_1, spec_dir), 0.0), 24.0);
+    float _e158 = flashlightParams.y;
+    beam = (base_intensity + ((((focus * ndotl_1) * distance_atten) * _e158) * 0.5));
+    float _e164 = beam;
+    float _e168 = flashlightParams.y;
+    beam = min(_e164, (_e168 * 0.7));
+    float _e179 = flashlightParams.y;
+    float specular = ((((spec * focus) * distance_atten) * 0.15) * _e179);
+    float _e181 = beam;
+    const FlashlightContribution flashlightcontribution_7 = ConstructFlashlightContribution(_e181, specular);
+    return flashlightcontribution_7;
+}
+
 float4 main_(FragmentInput_main fragmentinput_main) : SV_Target0
 {
-    VertexOutput input = { fragmentinput_main.position, fragmentinput_main.surfaceType, fragmentinput_main.uv_1, fragmentinput_main.normal, fragmentinput_main.worldPos };
+    FragmentInput input = { fragmentinput_main.surfaceType, fragmentinput_main.uv_1, fragmentinput_main.normal_2, fragmentinput_main.worldPos };
+    float4 frag_coord = fragmentinput_main.frag_coord_2;
     float3 baseColor = (float3)0;
-    float diff = (float)0;
+    float lighting = (float)0;
     float3 color = (float3)0;
 
     float4 floorColor = floorTexture.Sample(sharedSampler, input.uv);
@@ -71,8 +218,8 @@ float4 main_(FragmentInput_main fragmentinput_main) : SV_Target0
                 baseColor = ceilingColor.xyz;
             } else {
                 if ((input.surfaceType < 3.5)) {
-                    const float _e46 = checker(input.uv);
-                    baseColor = (float3(0.7, 0.5, 0.3) * _e46);
+                    const float _e47 = checker(input.uv);
+                    baseColor = (float3(0.7, 0.5, 0.3) * _e47);
                 } else {
                     if ((input.surfaceType < 4.5)) {
                         baseColor = sphereColor.xyz;
@@ -88,19 +235,22 @@ float4 main_(FragmentInput_main fragmentinput_main) : SV_Target0
         }
     }
     float3 n = normalize(input.normal);
-    float3 lightDir = normalize(float3(0.35, 1.0, 0.45));
-    diff = max(dot(n, lightDir), 0.15);
-    if (((input.surfaceType >= 1.5) && (input.surfaceType < 2.5))) {
-        diff = 1.0;
-    }
-    float4 _e79 = cameraPos;
-    float fogFactor = exp((-(distance(input.worldPos, _e79.xyz)) * 0.08));
-    float3 _e86 = baseColor;
-    float _e87 = diff;
-    color = (_e86 * _e87);
-    float4 _e92 = fogColor;
-    float3 _e94 = color;
-    color = lerp(_e92.xyz, _e94, fogFactor);
-    float3 _e96 = color;
-    return float4(_e96, 1.0);
+    const float _e61 = compute_static_lighting(n, input.worldPos);
+    const FlashlightContribution _e63 = compute_flashlight(n, input.worldPos, frag_coord);
+    float ambient = staticLightParams.z;
+    lighting = (ambient + _e61);
+    float _e70 = lighting;
+    lighting = clamp(_e70, ambient, 6.0);
+    float4 _e76 = cameraPos;
+    float fogFactor = exp((-(distance(input.worldPos, _e76.xyz)) * 0.08));
+    float3 _e83 = baseColor;
+    float _e84 = lighting;
+    color = (_e83 * (_e84 + _e63.diffuse));
+    float3 _e95 = color;
+    color = (_e95 + (_e63.specular * float3(1.0, 0.95, 0.85)));
+    float4 _e99 = fogColor;
+    float3 _e101 = color;
+    color = lerp(_e99.xyz, _e101, fogFactor);
+    float3 _e103 = color;
+    return float4(_e103, 1.0);
 }

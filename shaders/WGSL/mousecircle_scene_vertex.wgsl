@@ -1,7 +1,15 @@
+const MAX_STATIC_LIGHTS: u32 = 16u;
+
 struct SceneUniforms {
     mvp: mat4x4f,
     cameraPos: vec4f,
     fogColor: vec4f,
+    staticLights: array<vec4f, MAX_STATIC_LIGHTS>,
+    staticLightParams: vec4f,
+    flashlightPos: vec4f,
+    flashlightDir: vec4f,
+    flashlightParams: vec4f,
+    screenParams: vec4f,
 };
 
 struct VertexInput {

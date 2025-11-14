@@ -28,19 +28,21 @@ pixi r test_base_wasm  # requires wasmtime
 ```bash
 pixi r build_linux
 pixi r test_linux
+pixi r test_game
 ```
 
 **macOS:**
 ```bash
 pixi r build_macos  # macOS only
 pixi r test_macos
-pixi r test_game_macos
+pixi r test_game
 ```
 
 **Windows:**
 ```bash
 pixi run -e windows build_windows  # Windows only, requires MSVC
 pixi run -e windows test_windows
+pixi r test_game
 ```
 
 **Run all tests:**

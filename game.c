@@ -47,6 +47,17 @@ typedef __builtin_va_list __gnuc_va_list;
 #define PI 3.14159265358979323846
 #define WALL_HEIGHT 2.0f
 #define CHECKER_SIZE 4.0f
+#define LIGHT_FLOOR_CELL 9
+#define MAX_STATIC_LIGHTS 16
+#define CEILING_LIGHT_HEIGHT (WALL_HEIGHT - 0.1f)
+#define CEILING_LIGHT_RANGE 4.5f
+#define CEILING_LIGHT_INTENSITY 1.4f
+#define MIN_AMBIENT_LIGHT 0.03f
+#define FLASHLIGHT_RANGE 9.0f
+#define FLASHLIGHT_INTENSITY 2.5f
+#define FLASHLIGHT_COS_CUTOFF 0.9f
+#define FLASHLIGHT_SCREEN_RADIUS 0.18f
+#define FLASHLIGHT_RING_THICKNESS 0.01f
 
 // Overlay layout constants
 #define GLYPH_PIXEL_SIZE 1.0f
@@ -103,6 +114,7 @@ typedef struct {
     int triangle_mode;
     int debug_mode;
     int horizontal_movement;
+    int flashlight_enabled;
 
     uint8_t keys[256];
     float mouse_delta_x;
@@ -151,6 +163,12 @@ typedef struct {
     mat4 mvp;
     float camera_pos[4];
     float fog_color[4];
+    float static_lights[MAX_STATIC_LIGHTS][4];
+    float static_light_params[4];
+    float flashlight_position[4];
+    float flashlight_direction[4];
+    float flashlight_params[4];
+    float screen_params[4];
 } SceneUniforms;
 
 typedef struct {
@@ -189,6 +207,8 @@ typedef struct {
     bool overlay_dirty;
 
     SceneUniforms scene_uniforms;
+    uint32_t static_light_count;
+    float static_light_positions[MAX_STATIC_LIGHTS][3];
 
     int window_width;
     int window_height;
@@ -401,7 +421,7 @@ typedef struct {
 } MeshGenContext;
 
 static inline int is_solid_cell(int value) {
-    return value != 0;
+    return (value == 1) || (value == 2) || (value == 3);
 }
 
 static inline void push_position(MeshGenContext *ctx, float x, float y, float z) {
@@ -1306,7 +1326,7 @@ static int is_walkable(const GameState *state, float x, float z) {
                 return 0;
             }
             int cell = state->map_data[tz * state->map_width + tx];
-            if (cell != 0) {
+            if (is_solid_cell(cell)) {
                 return 0;
             }
         }
@@ -1341,6 +1361,7 @@ static void gm_init_game_state(GameState *state, int *map, int width, int height
     state->triangle_mode = 0;
     state->debug_mode = 0;
     state->horizontal_movement = 1;
+    state->flashlight_enabled = 0;
 
     state->map_data = map;
     state->map_width = width;
@@ -1423,6 +1444,10 @@ static void gm_handle_key_press(GameState *state, uint8_t key_code) {
         case 'f':
         case 'F':
             gm_toggle_horizontal_movement(state);
+            break;
+        case 'l':
+        case 'L':
+            state->flashlight_enabled = !state->flashlight_enabled;
             break;
         default:
             break;
@@ -1541,18 +1566,40 @@ static void gm_update_frame(GameState *state, float canvas_width, float canvas_h
 
 static const int g_default_map[MAP_HEIGHT][MAP_WIDTH] = {
     {1,1,1,1,1,1,1,1,1,1},
-    {1,7,0,0,0,0,0,0,0,1},
+    {1,7,9,0,0,0,9,0,0,1},
     {1,0,1,2,1,0,2,0,0,1},
-    {1,0,1,0,0,0,0,1,0,1},
-    {1,0,1,0,1,0,0,0,0,1},
+    {1,0,1,0,9,0,0,1,0,1},
+    {1,0,1,0,1,0,0,9,0,1},
     {1,0,1,0,3,0,1,0,0,1},
     {1,0,3,0,1,1,0,0,1,1},
     {1,0,1,0,1,0,0,0,0,1},
-    {1,0,0,0,1,0,0,1,0,1},
+    {1,0,0,9,1,0,0,1,0,1},
     {1,1,1,1,1,1,1,1,1,1}
 };
 
 static int g_map_data[MAP_WIDTH * MAP_HEIGHT];
+
+static void load_map_with_lights(GameApp *app) {
+    app->static_light_count = 0;
+    for (int z = 0; z < MAP_HEIGHT; z++) {
+        for (int x = 0; x < MAP_WIDTH; x++) {
+            int cell = g_default_map[z][x];
+            if (cell == LIGHT_FLOOR_CELL) {
+                if (app->static_light_count < MAX_STATIC_LIGHTS) {
+                    float *pos = app->static_light_positions[app->static_light_count];
+                    pos[0] = (float)x + 0.5f;
+                    pos[1] = CEILING_LIGHT_HEIGHT;
+                    pos[2] = (float)z + 0.5f;
+                    app->static_light_count++;
+                } else {
+                    SDL_Log("WARNING: Max static lights reached, ignoring cell (%d,%d)", x, z);
+                }
+                cell = 0;
+            }
+            g_map_data[z * MAP_WIDTH + x] = cell;
+        }
+    }
+}
 
 static int find_start_position(int *map, int width, int height,
                                float *startX, float *startZ, float *startYaw) {
@@ -2205,7 +2252,7 @@ static void build_overlay(GameApp *app) {
     const float map_floor_color[4] = {0.1f, 0.1f, 0.15f, 0.8f};
     const float map_player_color[4] = {0.2f, 0.9f, 0.3f, 1.0f};
 
-    char lines[5][96];
+    char lines[6][96];
     SDL_snprintf(lines[0], sizeof(lines[0]), "FPS %d  FRAME %.2fMS",
                  (int)(state->fps + 0.5f), state->avg_frame_time);
     SDL_snprintf(lines[1], sizeof(lines[1]), "POS X %.2f Y %.2f Z %.2f",
@@ -2218,10 +2265,13 @@ static void build_overlay(GameApp *app) {
                  state->horizontal_movement ? "WALK" : "FLY",
                  state->map_visible ? "ON" : "OFF",
                  state->hud_visible ? "ON" : "OFF");
-    SDL_snprintf(lines[4], sizeof(lines[4]), "TOGGLE M/R/H/T/I/B/F");
+    SDL_snprintf(lines[4], sizeof(lines[4]), "FLASH %s",
+                 state->flashlight_enabled ? "ON" : "OFF");
+    SDL_snprintf(lines[5], sizeof(lines[5]), "TOGGLE M/R/H/T/I/B/F/L");
 
     uint32_t offset = 0;
-    for (int i = 0; i < 5; i++) {
+    int line_count = SDL_arraysize(lines);
+    for (int i = 0; i < line_count; i++) {
         char *line = lines[i];
         for (char *p = line; *p; ++p) {
             if (*p >= 'a' && *p <= 'z') {
@@ -2243,7 +2293,7 @@ static void build_overlay(GameApp *app) {
         float max_cells = (float)((state->map_width > state->map_height) ? state->map_width : state->map_height);
         float map_pixel_size = max_cells * MAP_SCALE;
         float map_origin_x = state->map_relative_mode ? PANEL_MARGIN : canvas_w - map_pixel_size - PANEL_MARGIN;
-        float map_origin_y = PANEL_MARGIN + line_height * 6.0f;
+        float map_origin_y = PANEL_MARGIN + line_height * ((float)line_count + 1.0f);
         float map_center_x = map_origin_x + map_pixel_size * 0.5f;
         float map_center_y = map_origin_y + map_pixel_size * 0.5f;
 
@@ -2541,11 +2591,7 @@ static int complete_gpu_setup(GameApp *app) {
     SDL_ReleaseGPUShader(app->device, overlay_vs);
     SDL_ReleaseGPUShader(app->device, overlay_fs);
 
-    for (int z = 0; z < MAP_HEIGHT; z++) {
-        for (int x = 0; x < MAP_WIDTH; x++) {
-            g_map_data[z * MAP_WIDTH + x] = g_default_map[z][x];
-        }
-    }
+    load_map_with_lights(app);
 
     float start_x = 1.5f;
     float start_z = 1.5f;
@@ -2867,6 +2913,62 @@ static void update_game(GameApp *app) {
     app->scene_uniforms.fog_color[2] = 0.9f;
     app->scene_uniforms.fog_color[3] = 1.0f;
 
+    base_memset(app->scene_uniforms.static_lights, 0, sizeof(app->scene_uniforms.static_lights));
+    uint32_t light_count = app->static_light_count;
+    if (light_count > MAX_STATIC_LIGHTS) {
+        light_count = MAX_STATIC_LIGHTS;
+    }
+    for (uint32_t i = 0; i < light_count; i++) {
+        app->scene_uniforms.static_lights[i][0] = app->static_light_positions[i][0];
+        app->scene_uniforms.static_lights[i][1] = app->static_light_positions[i][1];
+        app->scene_uniforms.static_lights[i][2] = app->static_light_positions[i][2];
+        app->scene_uniforms.static_lights[i][3] = CEILING_LIGHT_INTENSITY;
+    }
+    app->scene_uniforms.static_light_params[0] = (float)light_count;
+    app->scene_uniforms.static_light_params[1] = CEILING_LIGHT_RANGE;
+    app->scene_uniforms.static_light_params[2] = MIN_AMBIENT_LIGHT;
+    app->scene_uniforms.static_light_params[3] = 0.0f;
+
+    app->scene_uniforms.flashlight_position[0] = state->camera_x;
+    app->scene_uniforms.flashlight_position[1] = state->camera_y;
+    app->scene_uniforms.flashlight_position[2] = state->camera_z;
+    app->scene_uniforms.flashlight_position[3] = FLASHLIGHT_RANGE;
+
+    float cos_pitch = fast_cos(state->pitch);
+    float sin_pitch = fast_sin(state->pitch);
+    float cos_yaw = fast_cos(state->yaw);
+    float sin_yaw = fast_sin(state->yaw);
+
+    float dir_x = cos_pitch * cos_yaw;
+    float dir_y = sin_pitch;
+    float dir_z = cos_pitch * sin_yaw;
+    float length = fast_sqrtf(dir_x * dir_x + dir_y * dir_y + dir_z * dir_z);
+    if (length > 0.0001f) {
+        float inv = 1.0f / length;
+        dir_x *= inv;
+        dir_y *= inv;
+        dir_z *= inv;
+    } else {
+        dir_x = 0.0f;
+        dir_y = -1.0f;
+        dir_z = 0.0f;
+    }
+
+    app->scene_uniforms.flashlight_direction[0] = dir_x;
+    app->scene_uniforms.flashlight_direction[1] = dir_y;
+    app->scene_uniforms.flashlight_direction[2] = dir_z;
+    app->scene_uniforms.flashlight_direction[3] = FLASHLIGHT_COS_CUTOFF;
+
+    app->scene_uniforms.flashlight_params[0] = state->flashlight_enabled ? 1.0f : 0.0f;
+    app->scene_uniforms.flashlight_params[1] = FLASHLIGHT_INTENSITY;
+    app->scene_uniforms.flashlight_params[2] = FLASHLIGHT_RING_THICKNESS;
+    app->scene_uniforms.flashlight_params[3] = FLASHLIGHT_SCREEN_RADIUS;
+    app->scene_uniforms.screen_params[0] = (float)app->window_width;
+    app->scene_uniforms.screen_params[1] = (float)app->window_height;
+    float min_dim = (float)((app->window_width < app->window_height) ? app->window_width : app->window_height);
+    app->scene_uniforms.screen_params[2] = min_dim;
+    app->scene_uniforms.screen_params[3] = 0.0f;
+
     build_overlay(app);
 
     // Debug: Always log vertex count and check for issues
@@ -3186,11 +3288,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         SDL_Log("Export mode enabled, output: %s", g_App.export_obj_path);
 
         // Initialize map data (same as in init_game)
-        for (int z = 0; z < MAP_HEIGHT; z++) {
-            for (int x = 0; x < MAP_WIDTH; x++) {
-                g_map_data[z * MAP_WIDTH + x] = g_default_map[z][x];
-            }
-        }
+        load_map_with_lights(&g_App);
 
         // Generate the mesh
         float start_x = 1.5f;

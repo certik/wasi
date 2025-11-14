@@ -6,6 +6,12 @@ struct SceneUniforms {
     row_major float4x4 mvp;
     float4 cameraPos;
     float4 fogColor;
+    float4 staticLights[16];
+    float4 staticLightParams;
+    float4 flashlightPos;
+    float4 flashlightDir;
+    float4 flashlightParams;
+    float4 screenParams;
 };
 
 struct VertexInput {
@@ -23,10 +29,18 @@ struct VertexOutput {
     float3 worldPos : TEXCOORD3;
 };
 
+static const uint MAX_STATIC_LIGHTS = 16u;
+
 cbuffer SceneUniforms : register(b0, space1) {
     row_major float4x4 mvp;
     float4 cameraPos;
     float4 fogColor;
+    float4 staticLights[16];
+    float4 staticLightParams;
+    float4 flashlightPos;
+    float4 flashlightDir;
+    float4 flashlightParams;
+    float4 screenParams;
 }
 
 struct VertexOutput_main {
