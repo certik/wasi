@@ -267,21 +267,23 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
         // Walls: use POM texture
         baseColor = wallColor.rgb;
 
-        // DEBUG: Show grid in debug region to see the effect clearly
-        if (input.uv.x >= 0.4 && input.uv.x <= 0.6 && input.uv.y >= 0.4 && input.uv.y <= 0.6) {
-            // Draw grid on OFFSET uv
-            let grid_size = 0.05;
-            let grid_x = fract(uv.x / grid_size);
-            let grid_y = fract(uv.y / grid_size);
-            if (grid_x < 0.1 || grid_y < 0.1) {
-                baseColor = vec3f(1.0, 1.0, 0.0);  // Yellow grid
-            }
+        // DEBUG: Show grid in debug region if enabled (press G to toggle)
+        if (uniforms.staticLightParams.w > 0.5) {
+            if (input.uv.x >= 0.4 && input.uv.x <= 0.6 && input.uv.y >= 0.4 && input.uv.y <= 0.6) {
+                // Draw grid on OFFSET uv
+                let grid_size = 0.05;
+                let grid_x = fract(uv.x / grid_size);
+                let grid_y = fract(uv.y / grid_size);
+                if (grid_x < 0.1 || grid_y < 0.1) {
+                    baseColor = vec3f(1.0, 1.0, 0.0);  // Yellow grid
+                }
 
-            // Draw border of original debug region in red
-            let border_thickness = 0.01;
-            if (input.uv.x < 0.4 + border_thickness || input.uv.x > 0.6 - border_thickness ||
-                input.uv.y < 0.4 + border_thickness || input.uv.y > 0.6 - border_thickness) {
-                baseColor = vec3f(1.0, 0.0, 0.0);  // Red border
+                // Draw border of original debug region in red
+                let border_thickness = 0.01;
+                if (input.uv.x < 0.4 + border_thickness || input.uv.x > 0.6 - border_thickness ||
+                    input.uv.y < 0.4 + border_thickness || input.uv.y > 0.6 - border_thickness) {
+                    baseColor = vec3f(1.0, 0.0, 0.0);  // Red border
+                }
             }
         }
     } else if (input.surfaceType < 2.5) {

@@ -116,6 +116,7 @@ typedef struct {
     int horizontal_movement;
     int normal_debug;
     int flashlight_enabled;
+    int pom_debug_grid;
 
     uint8_t keys[256];
     float mouse_delta_x;
@@ -242,7 +243,7 @@ static bool g_buddy_initialized = false;
 static Arena *g_shader_arena = NULL;
 
 #define FLOOR_TEXTURE_PATH "assets/WoodFloor007_1K-JPG_Color.jpg"
-#define WALL_TEXTURE_PATH "assets/Concrete046_1K-JPG_Color.jpg"
+#define WALL_TEXTURE_PATH "assets/checker_board_4k.png"
 #define CEILING_TEXTURE_PATH "assets/OfficeCeiling001_1K-JPG_Color.jpg"
 #define SPHERE_TEXTURE_PATH "assets/Land_ocean_ice_2048.jpg"
 #define BOOK_TEXTURE_PATH "assets/checker_board_4k.png"
@@ -1367,6 +1368,7 @@ static void gm_init_game_state(GameState *state, int *map, int width, int height
     state->horizontal_movement = 1;
     state->normal_debug = 0;
     state->flashlight_enabled = 0;
+    state->pom_debug_grid = 0;
 
     state->map_data = map;
     state->map_width = width;
@@ -1457,6 +1459,10 @@ static void gm_handle_key_press(GameState *state, uint8_t key_code) {
         case 'l':
         case 'L':
             state->flashlight_enabled = !state->flashlight_enabled;
+            break;
+        case 'g':
+        case 'G':
+            state->pom_debug_grid = !state->pom_debug_grid;
             break;
         default:
             break;
@@ -2980,7 +2986,7 @@ static void update_game(GameApp *app) {
     app->scene_uniforms.static_light_params[0] = (float)light_count;
     app->scene_uniforms.static_light_params[1] = CEILING_LIGHT_RANGE;
     app->scene_uniforms.static_light_params[2] = MIN_AMBIENT_LIGHT;
-    app->scene_uniforms.static_light_params[3] = 0.0f;
+    app->scene_uniforms.static_light_params[3] = state->pom_debug_grid ? 1.0f : 0.0f;
 
     app->scene_uniforms.flashlight_position[0] = state->camera_x;
     app->scene_uniforms.flashlight_position[1] = state->camera_y;
