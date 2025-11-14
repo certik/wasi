@@ -85,7 +85,7 @@ jobs:
         if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y mesa-vulkan-drivers xvfb libvulkan1
+          sudo apt-get install -y mesa-vulkan-drivers
 
       - uses: prefix-dev/setup-pixi@v0.9.3
         with:
