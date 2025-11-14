@@ -23,7 +23,6 @@ typedef __builtin_va_list __gnuc_va_list;
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
-#include <math.h>
 
 #include <base/arena.h>
 #include <base/buddy.h>

@@ -38,3 +38,4 @@ static inline double round(double x) {
 float fast_sin(float x);
 float fast_cos(float x);
 float fast_tan(float x);
+float sqrtf(float x);
