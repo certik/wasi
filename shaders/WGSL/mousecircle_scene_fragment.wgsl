@@ -71,8 +71,8 @@ fn compute_flashlight(normal: vec3f, world_pos: vec3f) -> f32 {
         return 0.0;
     }
 
-    let dir = light_vec / dist;
-    let ndotl = max(dot(normal, dir), 0.0);
+    let dir_to_light = light_vec / dist;
+    let ndotl = max(dot(normal, dir_to_light), 0.0);
     if (ndotl <= 0.0) {
         return 0.0;
     }
@@ -80,7 +80,8 @@ fn compute_flashlight(normal: vec3f, world_pos: vec3f) -> f32 {
     let cutoff = uniforms.flashlightDir.w;
     let softness = clamp(uniforms.flashlightParams.z, 0.05, 0.95);
     let inner = mix(cutoff, 1.0, softness);
-    let spot = dot(dir, uniforms.flashlightDir.xyz);
+    let dir_from_light = -dir_to_light;
+    let spot = dot(dir_from_light, uniforms.flashlightDir.xyz);
     if (spot <= cutoff) {
         return 0.0;
     }

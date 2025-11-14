@@ -122,8 +122,8 @@ float compute_flashlight(float3 normal_1, float3 world_pos_1)
     if (((dist_1 <= 0.0001) || (dist_1 > _e20))) {
         return 0.0;
     }
-    float3 dir_1 = (light_vec / (dist_1).xxx);
-    float ndotl_1 = max(dot(normal_1, dir_1), 0.0);
+    float3 dir_to_light = (light_vec / (dist_1).xxx);
+    float ndotl_1 = max(dot(normal_1, dir_to_light), 0.0);
     if ((ndotl_1 <= 0.0)) {
         return 0.0;
     }
@@ -131,21 +131,22 @@ float compute_flashlight(float3 normal_1, float3 world_pos_1)
     float _e39 = uniforms.flashlightParams.z;
     float softness = clamp(_e39, 0.05, 0.95);
     float inner = lerp(cutoff, 1.0, softness);
-    float4 _e47 = uniforms.flashlightDir;
-    float spot = dot(dir_1, _e47.xyz);
+    float3 dir_from_light = -(dir_to_light);
+    float4 _e48 = uniforms.flashlightDir;
+    float spot = dot(dir_from_light, _e48.xyz);
     if ((spot <= cutoff)) {
         return 0.0;
     }
     float denom = max((inner - cutoff), 0.001);
     focus = clamp(((spot - cutoff) / denom), 0.0, 1.0);
-    float _e61 = focus;
     float _e62 = focus;
-    focus = (_e61 * _e62);
-    float _e67 = uniforms.flashlightPos.w;
-    float attenuation_1 = pow(max((1.0 - (dist_1 / _e67)), 0.0), 2.0);
-    float _e75 = focus;
-    float _e81 = uniforms.flashlightParams.y;
-    return (((ndotl_1 * _e75) * attenuation_1) * _e81);
+    float _e63 = focus;
+    focus = (_e62 * _e63);
+    float _e68 = uniforms.flashlightPos.w;
+    float attenuation_1 = pow(max((1.0 - (dist_1 / _e68)), 0.0), 2.0);
+    float _e76 = focus;
+    float _e82 = uniforms.flashlightParams.y;
+    return (((ndotl_1 * _e76) * attenuation_1) * _e82);
 }
 
 float4 main_(FragmentInput_main fragmentinput_main) : SV_Target0

@@ -105,8 +105,8 @@ float compute_flashlight(
     if ((dist_1 <= 0.0001) || (dist_1 > _e20)) {
         return 0.0;
     }
-    metal::float3 dir_1 = light_vec / metal::float3(dist_1);
-    float ndotl_1 = metal::max(metal::dot(normal_1, dir_1), 0.0);
+    metal::float3 dir_to_light = light_vec / metal::float3(dist_1);
+    float ndotl_1 = metal::max(metal::dot(normal_1, dir_to_light), 0.0);
     if (ndotl_1 <= 0.0) {
         return 0.0;
     }
@@ -114,21 +114,22 @@ float compute_flashlight(
     float _e39 = uniforms.flashlightParams.z;
     float softness = metal::clamp(_e39, 0.05, 0.95);
     float inner = metal::mix(cutoff, 1.0, softness);
-    metal::float4 _e47 = uniforms.flashlightDir;
-    float spot = metal::dot(dir_1, _e47.xyz);
+    metal::float3 dir_from_light = -(dir_to_light);
+    metal::float4 _e48 = uniforms.flashlightDir;
+    float spot = metal::dot(dir_from_light, _e48.xyz);
     if (spot <= cutoff) {
         return 0.0;
     }
     float denom = metal::max(inner - cutoff, 0.001);
     focus = metal::clamp((spot - cutoff) / denom, 0.0, 1.0);
-    float _e61 = focus;
     float _e62 = focus;
-    focus = _e61 * _e62;
-    float _e67 = uniforms.flashlightPos.w;
-    float attenuation_1 = metal::pow(metal::max(1.0 - (dist_1 / _e67), 0.0), 2.0);
-    float _e75 = focus;
-    float _e81 = uniforms.flashlightParams.y;
-    return ((ndotl_1 * _e75) * attenuation_1) * _e81;
+    float _e63 = focus;
+    focus = _e62 * _e63;
+    float _e68 = uniforms.flashlightPos.w;
+    float attenuation_1 = metal::pow(metal::max(1.0 - (dist_1 / _e68), 0.0), 2.0);
+    float _e76 = focus;
+    float _e82 = uniforms.flashlightParams.y;
+    return ((ndotl_1 * _e76) * attenuation_1) * _e82;
 }
 
 struct main_Input {
