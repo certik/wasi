@@ -159,6 +159,7 @@ int main(void) {
     size_t argv_buf_size;
     if (wasi_args_sizes_get(&argc, &argv_buf_size) != 0) {
         println(str_lit("Error: Failed to get argument sizes"));
+        scratch_end(scratch);
         return 1;
     }
 
@@ -173,6 +174,7 @@ int main(void) {
     // Parse arguments
     if (argc < 2) {
         print_usage(argv[0]);
+        scratch_end(scratch);
         return 1;
     }
 
@@ -183,6 +185,7 @@ int main(void) {
     if (argc >= 3) {
         if (!parse_int(str_from_cstr_view(argv[2]), &top_n)) {
             println(str_lit("Error: Invalid top_n value"));
+            scratch_end(scratch);
             return 1;
         }
     }
@@ -190,9 +193,13 @@ int main(void) {
     if (argc >= 4) {
         if (!parse_int(str_from_cstr_view(argv[3]), &bottom_n)) {
             println(str_lit("Error: Invalid bottom_n value"));
+            scratch_end(scratch);
             return 1;
         }
     }
+
+    // Done parsing arguments, release scratch arena
+    scratch_end(scratch);
 
     // Now create an arena for the rest of the work
     Arena *arena = arena_new(1024 * 1024); // 1MB initial
