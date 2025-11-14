@@ -30,6 +30,11 @@ struct FragmentInput {
     @location(3) worldPos: vec3f,
 };
 
+struct FlashlightResult {
+    screenIntensity: f32,
+    shading: vec3f,
+};
+
 // SDL3 SPIRV requirement: fragment textures in set 2, uniforms in set 3
 // Use single shared sampler to reduce binding complexity
 @group(2) @binding(0) var floorTexture: texture_2d<f32>;
@@ -160,16 +165,17 @@ fn compute_flashlight(
     metallic: f32,
     roughness: f32,
     f0: vec3f
-) -> vec3f {
+) -> FlashlightResult {
+    var result = FlashlightResult(0.0, vec3f(0.0));
     if (uniforms.flashlightParams.x < 0.5) {
-        return vec3f(0.0);
+        return result;
     }
 
     let width = uniforms.screenParams.x;
     let height = uniforms.screenParams.y;
     let min_dim = uniforms.screenParams.z;
     if (width <= 0.0 || height <= 0.0 || min_dim <= 0.0) {
-        return vec3f(0.0);
+        return result;
     }
 
     let pixel = frag_coord.xy;
@@ -177,31 +183,32 @@ fn compute_flashlight(
     let delta = (pixel - center) / min_dim;
     let radius = uniforms.flashlightParams.w;
     if (radius <= 0.0) {
-        return vec3f(0.0);
+        return result;
     }
     let dist = length(delta);
     if (dist > radius) {
-        return vec3f(0.0);
+        return result;
     }
 
     let falloff = clamp(dist / radius, 0.0, 1.0);
     let base_intensity = (1.0 - falloff * falloff) * uniforms.flashlightParams.y * 0.35;
+    result.screenIntensity = base_intensity;
 
     if (uniforms.flashlightDir.w <= 0.0) {
-        return albedo * base_intensity;
+        return result;
     }
 
     let to_fragment = world_pos - uniforms.flashlightPos.xyz;
     let dist_along_axis = dot(to_fragment, uniforms.flashlightDir.xyz);
     if (dist_along_axis <= 0.0 || dist_along_axis > uniforms.flashlightPos.w) {
-        return albedo * base_intensity;
+        return result;
     }
 
     let dir_norm = normalize(to_fragment);
     let spot = dot(dir_norm, uniforms.flashlightDir.xyz);
     let cutoff = uniforms.flashlightDir.w;
     if (spot <= cutoff) {
-        return albedo * base_intensity;
+        return result;
     }
 
     let focus = pow((spot - cutoff) / max(1.0 - cutoff, 0.001), 2.0);
@@ -209,8 +216,12 @@ fn compute_flashlight(
     let distance_atten = clamp(1.0 - dist_along_axis / uniforms.flashlightPos.w, 0.0, 1.0);
     var beam = base_intensity + focus * ndotl * distance_atten * uniforms.flashlightParams.y * 0.5;
     beam = min(beam, uniforms.flashlightParams.y * 0.7);
+    result.screenIntensity = beam;
+
     let light_color = vec3f(1.0, 0.95, 0.85);
-    return cook_torrance_brdf(normal, view_dir, dir_norm, albedo, metallic, roughness, f0, light_color, beam);
+    let physical_intensity = distance_atten * uniforms.flashlightParams.y * focus;
+    result.shading = cook_torrance_brdf(normal, view_dir, dir_norm, albedo, metallic, roughness, f0, light_color, physical_intensity);
+    return result;
 }
 
 fn compute_material_index(surface_type: f32) -> u32 {
@@ -342,9 +353,9 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
     let flashlight = compute_flashlight(n, input.worldPos, frag_coord, view_dir, baseColor, metallic, roughness, f0);
     let ambient = uniforms.staticLightParams.z;
     let fogFactor = exp(-distance(input.worldPos, uniforms.cameraPos.xyz) * 0.08);
-    var color = baseColor * ambient * (1.0 - metallic);
+    var color = baseColor * (ambient + flashlight.screenIntensity);
     color += staticLight;
-    color += flashlight;
+    color += flashlight.shading;
     color += emissive;
     color = color / (color + vec3f(1.0));
     color = pow(color, vec3f(1.0 / 2.2));

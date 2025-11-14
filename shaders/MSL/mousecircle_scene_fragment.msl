@@ -40,6 +40,11 @@ struct FragmentInput {
     metal::float3 normal;
     metal::float3 worldPos;
 };
+struct FlashlightResult {
+    float screenIntensity;
+    char _pad1[12];
+    metal::float3 shading;
+};
 constant uint MAX_STATIC_LIGHTS = 16u;
 constant uint MATERIAL_COUNT = 7u;
 constant float PI = 3.1415927;
@@ -189,7 +194,7 @@ metal::float3 compute_static_lighting(
     return _e87;
 }
 
-metal::float3 compute_flashlight(
+FlashlightResult compute_flashlight(
     metal::float3 normal_1,
     metal::float3 world_pos_1,
     metal::float4 frag_coord_1,
@@ -200,64 +205,78 @@ metal::float3 compute_flashlight(
     metal::float3 f0_3,
     constant SceneUniforms& uniforms
 ) {
+    FlashlightResult result = FlashlightResult {0.0, {}, metal::float3(0.0)};
     float beam = {};
-    float _e11 = uniforms.flashlightParams.x;
-    if (_e11 < 0.5) {
-        return metal::float3(0.0);
+    float _e16 = uniforms.flashlightParams.x;
+    if (_e16 < 0.5) {
+        FlashlightResult _e19 = result;
+        return _e19;
     }
     float width = uniforms.screenParams.x;
     float height = uniforms.screenParams.y;
     float min_dim = uniforms.screenParams.z;
     if (((width <= 0.0) || (height <= 0.0)) || (min_dim <= 0.0)) {
-        return metal::float3(0.0);
+        FlashlightResult _e40 = result;
+        return _e40;
     }
     metal::float2 pixel = frag_coord_1.xy;
     metal::float2 center = metal::float2(width * 0.5, height * 0.5);
     metal::float2 delta = (pixel - center) / metal::float2(min_dim);
     float radius = uniforms.flashlightParams.w;
     if (radius <= 0.0) {
-        return metal::float3(0.0);
+        FlashlightResult _e56 = result;
+        return _e56;
     }
     float dist_1 = metal::length(delta);
     if (dist_1 > radius) {
-        return metal::float3(0.0);
+        FlashlightResult _e59 = result;
+        return _e59;
     }
     float falloff = metal::clamp(dist_1 / radius, 0.0, 1.0);
-    float _e69 = uniforms.flashlightParams.y;
-    float base_intensity = ((1.0 - (falloff * falloff)) * _e69) * 0.35;
-    float _e76 = uniforms.flashlightDir.w;
-    if (_e76 <= 0.0) {
-        return albedo_2 * base_intensity;
+    float _e70 = uniforms.flashlightParams.y;
+    float base_intensity = ((1.0 - (falloff * falloff)) * _e70) * 0.35;
+    result.screenIntensity = base_intensity;
+    float _e78 = uniforms.flashlightDir.w;
+    if (_e78 <= 0.0) {
+        FlashlightResult _e81 = result;
+        return _e81;
     }
-    metal::float4 _e82 = uniforms.flashlightPos;
-    metal::float3 to_fragment = world_pos_1 - _e82.xyz;
-    metal::float4 _e87 = uniforms.flashlightDir;
-    float dist_along_axis = metal::dot(to_fragment, _e87.xyz);
-    float _e95 = uniforms.flashlightPos.w;
-    if ((dist_along_axis <= 0.0) || (dist_along_axis > _e95)) {
-        return albedo_2 * base_intensity;
+    metal::float4 _e84 = uniforms.flashlightPos;
+    metal::float3 to_fragment = world_pos_1 - _e84.xyz;
+    metal::float4 _e89 = uniforms.flashlightDir;
+    float dist_along_axis = metal::dot(to_fragment, _e89.xyz);
+    float _e97 = uniforms.flashlightPos.w;
+    if ((dist_along_axis <= 0.0) || (dist_along_axis > _e97)) {
+        FlashlightResult _e100 = result;
+        return _e100;
     }
     metal::float3 dir_norm = metal::normalize(to_fragment);
-    metal::float4 _e102 = uniforms.flashlightDir;
-    float spot = metal::dot(dir_norm, _e102.xyz);
+    metal::float4 _e104 = uniforms.flashlightDir;
+    float spot = metal::dot(dir_norm, _e104.xyz);
     float cutoff = uniforms.flashlightDir.w;
     if (spot <= cutoff) {
-        return albedo_2 * base_intensity;
+        FlashlightResult _e112 = result;
+        return _e112;
     }
     float focus = metal::pow((spot - cutoff) / metal::max(1.0 - cutoff, 0.001), 2.0);
-    metal::float4 _e121 = uniforms.flashlightDir;
-    float ndotl_1 = metal::max(metal::dot(normal_1, _e121.xyz), 0.0);
-    float _e129 = uniforms.flashlightPos.w;
-    float distance_atten = metal::clamp(1.0 - (dist_along_axis / _e129), 0.0, 1.0);
-    float _e141 = uniforms.flashlightParams.y;
-    beam = base_intensity + ((((focus * ndotl_1) * distance_atten) * _e141) * 0.5);
-    float _e147 = beam;
-    float _e151 = uniforms.flashlightParams.y;
-    beam = metal::min(_e147, _e151 * 0.7);
+    metal::float4 _e123 = uniforms.flashlightDir;
+    float ndotl_1 = metal::max(metal::dot(normal_1, _e123.xyz), 0.0);
+    float _e131 = uniforms.flashlightPos.w;
+    float distance_atten = metal::clamp(1.0 - (dist_along_axis / _e131), 0.0, 1.0);
+    float _e143 = uniforms.flashlightParams.y;
+    beam = base_intensity + ((((focus * ndotl_1) * distance_atten) * _e143) * 0.5);
+    float _e149 = beam;
+    float _e153 = uniforms.flashlightParams.y;
+    beam = metal::min(_e149, _e153 * 0.7);
+    float _e158 = beam;
+    result.screenIntensity = _e158;
     metal::float3 light_color_2 = metal::float3(1.0, 0.95, 0.85);
-    float _e159 = beam;
-    metal::float3 _e160 = cook_torrance_brdf(normal_1, view_dir_2, dir_norm, albedo_2, metallic_3, roughness_6, f0_3, light_color_2, _e159);
-    return _e160;
+    float _e166 = uniforms.flashlightParams.y;
+    float physical_intensity = (distance_atten * _e166) * focus;
+    metal::float3 _e170 = cook_torrance_brdf(normal_1, view_dir_2, dir_norm, albedo_2, metallic_3, roughness_6, f0_3, light_color_2, physical_intensity);
+    result.shading = _e170;
+    FlashlightResult _e171 = result;
+    return _e171;
 }
 
 uint naga_f2u32(float value) {
@@ -508,28 +527,27 @@ fragment main_Output main_(
     metal::float3 _e240 = baseColor;
     float _e241 = metallic;
     float _e242 = roughness;
-    metal::float3 _e243 = compute_flashlight(_e237, input.worldPos, frag_coord, _e239, _e240, _e241, _e242, f0_4, uniforms);
+    FlashlightResult _e243 = compute_flashlight(_e237, input.worldPos, frag_coord, _e239, _e240, _e241, _e242, f0_4, uniforms);
     float ambient = uniforms.staticLightParams.z;
     metal::float4 _e251 = uniforms.cameraPos;
     float fogFactor = metal::exp(-(metal::distance(input.worldPos, _e251.xyz)) * 0.08);
     metal::float3 _e258 = baseColor;
-    float _e260 = metallic;
-    color = (_e258 * ambient) * (1.0 - _e260);
-    metal::float3 _e265 = color;
-    color = _e265 + _e236;
-    metal::float3 _e267 = color;
-    color = _e267 + _e243;
-    metal::float3 _e269 = emissive;
-    metal::float3 _e270 = color;
-    color = _e270 + _e269;
+    color = _e258 * (ambient + _e243.screenIntensity);
+    metal::float3 _e263 = color;
+    color = _e263 + _e236;
+    metal::float3 _e266 = color;
+    color = _e266 + _e243.shading;
+    metal::float3 _e268 = emissive;
+    metal::float3 _e269 = color;
+    color = _e269 + _e268;
+    metal::float3 _e271 = color;
     metal::float3 _e272 = color;
-    metal::float3 _e273 = color;
-    color = _e272 / (_e273 + metal::float3(1.0));
-    metal::float3 _e278 = color;
-    color = metal::pow(_e278, metal::float3(0.45454547));
-    metal::float4 _e284 = uniforms.fogColor;
-    metal::float3 _e286 = color;
-    color = metal::mix(_e284.xyz, _e286, fogFactor);
-    metal::float3 _e288 = color;
-    return main_Output { metal::float4(_e288, 1.0) };
+    color = _e271 / (_e272 + metal::float3(1.0));
+    metal::float3 _e277 = color;
+    color = metal::pow(_e277, metal::float3(0.45454547));
+    metal::float4 _e283 = uniforms.fogColor;
+    metal::float3 _e285 = color;
+    color = metal::mix(_e283.xyz, _e285, fogFactor);
+    metal::float3 _e287 = color;
+    return main_Output { metal::float4(_e287, 1.0) };
 }
