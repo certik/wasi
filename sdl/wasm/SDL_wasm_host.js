@@ -689,8 +689,8 @@ export function createWasmSDLHost(device, canvas) {
                     }
                     const vertexShader = vertexShaderInfo.module;
                     const fragmentShader = fragmentShaderInfo.module;
-                    const vertexEntryPoint = (vertexShaderInfo.format & SDL_GPU_SHADERFORMAT_WGSL) ? 'main' : (vertexShaderInfo.entryPoint || 'main');
-                    const fragmentEntryPoint = (fragmentShaderInfo.format & SDL_GPU_SHADERFORMAT_WGSL) ? 'main' : (fragmentShaderInfo.entryPoint || 'main');
+                    const vertexEntryPoint = vertexShaderInfo.entryPoint || 'main';
+                    const fragmentEntryPoint = fragmentShaderInfo.entryPoint || 'main';
 
                     const bindGroupLayouts = [];
 

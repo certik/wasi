@@ -4,7 +4,6 @@ struct VertexOutput {
 };
 
 @fragment
-fn main(input: VertexOutput) -> @location(0) vec4f {
+fn main_(input: VertexOutput) -> @location(0) vec4f {
     return input.color;
 }
-

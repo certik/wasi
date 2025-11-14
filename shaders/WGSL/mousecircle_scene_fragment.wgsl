@@ -27,7 +27,7 @@ fn checker(uv: vec2f) -> f32 {
 }
 
 @fragment
-fn main(input: VertexOutput) -> @location(0) vec4f {
+fn main_(input: VertexOutput) -> @location(0) vec4f {
     // Sample textures unconditionally (required for uniform control flow)
     let floorColor = textureSample(floorTexture, floorSampler, input.uv);
     let wallColor = textureSample(wallTexture, wallSampler, input.uv);
