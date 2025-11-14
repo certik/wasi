@@ -46,7 +46,9 @@ Arena *arena_new(size_t initial_size) {
     arena->first_chunk = NULL;
 
     // Allocate the first chunk.
-    size_t requested_size = sizeof(struct arena_chunk) + initial_size;
+    // Request enough space for the chunk header, the caller's requested size,
+    // and any padding that might be needed to align the data pointer.
+    size_t requested_size = sizeof(struct arena_chunk) + initial_size + ARENA_ALIGNMENT;
     size_t actual_size;
     struct arena_chunk *first = buddy_alloc(requested_size, &actual_size);
     if (!first) {
