@@ -4,6 +4,7 @@
 #include "SDL3/SDL.h"
 #include <stdint.h>
 #include <stddef.h>
+#include <base/buddy.h>
 #include <base/stdarg.h>
 #include <base/numconv.h>
 #include <base/mem.h>
@@ -716,9 +717,7 @@ struct SDL_IOStream {
 };
 
 SDL_IOStream* SDL_IOFromConstMem(const void* mem, size_t size) {
-    extern void* buddy_alloc(size_t size);
-
-    SDL_IOStream* stream = (SDL_IOStream*)buddy_alloc(sizeof(SDL_IOStream));
+    SDL_IOStream* stream = (SDL_IOStream*)buddy_alloc(sizeof(SDL_IOStream), NULL);
     if (!stream) {
         return NULL;
     }
@@ -732,8 +731,6 @@ SDL_IOStream* SDL_IOFromConstMem(const void* mem, size_t size) {
 }
 
 SDL_IOStream* SDL_IOFromFile(const char* file, const char* mode) {
-    extern void* buddy_alloc(size_t size);
-    extern void buddy_free(void* ptr);
     (void)mode; // Ignored for WASM
 
     // Use WASI wrappers from native/wasi_wasm.c
@@ -762,7 +759,7 @@ SDL_IOStream* SDL_IOFromFile(const char* file, const char* mode) {
     wasi_fd_seek(fd, 0, 0, &pos);  // SEEK_SET = 0
 
     // Allocate buffer for file data
-    void* data = buddy_alloc((size_t)file_size);
+    void* data = buddy_alloc((size_t)file_size, NULL);
     if (!data) {
         SDL_Log("SDL_IOFromFile: failed to allocate %llu bytes for %s", file_size, file);
         wasi_fd_close(fd);
@@ -782,7 +779,7 @@ SDL_IOStream* SDL_IOFromFile(const char* file, const char* mode) {
     }
 
     // Create stream
-    SDL_IOStream* stream = (SDL_IOStream*)buddy_alloc(sizeof(SDL_IOStream));
+    SDL_IOStream* stream = (SDL_IOStream*)buddy_alloc(sizeof(SDL_IOStream), NULL);
     if (!stream) {
         buddy_free(data);
         return NULL;
@@ -841,9 +838,6 @@ void SDL_CloseIO(SDL_IOStream* stream) {
 #include <SDL3_image/SDL_image.h>
 
 SDL_Surface* IMG_Load(const char* file) {
-    extern void* buddy_alloc(size_t size);
-    extern void buddy_free(void* ptr);
-
     if (!file) {
         SDL_Log("IMG_Load: null file path");
         return NULL;
@@ -856,14 +850,14 @@ SDL_Surface* IMG_Load(const char* file) {
         return NULL;
     }
 
-    SDL_Surface* surface = (SDL_Surface*)buddy_alloc(sizeof(SDL_Surface));
+    SDL_Surface* surface = (SDL_Surface*)buddy_alloc(sizeof(SDL_Surface), NULL);
     if (!surface) {
         SDL_Log("IMG_Load: failed to allocate surface");
         return NULL;
     }
 
     uint32_t pixel_size = width * height * 4;
-    void* pixels = buddy_alloc(pixel_size);
+    void* pixels = buddy_alloc(pixel_size, NULL);
     if (!pixels) {
         SDL_Log("IMG_Load: failed to allocate pixel buffer");
         buddy_free(surface);
