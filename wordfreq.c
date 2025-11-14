@@ -166,8 +166,7 @@ int main(void) {
     char *argv_buf = (char *)arena_alloc(scratch.arena, argv_buf_size);
     if (wasi_args_get(argv, argv_buf) != 0) {
         println(str_lit("Error: Failed to get arguments"));
-        buddy_free(argv);
-        buddy_free(argv_buf);
+        scratch_end(scratch);
         return 1;
     }
 

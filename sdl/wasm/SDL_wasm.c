@@ -714,6 +714,7 @@ struct SDL_IOStream {
     size_t size;       // Size of the data
     size_t offset;     // Current read position
     const char* path;  // File path (for images loaded via IMG_Load)
+    bool owns_data;    // True if this stream owns the data buffer and should free it
 };
 
 SDL_IOStream* SDL_IOFromConstMem(const void* mem, size_t size) {
@@ -726,6 +727,7 @@ SDL_IOStream* SDL_IOFromConstMem(const void* mem, size_t size) {
     stream->size = size;
     stream->offset = 0;
     stream->path = NULL;
+    stream->owns_data = false;  // Const memory is owned by caller
 
     return stream;
 }
@@ -739,7 +741,8 @@ SDL_IOStream* SDL_IOFromFile(const char* file, const char* mode) {
     extern int wasi_fd_close(int fd);
     extern int wasi_fd_seek(int fd, int64_t offset, int whence, uint64_t* newoffset);
 
-    int fd = wasi_path_open(file, base_strlen(file), 0, 0);
+    // Request read rights (includes FD_READ, FD_SEEK, FD_TELL)
+    int fd = wasi_path_open(file, base_strlen(file), WASI_RIGHTS_READ, 0);
     if (fd < 0) {
         SDL_Log("SDL_IOFromFile: failed to open %s (fd=%d)", file, fd);
         return NULL;
@@ -789,6 +792,7 @@ SDL_IOStream* SDL_IOFromFile(const char* file, const char* mode) {
     stream->size = (size_t)file_size;
     stream->offset = 0;
     stream->path = file;
+    stream->owns_data = true;  // We allocated the data buffer, so we own it
 
     return stream;
 }
@@ -827,7 +831,8 @@ void SDL_CloseIO(SDL_IOStream* stream) {
     extern void buddy_free(void* ptr);
 
     if (stream) {
-        if (stream->data) {
+        // Only free data if this stream owns it
+        if (stream->data && stream->owns_data) {
             buddy_free(stream->data);
         }
         buddy_free(stream);
