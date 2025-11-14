@@ -210,7 +210,12 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
     var debug_pom = false;
     if (input.surfaceType >= 0.5 && input.surfaceType < 1.5) {  // Walls only
         if (distance(uniforms.cameraPos.xyz, input.worldPos) < 5.0) {
-            uv = parallax_occlusion(input.uv, view_dir, n, 0.5, 32);  // Exaggerated height scale
+            // Simple test: just offset UV based on height to verify it works
+            let h = get_debug_height(input.uv);
+            if (h > 0.0) {
+                // Offset UV dramatically to test
+                uv = input.uv + vec2f(0.3, 0.3) * h;
+            }
             debug_pom = true;
         }
     }

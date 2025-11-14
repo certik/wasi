@@ -328,15 +328,16 @@ fragment main_Output main_(
     if ((input.surfaceType >= 0.5) && (input.surfaceType < 1.5)) {
         metal::float4 _e35 = uniforms.cameraPos;
         if (metal::distance(_e35.xyz, input.worldPos) < 5.0) {
-            metal::float3 _e42 = view_dir;
-            metal::float2 _e45 = parallax_occlusion(input.uv, _e42, n_1, 0.5, 32);
-            uv = _e45;
+            float _e42 = get_debug_height(input.uv);
+            if (_e42 > 0.0) {
+                uv = input.uv + (metal::float2(0.3, 0.3) * _e42);
+            }
             debug_pom = true;
         }
     }
     metal::float4 floorColor = floorTexture.sample(sharedSampler, input.uv);
-    metal::float2 _e53 = uv;
-    metal::float4 wallColor = wallTexture.sample(sharedSampler, _e53);
+    metal::float2 _e58 = uv;
+    metal::float4 wallColor = wallTexture.sample(sharedSampler, _e58);
     metal::float4 ceilingColor = ceilingTexture.sample(sharedSampler, input.uv);
     metal::float4 sphereColor = sphereTexture.sample(sharedSampler, input.uv);
     metal::float4 bookColor = bookTexture.sample(sharedSampler, input.uv);
@@ -355,8 +356,8 @@ fragment main_Output main_(
                 baseColor = ceilingColor.xyz;
             } else {
                 if (input.surfaceType < 3.5) {
-                    float _e105 = checker(input.uv);
-                    baseColor = metal::float3(0.7, 0.5, 0.3) * _e105;
+                    float _e110 = checker(input.uv);
+                    baseColor = metal::float3(0.7, 0.5, 0.3) * _e110;
                 } else {
                     if (input.surfaceType < 4.5) {
                         baseColor = sphereColor.xyz;
@@ -371,31 +372,31 @@ fragment main_Output main_(
             }
         }
     }
-    MaterialProperties _e117 = get_material_properties(input.surfaceType);
-    metal::float3 _e119 = view_dir;
-    StaticLightContribution _e120 = compute_static_lighting(n_1, input.worldPos, _e119, _e117, uniforms);
-    metal::float3 _e122 = view_dir;
-    FlashlightContribution _e123 = compute_flashlight(n_1, input.worldPos, frag_coord, _e122, _e117, uniforms);
-    float _e127 = uniforms.screenParams.w;
-    if (_e127 > 0.5) {
+    MaterialProperties _e122 = get_material_properties(input.surfaceType);
+    metal::float3 _e124 = view_dir;
+    StaticLightContribution _e125 = compute_static_lighting(n_1, input.worldPos, _e124, _e122, uniforms);
+    metal::float3 _e127 = view_dir;
+    FlashlightContribution _e128 = compute_flashlight(n_1, input.worldPos, frag_coord, _e127, _e122, uniforms);
+    float _e132 = uniforms.screenParams.w;
+    if (_e132 > 0.5) {
         metal::float3 mapped = (metal::normalize(input.normal) * 0.5) + metal::float3(0.5);
         return main_Output { metal::float4(mapped, 1.0) };
     }
     float ambient = uniforms.staticLightParams.z;
-    metal::float4 _e146 = uniforms.cameraPos;
-    float fogFactor = metal::exp(-(metal::distance(input.worldPos, _e146.xyz)) * 0.08);
-    metal::float3 _e153 = baseColor;
-    color = _e153 * (ambient + _e123.diffuse);
+    metal::float4 _e151 = uniforms.cameraPos;
+    float fogFactor = metal::exp(-(metal::distance(input.worldPos, _e151.xyz)) * 0.08);
     metal::float3 _e158 = baseColor;
-    metal::float3 _e161 = color;
-    color = _e161 + (_e158 * _e120.diffuse);
-    metal::float3 _e164 = color;
-    color = _e164 + _e120.specular;
-    metal::float3 _e172 = color;
-    color = _e172 + (_e123.specular * metal::float3(1.0, 0.95, 0.85));
-    metal::float4 _e176 = uniforms.fogColor;
-    metal::float3 _e178 = color;
-    color = metal::mix(_e176.xyz, _e178, fogFactor);
-    metal::float3 _e180 = color;
-    return main_Output { metal::float4(_e180, 1.0) };
+    color = _e158 * (ambient + _e128.diffuse);
+    metal::float3 _e163 = baseColor;
+    metal::float3 _e166 = color;
+    color = _e166 + (_e163 * _e125.diffuse);
+    metal::float3 _e169 = color;
+    color = _e169 + _e125.specular;
+    metal::float3 _e177 = color;
+    color = _e177 + (_e128.specular * metal::float3(1.0, 0.95, 0.85));
+    metal::float4 _e181 = uniforms.fogColor;
+    metal::float3 _e183 = color;
+    color = metal::mix(_e181.xyz, _e183, fogFactor);
+    metal::float3 _e185 = color;
+    return main_Output { metal::float4(_e185, 1.0) };
 }
