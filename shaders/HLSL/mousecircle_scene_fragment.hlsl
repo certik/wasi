@@ -354,7 +354,8 @@ float2 parallax_occlusion(float2 uv_2, float3 view_ts, float3 _normal, float hei
             current_depth = (_e59 + layer_depth);
         }
     }
-    return uv_2;
+    float2 _e64 = current_uv;
+    return _e64;
 }
 
 float3x3 build_tbn(float3 normal_2)

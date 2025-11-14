@@ -350,7 +350,8 @@ metal::float2 parallax_occlusion(
             current_depth = _e59 + layer_depth;
         }
     }
-    return uv_2;
+    metal::float2 _e64 = current_uv;
+    return _e64;
 }
 
 metal::float3x3 build_tbn(

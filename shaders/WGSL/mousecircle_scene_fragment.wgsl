@@ -255,7 +255,7 @@ fn parallax_occlusion(uv: vec2f, view_ts: vec3f, _normal: vec3f, height_scale: f
         prev_depth_map = depth_map;
         current_depth += layer_depth;
     }
-    return uv;
+    return current_uv;
 }
 
 fn build_tbn(normal: vec3f) -> mat3x3f {
