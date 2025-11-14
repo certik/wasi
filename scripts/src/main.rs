@@ -343,6 +343,11 @@ fn fix_hlsl_for_sdl3(hlsl_source: &str) -> String {
     result = result.replace("uniforms.mvp", "mvp");
     result = result.replace("uniforms.cameraPos", "cameraPos");
     result = result.replace("uniforms.fogColor", "fogColor");
+    result = result.replace("uniforms.staticLights", "staticLights");
+    result = result.replace("uniforms.staticLightParams", "staticLightParams");
+    result = result.replace("uniforms.flashlightPos", "flashlightPos");
+    result = result.replace("uniforms.flashlightDir", "flashlightDir");
+    result = result.replace("uniforms.flashlightParams", "flashlightParams");
 
     // 5. Remove unnecessary wrapper structs and simplify main function
     // Naga generates VertexOutput_main wrapper structs that aren't needed for SDL3

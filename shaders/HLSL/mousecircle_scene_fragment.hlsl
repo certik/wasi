@@ -69,9 +69,9 @@ float compute_static_lighting(float3 normal, float3 world_pos)
     float total = 0.0;
     int i = int(0);
 
-    float _e5 = uniforms.staticLightParams.x;
+    float _e5 = staticLightParams.x;
     int light_count = clamp(naga_f2i32(_e5), int(0), int(16));
-    float range = uniforms.staticLightParams.y;
+    float range = staticLightParams.y;
     if (((range <= 0.0) || (light_count == int(0)))) {
         return 0.0;
     }
@@ -89,7 +89,7 @@ float compute_static_lighting(float3 normal, float3 world_pos)
         }
         {
             int _e28 = i;
-            float4 light = uniforms.staticLights[min(uint(uint(_e28)), 15u)];
+            float4 light = staticLights[min(uint(uint(_e28)), 15u)];
             float3 to_light = (light.xyz - world_pos);
             float dist = length(to_light);
             if (((dist > 0.0001) && (dist < range))) {
@@ -111,14 +111,14 @@ float compute_flashlight(float3 normal_1, float3 world_pos_1)
 {
     float focus = (float)0;
 
-    float _e5 = uniforms.flashlightParams.x;
+    float _e5 = flashlightParams.x;
     if ((_e5 < 0.5)) {
         return 0.0;
     }
-    float4 _e11 = uniforms.flashlightPos;
+    float4 _e11 = flashlightPos;
     float3 light_vec = (_e11.xyz - world_pos_1);
     float dist_1 = length(light_vec);
-    float _e20 = uniforms.flashlightPos.w;
+    float _e20 = flashlightPos.w;
     if (((dist_1 <= 0.0001) || (dist_1 > _e20))) {
         return 0.0;
     }
@@ -127,12 +127,12 @@ float compute_flashlight(float3 normal_1, float3 world_pos_1)
     if ((ndotl_1 <= 0.0)) {
         return 0.0;
     }
-    float cutoff = uniforms.flashlightDir.w;
-    float _e39 = uniforms.flashlightParams.z;
+    float cutoff = flashlightDir.w;
+    float _e39 = flashlightParams.z;
     float softness = clamp(_e39, 0.05, 0.95);
     float inner = lerp(cutoff, 1.0, softness);
     float3 dir_from_light = -(dir_to_light);
-    float4 _e48 = uniforms.flashlightDir;
+    float4 _e48 = flashlightDir;
     float spot = dot(dir_from_light, _e48.xyz);
     if ((spot <= cutoff)) {
         return 0.0;
@@ -142,10 +142,10 @@ float compute_flashlight(float3 normal_1, float3 world_pos_1)
     float _e62 = focus;
     float _e63 = focus;
     focus = (_e62 * _e63);
-    float _e68 = uniforms.flashlightPos.w;
+    float _e68 = flashlightPos.w;
     float attenuation_1 = pow(max((1.0 - (dist_1 / _e68)), 0.0), 2.0);
     float _e76 = focus;
-    float _e82 = uniforms.flashlightParams.y;
+    float _e82 = flashlightParams.y;
     return (((ndotl_1 * _e76) * attenuation_1) * _e82);
 }
 
@@ -191,7 +191,7 @@ float4 main_(FragmentInput_main fragmentinput_main) : SV_Target0
     float3 n = normalize(input.normal);
     const float _e60 = compute_static_lighting(n, input.worldPos);
     const float _e62 = compute_flashlight(n, input.worldPos);
-    float ambient = uniforms.staticLightParams.z;
+    float ambient = staticLightParams.z;
     lighting = ((ambient + _e60) + _e62);
     float _e70 = lighting;
     lighting = clamp(_e70, ambient, 6.0);
