@@ -26,6 +26,7 @@ typedef __builtin_va_list __gnuc_va_list;
 
 #include <base/arena.h>
 #include <base/buddy.h>
+#include <base/scratch.h>
 #include <base/mem.h>
 #include <base/mat4.h>
 #include <base/base_math.h>
@@ -1270,6 +1271,7 @@ static bool export_mtl_file(const char *obj_filename) {
 
 // Export mesh to OBJ file
 static bool export_mesh_to_obj(MeshData *mesh, const char *filename) {
+    Scratch scratch = scratch_begin();
     if (!mesh || !filename) {
         SDL_Log("export_mesh_to_obj: invalid arguments");
         return false;
@@ -1284,11 +1286,7 @@ static bool export_mesh_to_obj(MeshData *mesh, const char *filename) {
     if (estimated_size < 64 * 1024) estimated_size = 64 * 1024;  // Minimum 64KB
 
     ensure_runtime_heap();
-    char *obj_buffer = (char *)buddy_alloc(estimated_size);
-    if (!obj_buffer) {
-        SDL_Log("Failed to allocate memory for OBJ export (needed %zu bytes)", estimated_size);
-        return false;
-    }
+    char *obj_buffer = (char *)arena_alloc(scratch.arena, estimated_size);
 
     int pos = 0;
 
@@ -1550,8 +1548,7 @@ static bool export_mesh_to_obj(MeshData *mesh, const char *filename) {
         SDL_Log("Successfully exported OBJ file: %s", filename);
     }
 
-    // Free the allocated buffer
-    buddy_free(obj_buffer);
+    scratch_end(scratch);
 
     return success;
 }
@@ -2628,7 +2625,13 @@ static int simple_atoi(const char *str) {
 // SDL callbacks
 // ============================================================================
 
+void ensure_heap_initialized();
+void buddy_init();
+
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
+    ensure_heap_initialized();
+    buddy_init();
+
     // Parse command-line arguments
     g_App.test_frames_max = 0;    // 0 = unlimited
     g_App.test_frames_count = 0;
