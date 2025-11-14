@@ -245,10 +245,8 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
     // Apply full parallax occlusion mapping for nice depth
     var uv = input.uv;
     if (input.surfaceType >= 0.5 && input.surfaceType < 1.5) {  // Walls only
-        // Only apply POM if we're looking at walls with normal pointing mainly N/S (Z direction)
-        if (abs(n.z) > 0.7) {  // S/N walls only for now
-            uv = parallax_occlusion(input.uv, cam_tangent, 0.15, 32);
-        }
+        // Apply POM to all walls (both N/S and E/W)
+        uv = parallax_occlusion(input.uv, cam_tangent, 0.15, 32);
     }
 
     // Sample textures unconditionally (required for uniform control flow)
@@ -270,6 +268,13 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
         // DEBUG: Show grid in debug region if enabled (press G to toggle)
         if (uniforms.staticLightParams.w > 0.5) {
             if (input.uv.x >= 0.4 && input.uv.x <= 0.6 && input.uv.y >= 0.4 && input.uv.y <= 0.6) {
+                // Show normal orientation for debugging
+                baseColor = vec3f(
+                    n.x * 0.5 + 0.5,
+                    n.y * 0.5 + 0.5,
+                    n.z * 0.5 + 0.5
+                );
+
                 // Draw grid on OFFSET uv
                 let grid_size = 0.05;
                 let grid_x = fract(uv.x / grid_size);
