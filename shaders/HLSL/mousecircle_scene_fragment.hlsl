@@ -349,44 +349,47 @@ float4 main_(FragmentInput_main fragmentinput_main) : SV_Target0
 {
     FragmentInput input = { fragmentinput_main.surfaceType, fragmentinput_main.uv_4, fragmentinput_main.normal_2, fragmentinput_main.worldPos };
     float4 frag_coord = fragmentinput_main.frag_coord_2;
+    float3 n = (float3)0;
     float3 view_dir = (float3)0;
-    float3 tangent = float3(1.0, 0.0, 0.0);
-    float3 bitangent = float3(0.0, 1.0, 0.0);
     float2 uv = (float2)0;
     float3 baseColor = (float3)0;
     float3 color = (float3)0;
 
-    float3 n = normalize(input.normal);
-    float4 _e6 = cameraPos;
-    view_dir = (_e6.xyz - input.worldPos);
-    float3 _e11 = view_dir;
-    float view_len = length(_e11);
+    n = normalize(input.normal);
+    float4 _e7 = cameraPos;
+    view_dir = (_e7.xyz - input.worldPos);
+    float3 _e12 = view_dir;
+    float view_len = length(_e12);
     if ((view_len > 0.0001)) {
-        float3 _e15 = view_dir;
-        view_dir = (_e15 / (view_len).xxx);
+        float3 _e16 = view_dir;
+        view_dir = (_e16 / (view_len).xxx);
     } else {
         view_dir = float3(0.0, 0.0, 1.0);
     }
-    float4 _e24 = cameraDir;
-    float3 cam_dir = _e24.xyz;
-    if ((abs(n.x) > abs(n.z))) {
-        tangent = float3(0.0, 0.0, 1.0);
+    float3 _e23 = n;
+    float3 _e24 = view_dir;
+    if ((dot(_e23, _e24) < 0.0)) {
+        float3 _e28 = n;
+        n = -(_e28);
     }
-    float3 _e45 = tangent;
-    bitangent = normalize(cross(n, _e45));
-    float3 _e48 = bitangent;
-    tangent = cross(_e48, n);
-    float3 _e50 = tangent;
-    float3 _e52 = bitangent;
-    float3 cam_tangent = float3(dot(cam_dir, _e50), dot(cam_dir, _e52), dot(cam_dir, n));
+    float4 _e32 = cameraDir;
+    float3 cam_dir = _e32.xyz;
+    float3 bitangent = float3(0.0, 1.0, 0.0);
+    float3 _e38 = n;
+    float3 tangent = normalize(cross(bitangent, _e38));
+    float3 _e43 = n;
+    float3 cam_tangent = float3(dot(cam_dir, tangent), dot(cam_dir, bitangent), dot(cam_dir, _e43));
     uv = input.uv;
     if (((input.surfaceType >= 0.5) && (input.surfaceType < 1.5))) {
-        const float2 _e68 = parallax_occlusion(input.uv, cam_tangent, 0.1, int(32));
-        uv = _e68;
+        const float _e56 = get_debug_height(input.uv);
+        if ((_e56 > 0.0)) {
+            float2 offset = (((-(cam_tangent.xy) / (max(abs(cam_tangent.z), 0.1)).xx) * _e56) * 0.1);
+            uv = (input.uv + offset);
+        }
     }
     float4 floorColor = floorTexture.Sample(sharedSampler, input.uv);
-    float2 _e75 = uv;
-    float4 wallColor = wallTexture.Sample(sharedSampler, _e75);
+    float2 _e78 = uv;
+    float4 wallColor = wallTexture.Sample(sharedSampler, _e78);
     float4 ceilingColor = ceilingTexture.Sample(sharedSampler, input.uv);
     float4 sphereColor = sphereTexture.Sample(sharedSampler, input.uv);
     float4 bookColor = bookTexture.Sample(sharedSampler, input.uv);
@@ -396,13 +399,25 @@ float4 main_(FragmentInput_main fragmentinput_main) : SV_Target0
     } else {
         if ((input.surfaceType < 1.5)) {
             baseColor = wallColor.xyz;
+            if (((input.uv.x <= 0.2) && (input.uv.y <= 0.2))) {
+                float _e116 = uv.x;
+                float grid_x = frac((_e116 / 0.05));
+                float _e120 = uv.y;
+                float grid_y = frac((_e120 / 0.05));
+                if (((grid_x < 0.1) || (grid_y < 0.1))) {
+                    baseColor = float3(1.0, 1.0, 0.0);
+                }
+                if (((((input.uv.x < 0.01) || (input.uv.x > 0.19)) || (input.uv.y < 0.01)) || (input.uv.y > 0.19))) {
+                    baseColor = float3(1.0, 0.0, 0.0);
+                }
+            }
         } else {
             if ((input.surfaceType < 2.5)) {
                 baseColor = ceilingColor.xyz;
             } else {
                 if ((input.surfaceType < 3.5)) {
-                    const float _e114 = checker(input.uv);
-                    baseColor = (float3(0.7, 0.5, 0.3) * _e114);
+                    const float _e167 = checker(input.uv);
+                    baseColor = (float3(0.7, 0.5, 0.3) * _e167);
                 } else {
                     if ((input.surfaceType < 4.5)) {
                         baseColor = sphereColor.xyz;
@@ -417,31 +432,33 @@ float4 main_(FragmentInput_main fragmentinput_main) : SV_Target0
             }
         }
     }
-    const MaterialProperties _e126 = get_material_properties(input.surfaceType);
-    float3 _e128 = view_dir;
-    const StaticLightContribution _e129 = compute_static_lighting(n, input.worldPos, _e128, _e126);
-    float3 _e131 = view_dir;
-    const FlashlightContribution _e132 = compute_flashlight(n, input.worldPos, frag_coord, _e131, _e126);
-    float _e136 = screenParams.w;
-    if ((_e136 > 0.5)) {
+    const MaterialProperties _e179 = get_material_properties(input.surfaceType);
+    float3 _e180 = n;
+    float3 _e182 = view_dir;
+    const StaticLightContribution _e183 = compute_static_lighting(_e180, input.worldPos, _e182, _e179);
+    float3 _e184 = n;
+    float3 _e186 = view_dir;
+    const FlashlightContribution _e187 = compute_flashlight(_e184, input.worldPos, frag_coord, _e186, _e179);
+    float _e191 = screenParams.w;
+    if ((_e191 > 0.5)) {
         float3 mapped = ((normalize(input.normal) * 0.5) + (0.5).xxx);
         return float4(mapped, 1.0);
     }
     float ambient = staticLightParams.z;
-    float4 _e155 = cameraPos;
-    float fogFactor = exp((-(distance(input.worldPos, _e155.xyz)) * 0.08));
-    float3 _e162 = baseColor;
-    color = (_e162 * (ambient + _e132.diffuse));
-    float3 _e167 = baseColor;
-    float3 _e170 = color;
-    color = (_e170 + (_e167 * _e129.diffuse));
-    float3 _e173 = color;
-    color = (_e173 + _e129.specular);
-    float3 _e181 = color;
-    color = (_e181 + (_e132.specular * float3(1.0, 0.95, 0.85)));
-    float4 _e185 = fogColor;
-    float3 _e187 = color;
-    color = lerp(_e185.xyz, _e187, fogFactor);
-    float3 _e189 = color;
-    return float4(_e189, 1.0);
+    float4 _e210 = cameraPos;
+    float fogFactor = exp((-(distance(input.worldPos, _e210.xyz)) * 0.08));
+    float3 _e217 = baseColor;
+    color = (_e217 * (ambient + _e187.diffuse));
+    float3 _e222 = baseColor;
+    float3 _e225 = color;
+    color = (_e225 + (_e222 * _e183.diffuse));
+    float3 _e228 = color;
+    color = (_e228 + _e183.specular);
+    float3 _e236 = color;
+    color = (_e236 + (_e187.specular * float3(1.0, 0.95, 0.85)));
+    float4 _e240 = fogColor;
+    float3 _e242 = color;
+    color = lerp(_e240.xyz, _e242, fogFactor);
+    float3 _e244 = color;
+    return float4(_e244, 1.0);
 }

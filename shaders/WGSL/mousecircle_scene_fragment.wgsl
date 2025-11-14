@@ -205,7 +205,7 @@ fn compute_flashlight(normal: vec3f, world_pos: vec3f, frag_coord: vec4f, view_d
 @fragment
 fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @location(0) vec4f {
     // Calculate view direction early for POM
-    let n = normalize(input.normal);
+    var n = normalize(input.normal);
     var view_dir = uniforms.cameraPos.xyz - input.worldPos;
     let view_len = length(view_dir);
     if (view_len > 0.0001) {
@@ -214,21 +214,20 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
         view_dir = vec3f(0.0, 0.0, 1.0);
     }
 
+    // WORKAROUND: Check if normal is facing camera, flip if not
+    if (dot(n, view_dir) < 0.0) {
+        n = -n;  // Flip the normal to face camera
+    }
+
     // Use camera direction for parallax
     let cam_dir = uniforms.cameraDir.xyz;
 
     // Construct tangent space basis from normal
-    var tangent = vec3f(1.0, 0.0, 0.0);
-    var bitangent = vec3f(0.0, 1.0, 0.0);
+    // For walls, we know Y is always up, so bitangent = (0, 1, 0)
+    let bitangent = vec3f(0.0, 1.0, 0.0);
 
-    // Choose tangent based on normal orientation
-    if (abs(n.x) > abs(n.z)) {
-        tangent = vec3f(0.0, 0.0, 1.0);
-    }
-
-    // Make sure bitangent is orthogonal
-    bitangent = normalize(cross(n, tangent));
-    tangent = cross(bitangent, n);
+    // Tangent is perpendicular to both normal and bitangent
+    let tangent = normalize(cross(bitangent, n));
 
     // Transform camera direction to tangent space
     let cam_tangent = vec3f(
@@ -237,10 +236,16 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
         dot(cam_dir, n)
     );
 
-    // Apply full parallax occlusion mapping
+    // Apply simple parallax offset (not full POM yet)
     var uv = input.uv;
     if (input.surfaceType >= 0.5 && input.surfaceType < 1.5) {  // Walls only
-        uv = parallax_occlusion(input.uv, cam_tangent, 0.1, 32);
+        let h = get_debug_height(input.uv);
+        if (h > 0.0) {
+            // Simple offset: move UV in direction opposite to camera tangent XY
+            let height_scale = 0.1;
+            let offset = -cam_tangent.xy / max(abs(cam_tangent.z), 0.1) * h * height_scale;
+            uv = input.uv + offset;
+        }
     }
 
     // Sample textures unconditionally (required for uniform control flow)
@@ -258,6 +263,22 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
     } else if (input.surfaceType < 1.5) {
         // Walls: use POM texture
         baseColor = wallColor.rgb;
+
+        // DEBUG: Show grid in debug region to see the effect clearly
+        if (input.uv.x <= 0.2 && input.uv.y <= 0.2) {
+            // Draw grid on OFFSET uv
+            let grid_size = 0.05;
+            let grid_x = fract(uv.x / grid_size);
+            let grid_y = fract(uv.y / grid_size);
+            if (grid_x < 0.1 || grid_y < 0.1) {
+                baseColor = vec3f(1.0, 1.0, 0.0);  // Yellow grid
+            }
+
+            // Draw border of original debug region in red
+            if (input.uv.x < 0.01 || input.uv.x > 0.19 || input.uv.y < 0.01 || input.uv.y > 0.19) {
+                baseColor = vec3f(1.0, 0.0, 0.0);  // Red border
+            }
+        }
     } else if (input.surfaceType < 2.5) {
         baseColor = ceilingColor.rgb;
     } else if (input.surfaceType < 3.5) {
