@@ -198,11 +198,8 @@ int main(void) {
         }
     }
 
-    // Done parsing arguments, release scratch arena
-    scratch_end(scratch);
-
     // Now create an arena for the rest of the work
-    Arena *arena = arena_new(1024 * 1024); // 1MB initial
+    Arena *arena = scratch.arena;
 
     println(str_lit("Reading file..."));
 
@@ -305,6 +302,7 @@ int main(void) {
                 str_lit(COLOR_RESET));
     }
 
-    arena_free(arena);
+    scratch_end(scratch);
+
     return 0;
 }
