@@ -54,9 +54,15 @@ fn checker(uv: vec2f) -> f32 {
 }
 
 fn get_debug_height(uv: vec2f) -> f32 {
-    // Debug: extrude region where 0 <= u,v <= 0.2
-    if (uv.x <= 0.2 && uv.y <= 0.2) {
-        return 1.0;  // Full height for debug region
+    // Debug: extrude region where 0.4 <= u,v <= 0.6 (center of wall)
+    // Make it gradually increase from edges to center for smoother look
+    if (uv.x >= 0.4 && uv.x <= 0.6 && uv.y >= 0.4 && uv.y <= 0.6) {
+        // Distance from center of the square
+        let center = vec2f(0.5, 0.5);
+        let dist = length(uv - center);
+        let max_dist = 0.141;  // sqrt(0.1^2 + 0.1^2)
+        // Smooth falloff from center (1.0) to edges (0.0)
+        return clamp(1.0 - (dist / max_dist), 0.0, 1.0);
     }
     return 0.0;
 }
@@ -236,15 +242,12 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
         dot(cam_dir, n)
     );
 
-    // Apply simple parallax offset (not full POM yet)
+    // Apply full parallax occlusion mapping for nice depth
     var uv = input.uv;
     if (input.surfaceType >= 0.5 && input.surfaceType < 1.5) {  // Walls only
-        let h = get_debug_height(input.uv);
-        if (h > 0.0) {
-            // Simple offset: move UV in direction opposite to camera tangent XY
-            let height_scale = 0.1;
-            let offset = -cam_tangent.xy / max(abs(cam_tangent.z), 0.1) * h * height_scale;
-            uv = input.uv + offset;
+        // Only apply POM if we're looking at walls with normal pointing mainly N/S (Z direction)
+        if (abs(n.z) > 0.7) {  // S/N walls only for now
+            uv = parallax_occlusion(input.uv, cam_tangent, 0.15, 32);
         }
     }
 
@@ -265,7 +268,7 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
         baseColor = wallColor.rgb;
 
         // DEBUG: Show grid in debug region to see the effect clearly
-        if (input.uv.x <= 0.2 && input.uv.y <= 0.2) {
+        if (input.uv.x >= 0.4 && input.uv.x <= 0.6 && input.uv.y >= 0.4 && input.uv.y <= 0.6) {
             // Draw grid on OFFSET uv
             let grid_size = 0.05;
             let grid_x = fract(uv.x / grid_size);
@@ -275,7 +278,9 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
             }
 
             // Draw border of original debug region in red
-            if (input.uv.x < 0.01 || input.uv.x > 0.19 || input.uv.y < 0.01 || input.uv.y > 0.19) {
+            let border_thickness = 0.01;
+            if (input.uv.x < 0.4 + border_thickness || input.uv.x > 0.6 - border_thickness ||
+                input.uv.y < 0.4 + border_thickness || input.uv.y > 0.6 - border_thickness) {
                 baseColor = vec3f(1.0, 0.0, 0.0);  // Red border
             }
         }
