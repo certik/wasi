@@ -207,9 +207,11 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
 
     // Apply parallax occlusion mapping for walls when camera is close
     var uv = input.uv;
+    var debug_pom = false;
     if (input.surfaceType >= 0.5 && input.surfaceType < 1.5) {  // Walls only
         if (distance(uniforms.cameraPos.xyz, input.worldPos) < 5.0) {
-            uv = parallax_occlusion(input.uv, view_dir, n, 0.05, 32);
+            uv = parallax_occlusion(input.uv, view_dir, n, 0.5, 32);  // Exaggerated height scale
+            debug_pom = true;
         }
     }
 
@@ -226,7 +228,12 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
         // Floor: use sampled texture
         baseColor = floorColor.rgb;
     } else if (input.surfaceType < 1.5) {
-        baseColor = wallColor.rgb;
+        // Walls: color debug region red
+        if (input.uv.x <= 0.2 && input.uv.y <= 0.2) {
+            baseColor = vec3f(1.0, 0.0, 0.0);  // Red for debug region
+        } else {
+            baseColor = wallColor.rgb;
+        }
     } else if (input.surfaceType < 2.5) {
         baseColor = ceilingColor.rgb;
     } else if (input.surfaceType < 3.5) {
