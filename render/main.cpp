@@ -146,10 +146,10 @@ int main(int argc, char** argv) {
     }
 
     // Create camera
-    Vec3 camera_pos(0, 0, 5);
+    Vec3 camera_pos(1.5, 0, 3);  // Moved right and closer
     Vec3 look_at(0, 0, 0);
     Vec3 up(0, 1, 0);
-    float fov = 60.0f;
+    float fov = 45.0f;  // Narrower FOV = zoomed in
 
     PerspectiveCamera camera(camera_pos, look_at, up, fov);
 

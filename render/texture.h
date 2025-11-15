@@ -4,6 +4,9 @@
 #include <cstdint>
 #include <cstring>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 // Simple image class for textures
 class Image {
 public:
@@ -18,7 +21,24 @@ public:
     }
 
     ~Image() {
-        delete[] data;
+        if (data)
+            stbi_image_free(data);
+    }
+
+    // Load image using stb_image (supports JPEG, PNG, BMP, TGA, etc.)
+    static Image* load(const char* filename) {
+        Image* img = new Image();
+        img->data = stbi_load(filename, &img->width, &img->height, &img->channels, 0);
+
+        if (!img->data) {
+            printf("Failed to load image: %s\n", filename);
+            delete img;
+            return nullptr;
+        }
+
+        printf("Loaded texture: %s (%dx%d, %d channels)\n",
+               filename, img->width, img->height, img->channels);
+        return img;
     }
 
     // Simple PPM loader (very basic, P6 format only)
