@@ -139,6 +139,9 @@ int main(int argc, char** argv) {
 
     // Create or load scene
     Scene* scene;
+    Bounds3 obj_bounds;  // For camera positioning
+    bool has_obj_bounds = false;
+
     if (use_obj && obj_file) {
         printf("Loading OBJ file: %s\n", obj_file);
         Material* default_mat = new DiffuseMaterial(Color(0.7f, 0.7f, 0.7f));
@@ -148,14 +151,17 @@ int main(int argc, char** argv) {
             printf("Failed to load OBJ file, using test scene instead\n");
             scene = create_test_scene();
         } else {
-            // Get scene bounds to position floor
-            Bounds3 bounds = scene->geometry.world_bound();
-            float floor_y = bounds.min.y;
+            // Get scene bounds to position floor (BEFORE adding plane)
+            obj_bounds = scene->geometry.world_bound();
+            has_obj_bounds = true;
+            float floor_y = obj_bounds.min.y;
 
-            printf("Scene bounds: Y range [%.2f, %.2f]\n", bounds.min.y, bounds.max.y);
+            printf("Object bounds: min=(%.2f, %.2f, %.2f), max=(%.2f, %.2f, %.2f)\n",
+                   obj_bounds.min.x, obj_bounds.min.y, obj_bounds.min.z,
+                   obj_bounds.max.x, obj_bounds.max.y, obj_bounds.max.z);
 
             // Add floor plane at bottom of scene
-            Material* floor_mat = new DiffuseMaterial(Color(0.7f, 0.7f, 0.7f));
+            Material* floor_mat = new DiffuseMaterial(Color(0.7f, 0.0f, 0.7f));
             scene->add_material(floor_mat);
             scene->geometry.add(new Plane(Vec3(0, floor_y, 0), Vec3(0, 1, 0), floor_mat));
             printf("Added floor plane at Y=%.2f\n", floor_y);
@@ -169,11 +175,45 @@ int main(int argc, char** argv) {
         scene = create_test_scene();
     }
 
-    // Create camera
-    Vec3 camera_pos(1.5, 0, 3);  // Moved right and closer
-    Vec3 look_at(0, 0, 0);
-    Vec3 up(0, 1, 0);
-    float fov = 45.0f;  // Narrower FOV = zoomed in
+    // Create camera with automatic positioning
+    Vec3 camera_pos, look_at, up;
+    float fov = 45.0f;
+
+    if (has_obj_bounds) {
+        // Center of the bounding box
+        Vec3 center = (obj_bounds.min + obj_bounds.max) * 0.5f;
+
+        // Size of the object
+        Vec3 size = obj_bounds.max - obj_bounds.min;
+        float max_size = fmaxf(fmaxf(size.x, size.y), size.z);
+
+        // Calculate camera distance to fit object in view
+        // Using FOV and object size: distance = (size/2) / tan(fov/2)
+        float tan_half_fov = tanf(fov * 0.5f * 3.14159265f / 180.0f);
+        float distance = (max_size * 1.2f) / (2.0f * tan_half_fov);  // 1.2x for margin
+
+        // Position camera at 30-degree elevation angle, looking at center
+        float elevation_angle = 25.0f * 3.14159265f / 180.0f;
+        float azimuth_angle = 45.0f * 3.14159265f / 180.0f;
+
+        camera_pos = Vec3(
+            center.x + distance * cosf(elevation_angle) * cosf(azimuth_angle),
+            center.y + distance * sinf(elevation_angle),
+            center.z + distance * cosf(elevation_angle) * sinf(azimuth_angle)
+        );
+
+        look_at = center;
+        up = Vec3(0, 1, 0);
+
+        printf("Camera: pos=(%.2f, %.2f, %.2f), look_at=(%.2f, %.2f, %.2f), distance=%.2f\n",
+               camera_pos.x, camera_pos.y, camera_pos.z,
+               look_at.x, look_at.y, look_at.z, distance);
+    } else {
+        // Cornell box - use fixed camera
+        camera_pos = Vec3(1.5, 0, 3);
+        look_at = Vec3(0, 0, 0);
+        up = Vec3(0, 1, 0);
+    }
 
     PerspectiveCamera camera(camera_pos, look_at, up, fov);
 
