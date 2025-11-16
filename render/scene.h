@@ -19,7 +19,7 @@ public:
     std::vector<Material*> materials;
     Color background;
 
-    Scene() : background(0.5f, 0.5f, 0.5f) {}  // Neutral gray for even ambient lighting
+    Scene() : background(0.0f, 0.0f, 0.0f) {}  // Neutral gray for even ambient lighting
 
     ~Scene() {
         for (auto* light : lights)
