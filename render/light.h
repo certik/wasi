@@ -11,8 +11,15 @@ public:
     // Sample the light from a surface point
     // Returns the incident radiance Li
     // wi is set to the direction toward the light (normalized)
-    // pdf is the probability density (for simple point lights, this is 1)
+    // pdf is the probability density (for point lights, this is 1 for delta distribution)
     virtual Color sample_Li(const SurfaceInteraction& isect, Vec3* wi, float* pdf) const = 0;
+
+    // Compute PDF for sampling direction wi from surface point
+    // Returns 0 for delta lights (point, directional), non-zero for area lights
+    virtual float pdf_Li(const SurfaceInteraction& isect, const Vec3& wi) const = 0;
+
+    // Check if this is a delta distribution (point/directional light)
+    virtual bool is_delta() const = 0;
 };
 
 // Point light source
@@ -39,6 +46,15 @@ public:
 
         return color * (intensity * attenuation);
     }
+
+    float pdf_Li(const SurfaceInteraction& isect, const Vec3& wi) const override {
+        // Delta distribution - cannot be sampled by BSDF
+        return 0.0f;
+    }
+
+    bool is_delta() const override {
+        return true;
+    }
 };
 
 // Directional light (sun-like)
@@ -55,5 +71,14 @@ public:
         *wi = -direction; // Direction toward light
         *pdf = 1.0f;
         return color * intensity;
+    }
+
+    float pdf_Li(const SurfaceInteraction& isect, const Vec3& wi) const override {
+        // Delta distribution - cannot be sampled by BSDF
+        return 0.0f;
+    }
+
+    bool is_delta() const override {
+        return true;
     }
 };

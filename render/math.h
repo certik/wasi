@@ -188,6 +188,14 @@ inline float abs_dot(const Vec3& a, const Vec3& b) {
     return fabsf(dot(a, b));
 }
 
+// Power heuristic for Multiple Importance Sampling (MIS)
+// PBRT Eq. 15.4 with beta=2
+inline float power_heuristic(int nf, float pdf_f, int ng, float pdf_g) {
+    float f = nf * pdf_f;
+    float g = ng * pdf_g;
+    return (f * f) / (f * f + g * g);
+}
+
 // Camera utilities
 inline Mat3 look_at(const Vec3& from, const Vec3& to, const Vec3& up) {
     Vec3 forward = (to - from).normalized();

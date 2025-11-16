@@ -198,9 +198,12 @@ private:
             return Color(1, 0, 1); // Magenta for missing material
         }
 
-        // If hit an emissive surface, return emission
+        // If hit an emissive surface, return emission (only on first bounce or specular paths)
+        Color Le(0, 0, 0);
         if (isect.material->is_emissive()) {
-            return isect.material->Le(isect);
+            Le = isect.material->Le(isect);
+            // For now, emissive surfaces don't reflect (return emission only)
+            return Le;
         }
 
         // Get BSDF
@@ -209,50 +212,112 @@ private:
             return Color(0, 0, 0);
         }
 
-        // Russian roulette termination (after some bounces)
-        if (depth > 2) {
-            float continue_prob = roulette_prob;
-            if (rng_float(seed) > continue_prob) {
-                delete bsdf;
-                return Color(0, 0, 0);
+        Vec3 wo = -ray.direction; // Direction toward camera
+        Color L_direct(0, 0, 0);
+
+        // ===== NEXT-EVENT ESTIMATION: Explicit light sampling =====
+        for (const Light* light : scene.lights) {
+            Vec3 wi;
+            float pdf_light;
+            Color Li_sample = light->sample_Li(isect, &wi, &pdf_light);
+
+            if (Li_sample.x <= 0 && Li_sample.y <= 0 && Li_sample.z <= 0) continue;
+            if (pdf_light == 0.0f) continue;
+
+            // Evaluate BSDF
+            Color f = bsdf->f(wo, wi);
+            if (f.x <= 0 && f.y <= 0 && f.z <= 0) continue;
+
+            float cos_theta = abs_dot(wi, isect.normal);
+            if (cos_theta == 0.0f) continue;
+
+            // Shadow ray: check visibility to light
+            const float epsilon = 0.001f;
+            Vec3 shadow_origin = isect.point + isect.normal * epsilon;
+
+            // For point lights, check visibility to light position
+            bool is_visible = false;
+            if (light->is_delta()) {
+                // Delta lights (point/directional): check visibility
+                // For point light, get distance from wi direction
+                const PointLight* point_light = dynamic_cast<const PointLight*>(light);
+                if (point_light) {
+                    is_visible = scene.visible(shadow_origin, point_light->position);
+                } else {
+                    // Directional light: just check if occluded in that direction
+                    Ray shadow_ray(shadow_origin, wi);
+                    SurfaceInteraction shadow_isect;
+                    shadow_isect.t = 1e10f;  // Very far
+                    is_visible = !scene.intersect(shadow_ray, &shadow_isect);
+                }
+            }
+
+            if (is_visible) {
+                // MIS weight for light sampling
+                float pdf_bsdf = bsdf->pdf(wo, wi);
+                float weight = 1.0f;
+
+                if (!light->is_delta()) {
+                    // Non-delta light: use MIS
+                    weight = power_heuristic(1, pdf_light, 1, pdf_bsdf);
+                }
+                // Delta lights get weight=1 (only strategy that can sample them)
+
+                L_direct += f * Li_sample * cos_theta * weight / pdf_light;
             }
         }
 
-        Vec3 wo = -ray.direction; // Direction toward camera
+        // ===== IMPLICIT: BSDF sampling for indirect lighting =====
+        Color L_indirect(0, 0, 0);
+
+        // Russian roulette termination (after some bounces)
+        float rr_weight = 1.0f;
+        if (depth > 2) {
+            if (rng_float(seed) > roulette_prob) {
+                delete bsdf;
+                return Le + L_direct;
+            }
+            rr_weight = 1.0f / roulette_prob;
+        }
 
         // Sample BSDF for next bounce direction
-        Vec3 wi;
-        float pdf;
+        Vec3 wi_bsdf;
+        float pdf_bsdf;
         float u1 = rng_float(seed);
         float u2 = rng_float(seed);
-        Color f = bsdf->sample_f(wo, &wi, u1, u2, &pdf);
+        Color f = bsdf->sample_f(wo, &wi_bsdf, u1, u2, &pdf_bsdf);
+
+        if (pdf_bsdf > 0.0f && (f.x > 0 || f.y > 0 || f.z > 0)) {
+            float cos_theta = abs_dot(wi_bsdf, isect.normal);
+
+            if (cos_theta > 0.0f) {
+                // Trace next bounce
+                const float epsilon = 0.001f;
+                Ray next_ray(isect.point + isect.normal * epsilon, wi_bsdf);
+                Color Li_indirect = Li(next_ray, scene, depth + 1, seed);
+
+                // MIS weight for BSDF sampling
+                // Check if we hit a light source via BSDF sampling
+                float weight = 1.0f;
+                if (scene.lights.size() > 0) {
+                    // Compute light PDF for this direction
+                    float pdf_light_accum = 0.0f;
+                    for (const Light* light : scene.lights) {
+                        pdf_light_accum += light->pdf_Li(isect, wi_bsdf);
+                    }
+                    pdf_light_accum /= scene.lights.size();  // Average over lights
+
+                    if (pdf_light_accum > 0.0f) {
+                        weight = power_heuristic(1, pdf_bsdf, 1, pdf_light_accum);
+                    }
+                }
+
+                L_indirect = f * Li_indirect * cos_theta * weight / pdf_bsdf * rr_weight;
+            }
+        }
 
         delete bsdf;
 
-        // Check if valid sample
-        if (pdf == 0.0f) {
-            return Color(0, 0, 0);
-        }
-
-        // Geometry term
-        float cos_theta = abs_dot(wi, isect.normal);
-        if (cos_theta == 0.0f) {
-            return Color(0, 0, 0);
-        }
-
-        // Trace next bounce
-        const float epsilon = 0.001f;
-        Ray next_ray(isect.point + wi * epsilon, wi);
-        Color incoming = Li(next_ray, scene, depth + 1, seed);
-
-        // Monte Carlo estimator: f * Li * cos(theta) / pdf
-        Color result = f * incoming * cos_theta / pdf;
-
-        // Account for Russian roulette
-        if (depth > 2) {
-            result = result * (1.0f / roulette_prob);
-        }
-
-        return result;
+        return Le + L_direct + L_indirect;
     }
 };

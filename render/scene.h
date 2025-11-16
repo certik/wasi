@@ -19,7 +19,7 @@ public:
     std::vector<Material*> materials;
     Color background;
 
-    Scene() : background(1.0f, 1.0f, 1.0f) {}  // Neutral gray for even ambient lighting
+    Scene() : background(0.5f, 0.5f, 0.5f) {}  // Neutral gray for even ambient lighting
 
     ~Scene() {
         for (auto* light : lights)
@@ -38,6 +38,21 @@ public:
 
     bool intersect(const Ray& ray, SurfaceInteraction* isect) const {
         return geometry.intersect(ray, isect);
+    }
+
+    // Test visibility between two points (for shadow rays)
+    bool visible(const Vec3& p1, const Vec3& p2) const {
+        Vec3 direction = p2 - p1;
+        float distance = direction.length();
+        direction = direction / distance;
+
+        // Create shadow ray with slightly shorter distance to avoid self-intersection at target
+        Ray shadow_ray(p1, direction);
+        SurfaceInteraction shadow_isect;
+        shadow_isect.t = distance - 0.0001f;  // Stop just before target
+
+        // If we hit something before reaching p2, it's occluded
+        return !geometry.intersect(shadow_ray, &shadow_isect);
     }
 };
 
