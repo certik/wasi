@@ -392,21 +392,25 @@ private:
                 Vec3 direction = transform.get_forward();
 
                 Color color(light->color[0], light->color[1], light->color[2]);
-                float intensity = light->intensity;
+
+                // glTF uses physical units: candela (cd) for point/spot, lux for directional
+                // Our renderer expects much smaller values, so scale down
+                // Typical glTF lights: 100-10000 cd, our renderer: 10-1000
+                float intensity = light->intensity * 0.002f;  // Scale factor tuned for our renderer
 
                 if (light->type == cgltf_light_type_point) {
                     scene->add_light(new PointLight(position, color, intensity));
-                    printf("  Point light: pos=(%.2f, %.2f, %.2f), intensity=%.1f\n",
-                           position.x, position.y, position.z, intensity);
+                    printf("  Point light: pos=(%.2f, %.2f, %.2f), intensity=%.1f (glTF: %.1f cd)\n",
+                           position.x, position.y, position.z, intensity, light->intensity);
                 } else if (light->type == cgltf_light_type_directional) {
                     scene->add_light(new DirectionalLight(direction, color, intensity));
-                    printf("  Directional light: dir=(%.2f, %.2f, %.2f), intensity=%.1f\n",
-                           direction.x, direction.y, direction.z, intensity);
+                    printf("  Directional light: dir=(%.2f, %.2f, %.2f), intensity=%.1f (glTF: %.1f lux)\n",
+                           direction.x, direction.y, direction.z, intensity, light->intensity);
                 } else if (light->type == cgltf_light_type_spot) {
                     // Treat spot as point for now
                     scene->add_light(new PointLight(position, color, intensity));
-                    printf("  Spot light (as point): pos=(%.2f, %.2f, %.2f), intensity=%.1f\n",
-                           position.x, position.y, position.z, intensity);
+                    printf("  Spot light (as point): pos=(%.2f, %.2f, %.2f), intensity=%.1f (glTF: %.1f cd)\n",
+                           position.x, position.y, position.z, intensity, light->intensity);
                 }
             }
         }
