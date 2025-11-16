@@ -514,6 +514,8 @@ private:
     }
 
     static Material* load_material(cgltf_material* gltf_mat, Scene* scene) {
+        const char* mat_name = gltf_mat->name ? gltf_mat->name : "unnamed";
+
         // Try to load baseColorTexture from PBR metallic-roughness
         if (gltf_mat->has_pbr_metallic_roughness) {
             cgltf_pbr_metallic_roughness* pbr = &gltf_mat->pbr_metallic_roughness;
@@ -521,15 +523,44 @@ private:
             if (pbr->base_color_texture.texture && pbr->base_color_texture.texture->image) {
                 cgltf_image* img = pbr->base_color_texture.texture->image;
 
+                Image* image = nullptr;
+
                 if (img->uri) {
-                    // Load external image
-                    Image* image = Image::load(img->uri);
-                    if (image) {
-                        Texture* tex = new ImageTexture(image, true);
-                        Material* mat = new DiffuseMaterial(tex, true);
-                        scene->add_material(mat);
-                        return mat;
+                    // External image file
+                    printf("    Material '%s': loading external texture '%s'\n", mat_name, img->uri);
+                    image = Image::load(img->uri);
+                } else if (img->buffer_view) {
+                    // Embedded image in GLB
+                    printf("    Material '%s': loading embedded texture (%s, %zu bytes)\n",
+                           mat_name, img->mime_type ? img->mime_type : "unknown",
+                           img->buffer_view->size);
+
+                    // Get buffer view data
+                    const uint8_t* data = (const uint8_t*)img->buffer_view->buffer->data;
+                    data += img->buffer_view->offset;
+                    cgltf_size size = img->buffer_view->size;
+
+                    // Use stb_image to load from memory
+                    Image* embedded_img = new Image();
+                    embedded_img->data = stbi_load_from_memory(data, (int)size,
+                                                                &embedded_img->width,
+                                                                &embedded_img->height,
+                                                                &embedded_img->channels, 0);
+                    if (embedded_img->data) {
+                        printf("    Material '%s': embedded texture loaded (%dx%d, %d channels)\n",
+                               mat_name, embedded_img->width, embedded_img->height, embedded_img->channels);
+                        image = embedded_img;
+                    } else {
+                        printf("    Material '%s': failed to decode embedded texture\n", mat_name);
+                        delete embedded_img;
                     }
+                }
+
+                if (image) {
+                    Texture* tex = new ImageTexture(image, true);
+                    Material* mat = new DiffuseMaterial(tex, true);
+                    scene->add_material(mat);
+                    return mat;
                 }
             }
 
@@ -539,12 +570,15 @@ private:
                 pbr->base_color_factor[1],
                 pbr->base_color_factor[2]
             );
+            printf("    Material '%s': using base color factor (%.2f, %.2f, %.2f)\n",
+                   mat_name, base_color.x, base_color.y, base_color.z);
             Material* mat = new DiffuseMaterial(base_color);
             scene->add_material(mat);
             return mat;
         }
 
         // Default gray material
+        printf("    Material '%s': using default gray\n", mat_name);
         Material* mat = new DiffuseMaterial(Color(0.7f, 0.7f, 0.7f));
         scene->add_material(mat);
         return mat;
