@@ -16,6 +16,7 @@ Scene* create_test_scene() {
     Material* red_mat = new DiffuseMaterial(Color(0.8f, 0.2f, 0.2f));
     Material* green_mat = new DiffuseMaterial(Color(0.2f, 0.8f, 0.2f));
     Material* white_mat = new DiffuseMaterial(Color(0.8f, 0.8f, 0.8f));
+    Material* light_mat = new EmissiveMaterial(Color(15, 15, 15));  // Emissive ceiling light
 
     // Floor
     scene->geometry.add(new Triangle(
@@ -31,7 +32,21 @@ Scene* create_test_scene() {
         white_mat
     ));
 
-    // Ceiling
+    // Ceiling light (emissive area)
+    scene->geometry.add(new Triangle(
+        Vec3(-0.5f, 1.99f, -0.5f), Vec3(0.5f, 1.99f, 0.5f), Vec3(0.5f, 1.99f, -0.5f),
+        Vec3(0, -1, 0), Vec3(0, -1, 0), Vec3(0, -1, 0),
+        Vec2(0, 0), Vec2(1, 1), Vec2(1, 0),
+        light_mat
+    ));
+    scene->geometry.add(new Triangle(
+        Vec3(-0.5f, 1.99f, -0.5f), Vec3(-0.5f, 1.99f, 0.5f), Vec3(0.5f, 1.99f, 0.5f),
+        Vec3(0, -1, 0), Vec3(0, -1, 0), Vec3(0, -1, 0),
+        Vec2(0, 0), Vec2(0, 1), Vec2(1, 1),
+        light_mat
+    ));
+
+    // Rest of ceiling (white)
     scene->geometry.add(new Triangle(
         Vec3(-2, 2, -2), Vec3(2, 2, 2), Vec3(2, 2, -2),
         Vec3(0, -1, 0), Vec3(0, -1, 0), Vec3(0, -1, 0),
@@ -87,9 +102,6 @@ Scene* create_test_scene() {
         green_mat
     ));
 
-    // Add lights
-    scene->add_light(new PointLight(Vec3(0, 1.8f, 0), Color(1, 1, 1), 10.0f));
-
     return scene;
 }
 
@@ -136,7 +148,19 @@ int main(int argc, char** argv) {
             printf("Failed to load OBJ file, using test scene instead\n");
             scene = create_test_scene();
         } else {
-            // Add lights to loaded scene
+            // Get scene bounds to position floor
+            Bounds3 bounds = scene->geometry.world_bound();
+            float floor_y = bounds.min.y;
+
+            printf("Scene bounds: Y range [%.2f, %.2f]\n", bounds.min.y, bounds.max.y);
+
+            // Add floor plane at bottom of scene
+            Material* floor_mat = new DiffuseMaterial(Color(0.7f, 0.7f, 0.7f));
+            scene->add_material(floor_mat);
+            scene->geometry.add(new Plane(Vec3(0, floor_y, 0), Vec3(0, 1, 0), floor_mat));
+            printf("Added floor plane at Y=%.2f\n", floor_y);
+
+            // Add lights to loaded scene (these won't work yet with path tracer)
             scene->add_light(new PointLight(Vec3(5, 5, 5), Color(1, 1, 1), 100.0f));
             scene->add_light(new PointLight(Vec3(-5, 5, 5), Color(1, 1, 1), 50.0f));
         }
@@ -156,8 +180,8 @@ int main(int argc, char** argv) {
     // Create film
     Film film(width, height);
 
-    // Create integrator
-    SimpleIntegrator integrator;
+    // Create integrator - use PathIntegrator for global illumination
+    PathIntegrator integrator(5, 64);  // max_depth=5, spp=64
 
     // Render
     integrator.render(*scene, camera, film);

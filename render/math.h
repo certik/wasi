@@ -151,6 +151,43 @@ struct Bounds3 {
     }
 };
 
+// Simple RNG for sampling (LCG)
+inline float rng_float(unsigned int* seed) {
+    *seed = (*seed * 1664525u + 1013904223u);
+    return (*seed >> 8) / 16777216.0f;
+}
+
+// Sample uniform hemisphere (cosine-weighted)
+inline Vec3 sample_cosine_hemisphere(float u1, float u2) {
+    float r = sqrtf(u1);
+    float theta = 2.0f * 3.14159265f * u2;
+    float x = r * cosf(theta);
+    float z = r * sinf(theta);
+    float y = sqrtf(fmaxf(0.0f, 1.0f - u1));
+    return Vec3(x, y, z);
+}
+
+// Build coordinate frame from normal
+inline void coordinate_frame(const Vec3& n, Vec3* tangent, Vec3* bitangent) {
+    if (fabsf(n.x) > fabsf(n.y)) {
+        *tangent = Vec3(n.z, 0, -n.x).normalized();
+    } else {
+        *tangent = Vec3(0, n.z, -n.y).normalized();
+    }
+    *bitangent = cross(n, *tangent);
+}
+
+// Transform vector from local to world space
+inline Vec3 local_to_world(const Vec3& local, const Vec3& normal) {
+    Vec3 tangent, bitangent;
+    coordinate_frame(normal, &tangent, &bitangent);
+    return tangent * local.x + normal * local.y + bitangent * local.z;
+}
+
+inline float abs_dot(const Vec3& a, const Vec3& b) {
+    return fabsf(dot(a, b));
+}
+
 // Camera utilities
 inline Mat3 look_at(const Vec3& from, const Vec3& to, const Vec3& up) {
     Vec3 forward = (to - from).normalized();

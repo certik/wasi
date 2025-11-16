@@ -97,6 +97,53 @@ public:
     }
 };
 
+// Plane primitive (infinite or large)
+class Plane : public Primitive {
+public:
+    Vec3 point;
+    Vec3 normal;
+    const Material* material;
+
+    Plane(const Vec3& p, const Vec3& n, const Material* mat = nullptr)
+        : point(p), normal(n.normalized()), material(mat) {}
+
+    bool intersect(const Ray& ray, SurfaceInteraction* isect) const override {
+        const float EPSILON = 0.0000001f;
+
+        float denom = dot(normal, ray.direction);
+
+        // Ray parallel to plane
+        if (fabsf(denom) < EPSILON) {
+            return false;
+        }
+
+        float t = dot(normal, point - ray.origin) / denom;
+
+        // Behind ray origin or further than current intersection
+        if (t < EPSILON || t >= isect->t) {
+            return false;
+        }
+
+        isect->t = t;
+        isect->point = ray.at(t);
+        isect->normal = normal;
+
+        // Simple planar UV mapping (project onto tangent plane)
+        Vec3 tangent, bitangent;
+        coordinate_frame(normal, &tangent, &bitangent);
+        isect->uv = Vec2(dot(isect->point, tangent), dot(isect->point, bitangent));
+
+        isect->material = material;
+        return true;
+    }
+
+    Bounds3 world_bound() const override {
+        // Infinite plane - return very large bounds
+        const float inf = 1e10f;
+        return Bounds3(Vec3(-inf, -inf, -inf), Vec3(inf, inf, inf));
+    }
+};
+
 // Aggregate primitive - simple list (no acceleration structure)
 class PrimitiveList : public Primitive {
 public:
