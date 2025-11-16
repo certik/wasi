@@ -89,6 +89,56 @@ struct Mat3 {
     }
 };
 
+// 4x4 Matrix (column-major for glTF compatibility)
+struct Mat4 {
+    float m[16];  // Column-major: m[col*4 + row]
+
+    Mat4() {
+        for (int i = 0; i < 16; i++)
+            m[i] = 0.0f;
+        m[0] = m[5] = m[10] = m[15] = 1.0f;  // Identity
+    }
+
+    Mat4(const float* data) {
+        for (int i = 0; i < 16; i++)
+            m[i] = data[i];
+    }
+
+    // Transform point (apply translation)
+    Vec3 transform_point(const Vec3& v) const {
+        float w = m[3] * v.x + m[7] * v.y + m[11] * v.z + m[15];
+        return Vec3(
+            (m[0] * v.x + m[4] * v.y + m[8] * v.z + m[12]) / w,
+            (m[1] * v.x + m[5] * v.y + m[9] * v.z + m[13]) / w,
+            (m[2] * v.x + m[6] * v.y + m[10] * v.z + m[14]) / w
+        );
+    }
+
+    // Transform vector (ignore translation)
+    Vec3 transform_vector(const Vec3& v) const {
+        return Vec3(
+            m[0] * v.x + m[4] * v.y + m[8] * v.z,
+            m[1] * v.x + m[5] * v.y + m[9] * v.z,
+            m[2] * v.x + m[6] * v.y + m[10] * v.z
+        );
+    }
+
+    // Extract translation
+    Vec3 get_translation() const {
+        return Vec3(m[12], m[13], m[14]);
+    }
+
+    // Extract forward direction (-Z in glTF camera space)
+    Vec3 get_forward() const {
+        return Vec3(-m[8], -m[9], -m[10]).normalized();
+    }
+
+    // Extract up direction (+Y)
+    Vec3 get_up() const {
+        return Vec3(m[4], m[5], m[6]).normalized();
+    }
+};
+
 // Ray
 struct Ray {
     Vec3 origin;
