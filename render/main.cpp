@@ -114,6 +114,8 @@ int main(int argc, char** argv) {
     int width = 800;
     int height = 600;
     bool use_obj = false;
+    bool width_specified = false;
+    bool height_specified = false;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-i") == 0 && i + 1 < argc) {
@@ -123,8 +125,10 @@ int main(int argc, char** argv) {
             output_file = argv[++i];
         } else if (strcmp(argv[i], "-w") == 0 && i + 1 < argc) {
             width = atoi(argv[++i]);
+            width_specified = true;
         } else if (strcmp(argv[i], "-h") == 0 && i + 1 < argc) {
             height = atoi(argv[++i]);
+            height_specified = true;
         } else if (strcmp(argv[i], "--help") == 0) {
             printf("Usage: %s [options]\n", argv[0]);
             printf("Options:\n");
@@ -160,10 +164,14 @@ int main(int argc, char** argv) {
                 scene = gltf_result.scene;
                 loaded_camera = gltf_result.camera;
 
-                // Use camera dimensions if specified
+                // Use camera dimensions if not overridden by command line
                 if (loaded_camera) {
-                    width = gltf_result.width;
-                    height = gltf_result.height;
+                    if (!width_specified) {
+                        width = gltf_result.width;
+                    }
+                    if (!height_specified) {
+                        height = gltf_result.height;
+                    }
                 }
             }
         } else {
