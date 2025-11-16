@@ -161,7 +161,8 @@ int main(int argc, char** argv) {
                    obj_bounds.max.x, obj_bounds.max.y, obj_bounds.max.z);
 
             // Add floor plane at bottom of scene
-            Material* floor_mat = new DiffuseMaterial(Color(0.7f, 0.0f, 0.7f));
+            Material* floor_mat = new DiffuseMaterial(
+                    Color(0.8078f, 0.6235f, 0.4353f));
             scene->add_material(floor_mat);
             scene->geometry.add(new Plane(Vec3(0, floor_y, 0), Vec3(0, 1, 0), floor_mat));
             printf("Added floor plane at Y=%.2f\n", floor_y);
