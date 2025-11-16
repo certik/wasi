@@ -137,8 +137,8 @@ private:
 class PathIntegrator : public Integrator {
 public:
     int max_depth;
-    float roulette_prob;
     int spp;  // samples per pixel
+    float roulette_prob;
 
     PathIntegrator(int depth = 5, int samples = 16, float rr_prob = 0.7f)
         : max_depth(depth), spp(samples), roulette_prob(rr_prob) {}

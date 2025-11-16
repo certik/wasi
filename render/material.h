@@ -28,8 +28,8 @@ public:
 
     LambertianBSDF(const Color& albedo, const Vec3& n) : albedo(albedo), normal(n) {}
 
-    Color f(const Vec3& wo, const Vec3& wi) const override {
-        // Lambertian reflection: albedo / pi
+    Color f(const Vec3& /*wo*/, const Vec3& /*wi*/) const override {
+        // Lambertian reflection: albedo / pi (independent of directions)
         return albedo * (1.0f / 3.14159265f);
     }
 
@@ -42,7 +42,7 @@ public:
         return f(wo, *wi);
     }
 
-    float pdf(const Vec3& wo, const Vec3& wi) const override {
+    float pdf(const Vec3& /*wo*/, const Vec3& wi) const override {
         // Cosine-weighted PDF: cos(theta) / pi
         float cos_theta = dot(wi, normal);
         return cos_theta > 0 ? cos_theta / 3.14159265f : 0.0f;
@@ -54,7 +54,7 @@ class Material {
 public:
     virtual ~Material() {}
     virtual BSDF* get_bsdf(const SurfaceInteraction& isect) const = 0;
-    virtual Color Le(const SurfaceInteraction& isect) const { return Color(0, 0, 0); }
+    virtual Color Le(const SurfaceInteraction& /*isect*/) const { return Color(0, 0, 0); }
     virtual bool is_emissive() const { return false; }
 };
 
@@ -88,12 +88,12 @@ public:
 
     EmissiveMaterial(const Color& emit) : emission(emit) {}
 
-    BSDF* get_bsdf(const SurfaceInteraction& isect) const override {
+    BSDF* get_bsdf(const SurfaceInteraction& /*isect*/) const override {
         // Emissive surfaces don't scatter light
         return nullptr;
     }
 
-    Color Le(const SurfaceInteraction& isect) const override {
+    Color Le(const SurfaceInteraction& /*isect*/) const override {
         return emission;
     }
 

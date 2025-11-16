@@ -137,7 +137,7 @@ public:
 
     ConstantTexture(const Color& c) : color(c) {}
 
-    Color evaluate(const Vec2& uv) const override {
+    Color evaluate(const Vec2& /*uv*/) const override {
         return color;
     }
 };

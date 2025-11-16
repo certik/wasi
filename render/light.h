@@ -47,7 +47,7 @@ public:
         return color * (intensity * attenuation);
     }
 
-    float pdf_Li(const SurfaceInteraction& isect, const Vec3& wi) const override {
+    float pdf_Li(const SurfaceInteraction& /*isect*/, const Vec3& /*wi*/) const override {
         // Delta distribution - cannot be sampled by BSDF
         return 0.0f;
     }
@@ -67,13 +67,13 @@ public:
     DirectionalLight(const Vec3& dir, const Color& col, float intens)
         : direction(dir.normalized()), color(col), intensity(intens) {}
 
-    Color sample_Li(const SurfaceInteraction& isect, Vec3* wi, float* pdf) const override {
+    Color sample_Li(const SurfaceInteraction& /*isect*/, Vec3* wi, float* pdf) const override {
         *wi = -direction; // Direction toward light
         *pdf = 1.0f;
         return color * intensity;
     }
 
-    float pdf_Li(const SurfaceInteraction& isect, const Vec3& wi) const override {
+    float pdf_Li(const SurfaceInteraction& /*isect*/, const Vec3& /*wi*/) const override {
         // Delta distribution - cannot be sampled by BSDF
         return 0.0f;
     }

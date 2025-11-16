@@ -4,7 +4,7 @@
 #include <vector>
 
 // Forward declarations
-struct Material;
+class Material;
 
 // Surface interaction data
 struct SurfaceInteraction {
