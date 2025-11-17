@@ -1937,9 +1937,6 @@ static bool write_geometry_usd(const char *filename, const char *mesh_name,
     APPEND_GEO("]\n");
 
     APPEND_GEO("    uniform token subdivisionScheme = \"none\"\n");
-    if (material_path) {
-        APPENDF_GEO("    rel material:binding = <%s>\n", material_path);
-    }
     APPEND_GEO("}\n");
 
     #undef APPEND_GEO
@@ -2151,10 +2148,12 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
 
     APPENDF("    def \"FloorAndWalls\" (references = @./%s@</FloorAndWalls>)\n", floor_wall_ref);
     APPEND("    {\n");
+    APPEND("        rel material:binding = </root/Materials/WallMaterial>\n");
     APPEND("    }\n\n");
 
     APPENDF("    def \"Ceiling\" (references = @./%s@</Ceiling>)\n", ceiling_ref);
     APPEND("    {\n");
+    APPEND("        rel material:binding = </root/Materials/CeilingMaterial>\n");
     APPEND("    }\n\n");
 
     // === Static lights ===
