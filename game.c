@@ -1903,8 +1903,8 @@ static bool write_geometry_usd(const char *filename, const char *mesh_name,
         APPEND_GEO("] (interpolation = \"vertex\")\n");
     }
 
-    // Write UVs
-    if (mesh->uvs && mesh->uv_count == mesh->vertex_count) {
+    // Write UVs (uv_count is number of floats, should be 2x vertex_count)
+    if (mesh->uvs && mesh->uv_count >= mesh->vertex_count * 2) {
         APPEND_GEO("    texCoord2f[] primvars:st = [");
         for (uint32_t i = 0; i < mesh->vertex_count; i++) {
             if (i > 0) APPEND_GEO(", ");
@@ -1962,6 +1962,9 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
     SDL_Log("Camera: pos(%.2f,%.2f,%.2f) yaw=%.2f pitch=%.2f",
             camera_x, camera_y, camera_z, camera_yaw, camera_pitch);
     SDL_Log("Static lights: %u", app->static_light_count);
+    SDL_Log("Mesh data: vertices=%u uvs=%u normals=%u indices=%u",
+            mesh->vertex_count, mesh->uv_count, mesh->normal_count, mesh->index_count);
+    SDL_Log("UV pointer: %p", (void*)mesh->uvs);
 
     Scratch scratch = scratch_begin();
     ensure_runtime_heap();
@@ -2094,59 +2097,98 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
         dir_path[last_slash + 1] = '\0';
     }
 
-    // Collect indices for floor/walls (surface_type != 2.0)
-    uint32_t *floor_wall_indices = (uint32_t *)arena_alloc(scratch.arena, mesh->index_count * sizeof(uint32_t));
-    uint32_t floor_wall_count = 0;
-    for (uint32_t i = 0; i < mesh->index_count; i += 3) {
-        uint32_t idx0 = mesh->indices[i];
-        if (mesh->surface_types && mesh->surface_types[idx0] != 2.0f) {
-            floor_wall_indices[floor_wall_count++] = mesh->indices[i];
-            floor_wall_indices[floor_wall_count++] = mesh->indices[i + 1];
-            floor_wall_indices[floor_wall_count++] = mesh->indices[i + 2];
-        }
-    }
-
-    // Collect indices for ceiling (surface_type == 2.0)
+    // Collect indices by surface type
+    // 0.0f = floor, 1.0f = walls, 2.0f = ceiling, 4.0f+ = props
+    uint32_t *floor_indices = (uint32_t *)arena_alloc(scratch.arena, mesh->index_count * sizeof(uint32_t));
+    uint32_t floor_count = 0;
+    uint32_t *wall_indices = (uint32_t *)arena_alloc(scratch.arena, mesh->index_count * sizeof(uint32_t));
+    uint32_t wall_count = 0;
     uint32_t *ceiling_indices = (uint32_t *)arena_alloc(scratch.arena, mesh->index_count * sizeof(uint32_t));
     uint32_t ceiling_count = 0;
+    uint32_t *props_indices = (uint32_t *)arena_alloc(scratch.arena, mesh->index_count * sizeof(uint32_t));
+    uint32_t props_count = 0;
+
     for (uint32_t i = 0; i < mesh->index_count; i += 3) {
         uint32_t idx0 = mesh->indices[i];
-        if (mesh->surface_types && mesh->surface_types[idx0] == 2.0f) {
+        if (!mesh->surface_types) continue;
+
+        float surf_type = mesh->surface_types[idx0];
+        if (surf_type == 0.0f) {
+            // Floor
+            floor_indices[floor_count++] = mesh->indices[i];
+            floor_indices[floor_count++] = mesh->indices[i + 1];
+            floor_indices[floor_count++] = mesh->indices[i + 2];
+        } else if (surf_type == 1.0f) {
+            // Walls
+            wall_indices[wall_count++] = mesh->indices[i];
+            wall_indices[wall_count++] = mesh->indices[i + 1];
+            wall_indices[wall_count++] = mesh->indices[i + 2];
+        } else if (surf_type == 2.0f) {
+            // Ceiling
             ceiling_indices[ceiling_count++] = mesh->indices[i];
             ceiling_indices[ceiling_count++] = mesh->indices[i + 1];
             ceiling_indices[ceiling_count++] = mesh->indices[i + 2];
+        } else {
+            // Props (spheres, book, chair)
+            props_indices[props_count++] = mesh->indices[i];
+            props_indices[props_count++] = mesh->indices[i + 1];
+            props_indices[props_count++] = mesh->indices[i + 2];
         }
     }
 
     // Write separate geometry files
-    char floor_wall_path[512];
-    SDL_snprintf(floor_wall_path, sizeof(floor_wall_path), "%s%s_FloorAndWalls.usda", dir_path, base_name);
-    if (!write_geometry_usd(floor_wall_path, "FloorAndWalls", mesh, floor_wall_indices,
-                            floor_wall_count, "/root/Materials/WallMaterial")) {
-        SDL_Log("Failed to write floor/wall geometry");
+    char floor_path[512];
+    SDL_snprintf(floor_path, sizeof(floor_path), "%s%s_Floor.usda", dir_path, base_name);
+    if (!write_geometry_usd(floor_path, "Floor", mesh, floor_indices, floor_count, NULL)) {
+        SDL_Log("Failed to write floor geometry");
         scratch_end(scratch);
         return false;
     }
-    SDL_Log("Wrote geometry file: %s", floor_wall_path);
+    SDL_Log("Wrote geometry file: %s", floor_path);
+
+    char wall_path[512];
+    SDL_snprintf(wall_path, sizeof(wall_path), "%s%s_Walls.usda", dir_path, base_name);
+    if (!write_geometry_usd(wall_path, "Walls", mesh, wall_indices, wall_count, NULL)) {
+        SDL_Log("Failed to write wall geometry");
+        scratch_end(scratch);
+        return false;
+    }
+    SDL_Log("Wrote geometry file: %s", wall_path);
 
     char ceiling_path[512];
     SDL_snprintf(ceiling_path, sizeof(ceiling_path), "%s%s_Ceiling.usda", dir_path, base_name);
-    if (!write_geometry_usd(ceiling_path, "Ceiling", mesh, ceiling_indices,
-                            ceiling_count, "/root/Materials/CeilingMaterial")) {
+    if (!write_geometry_usd(ceiling_path, "Ceiling", mesh, ceiling_indices, ceiling_count, NULL)) {
         SDL_Log("Failed to write ceiling geometry");
         scratch_end(scratch);
         return false;
     }
     SDL_Log("Wrote geometry file: %s", ceiling_path);
 
-    // Reference geometry files in main scene (extract just the filename for reference)
-    char floor_wall_ref[256];
-    SDL_snprintf(floor_wall_ref, sizeof(floor_wall_ref), "%s_FloorAndWalls.usda", base_name);
+    char props_path[512];
+    SDL_snprintf(props_path, sizeof(props_path), "%s%s_Props.usda", dir_path, base_name);
+    if (!write_geometry_usd(props_path, "Props", mesh, props_indices, props_count, NULL)) {
+        SDL_Log("Failed to write props geometry");
+        scratch_end(scratch);
+        return false;
+    }
+    SDL_Log("Wrote geometry file: %s", props_path);
 
+    // Reference geometry files in main scene with material bindings
+    char floor_ref[256];
+    SDL_snprintf(floor_ref, sizeof(floor_ref), "%s_Floor.usda", base_name);
+    char wall_ref[256];
+    SDL_snprintf(wall_ref, sizeof(wall_ref), "%s_Walls.usda", base_name);
     char ceiling_ref[256];
     SDL_snprintf(ceiling_ref, sizeof(ceiling_ref), "%s_Ceiling.usda", base_name);
+    char props_ref[256];
+    SDL_snprintf(props_ref, sizeof(props_ref), "%s_Props.usda", base_name);
 
-    APPENDF("    def \"FloorAndWalls\" (references = @./%s@</FloorAndWalls>)\n", floor_wall_ref);
+    APPENDF("    def \"Floor\" (references = @./%s@</Floor>)\n", floor_ref);
+    APPEND("    {\n");
+    APPEND("        rel material:binding = </root/Materials/FloorMaterial>\n");
+    APPEND("    }\n\n");
+
+    APPENDF("    def \"Walls\" (references = @./%s@</Walls>)\n", wall_ref);
     APPEND("    {\n");
     APPEND("        rel material:binding = </root/Materials/WallMaterial>\n");
     APPEND("    }\n\n");
@@ -2154,6 +2196,10 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
     APPENDF("    def \"Ceiling\" (references = @./%s@</Ceiling>)\n", ceiling_ref);
     APPEND("    {\n");
     APPEND("        rel material:binding = </root/Materials/CeilingMaterial>\n");
+    APPEND("    }\n\n");
+
+    APPENDF("    def \"Props\" (references = @./%s@</Props>)\n", props_ref);
+    APPEND("    {\n");
     APPEND("    }\n\n");
 
     // === Static lights ===
