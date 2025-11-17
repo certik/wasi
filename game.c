@@ -248,6 +248,7 @@ static Arena *g_shader_arena = NULL;
 #define CEILING_TEXTURE_PATH "assets/OfficeCeiling001_1K-JPG_Color.jpg"
 #define SPHERE_TEXTURE_PATH "assets/Land_ocean_ice_2048.jpg"
 #define BOOK_TEXTURE_PATH "assets/checker_board_4k.png"
+#define WINDOW_TEXTURE_PATH BOOK_TEXTURE_PATH
 #define CHAIR_TEXTURE_PATH "assets/chair_02_diff_1k.jpg"
 #define SPHERE_OBJ_PATH "assets/equirectangular_sphere.obj"
 #define BOOK_OBJ_PATH "assets/book.obj"
@@ -2073,6 +2074,101 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
     APPEND("                float2 outputs:result\n");
     APPEND("            }\n");
     APPEND("        }\n");
+    APPEND("        def Material \"WindowMaterial\"\n");
+    APPEND("        {\n");
+    APPEND("            token outputs:surface.connect = </root/Materials/WindowMaterial/PreviewSurface.outputs:surface>\n");
+    APPEND("            def Shader \"PreviewSurface\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdPreviewSurface\"\n");
+    APPEND("                color3f inputs:diffuseColor.connect = </root/Materials/WindowMaterial/DiffuseTexture.outputs:rgb>\n");
+    APPEND("                token outputs:surface\n");
+    APPEND("            }\n");
+    APPEND("            def Shader \"DiffuseTexture\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdUVTexture\"\n");
+    APPEND("                asset inputs:file = @" WINDOW_TEXTURE_PATH "@\n");
+    APPEND("                float2 inputs:st.connect = </root/Materials/WindowMaterial/Primvar.outputs:result>\n");
+    APPEND("                float3 outputs:rgb\n");
+    APPEND("            }\n");
+    APPEND("            def Shader \"Primvar\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdPrimvarReader_float2\"\n");
+    APPEND("                string inputs:varname = \"st\"\n");
+    APPEND("                float2 outputs:result\n");
+    APPEND("            }\n");
+    APPEND("        }\n\n");
+
+    APPEND("        def Material \"SphereMaterial\"\n");
+    APPEND("        {\n");
+    APPEND("            token outputs:surface.connect = </root/Materials/SphereMaterial/PreviewSurface.outputs:surface>\n");
+    APPEND("            def Shader \"PreviewSurface\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdPreviewSurface\"\n");
+    APPEND("                color3f inputs:diffuseColor.connect = </root/Materials/SphereMaterial/DiffuseTexture.outputs:rgb>\n");
+    APPEND("                token outputs:surface\n");
+    APPEND("            }\n");
+    APPEND("            def Shader \"DiffuseTexture\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdUVTexture\"\n");
+    APPEND("                asset inputs:file = @" SPHERE_TEXTURE_PATH "@\n");
+    APPEND("                float2 inputs:st.connect = </root/Materials/SphereMaterial/Primvar.outputs:result>\n");
+    APPEND("                float3 outputs:rgb\n");
+    APPEND("            }\n");
+    APPEND("            def Shader \"Primvar\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdPrimvarReader_float2\"\n");
+    APPEND("                string inputs:varname = \"st\"\n");
+    APPEND("                float2 outputs:result\n");
+    APPEND("            }\n");
+    APPEND("        }\n\n");
+
+    APPEND("        def Material \"BookMaterial\"\n");
+    APPEND("        {\n");
+    APPEND("            token outputs:surface.connect = </root/Materials/BookMaterial/PreviewSurface.outputs:surface>\n");
+    APPEND("            def Shader \"PreviewSurface\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdPreviewSurface\"\n");
+    APPEND("                color3f inputs:diffuseColor.connect = </root/Materials/BookMaterial/DiffuseTexture.outputs:rgb>\n");
+    APPEND("                token outputs:surface\n");
+    APPEND("            }\n");
+    APPEND("            def Shader \"DiffuseTexture\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdUVTexture\"\n");
+    APPEND("                asset inputs:file = @" BOOK_TEXTURE_PATH "@\n");
+    APPEND("                float2 inputs:st.connect = </root/Materials/BookMaterial/Primvar.outputs:result>\n");
+    APPEND("                float3 outputs:rgb\n");
+    APPEND("            }\n");
+    APPEND("            def Shader \"Primvar\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdPrimvarReader_float2\"\n");
+    APPEND("                string inputs:varname = \"st\"\n");
+    APPEND("                float2 outputs:result\n");
+    APPEND("            }\n");
+    APPEND("        }\n\n");
+
+    APPEND("        def Material \"ChairMaterial\"\n");
+    APPEND("        {\n");
+    APPEND("            token outputs:surface.connect = </root/Materials/ChairMaterial/PreviewSurface.outputs:surface>\n");
+    APPEND("            def Shader \"PreviewSurface\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdPreviewSurface\"\n");
+    APPEND("                color3f inputs:diffuseColor.connect = </root/Materials/ChairMaterial/DiffuseTexture.outputs:rgb>\n");
+    APPEND("                token outputs:surface\n");
+    APPEND("            }\n");
+    APPEND("            def Shader \"DiffuseTexture\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdUVTexture\"\n");
+    APPEND("                asset inputs:file = @" CHAIR_TEXTURE_PATH "@\n");
+    APPEND("                float2 inputs:st.connect = </root/Materials/ChairMaterial/Primvar.outputs:result>\n");
+    APPEND("                float3 outputs:rgb\n");
+    APPEND("            }\n");
+    APPEND("            def Shader \"Primvar\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdPrimvarReader_float2\"\n");
+    APPEND("                string inputs:varname = \"st\"\n");
+    APPEND("                float2 outputs:result\n");
+    APPEND("            }\n");
+    APPEND("        }\n");
     APPEND("    }\n\n");
 
     // === Scene Geometry ===
@@ -2098,13 +2194,22 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
     }
 
     // Collect indices by surface type
-    // 0.0f = floor, 1.0f = walls, 2.0f = ceiling, 4.0f+ = props
+    // 0.0f = floor, 1.0f = walls, 2.0f = ceiling,
+    // 3.0f = window frames, 4.0f = spheres, 5.0f = book, 6.0f = chair
     uint32_t *floor_indices = (uint32_t *)arena_alloc(scratch.arena, mesh->index_count * sizeof(uint32_t));
     uint32_t floor_count = 0;
     uint32_t *wall_indices = (uint32_t *)arena_alloc(scratch.arena, mesh->index_count * sizeof(uint32_t));
     uint32_t wall_count = 0;
     uint32_t *ceiling_indices = (uint32_t *)arena_alloc(scratch.arena, mesh->index_count * sizeof(uint32_t));
     uint32_t ceiling_count = 0;
+    uint32_t *window_indices = (uint32_t *)arena_alloc(scratch.arena, mesh->index_count * sizeof(uint32_t));
+    uint32_t window_count = 0;
+    uint32_t *sphere_indices = (uint32_t *)arena_alloc(scratch.arena, mesh->index_count * sizeof(uint32_t));
+    uint32_t sphere_count = 0;
+    uint32_t *book_indices = (uint32_t *)arena_alloc(scratch.arena, mesh->index_count * sizeof(uint32_t));
+    uint32_t book_count = 0;
+    uint32_t *chair_indices = (uint32_t *)arena_alloc(scratch.arena, mesh->index_count * sizeof(uint32_t));
+    uint32_t chair_count = 0;
     uint32_t *props_indices = (uint32_t *)arena_alloc(scratch.arena, mesh->index_count * sizeof(uint32_t));
     uint32_t props_count = 0;
 
@@ -2113,23 +2218,35 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
         if (!mesh->surface_types) continue;
 
         float surf_type = mesh->surface_types[idx0];
-        if (surf_type == 0.0f) {
-            // Floor
+        if (surf_type < 0.5f) {
             floor_indices[floor_count++] = mesh->indices[i];
             floor_indices[floor_count++] = mesh->indices[i + 1];
             floor_indices[floor_count++] = mesh->indices[i + 2];
-        } else if (surf_type == 1.0f) {
-            // Walls
+        } else if (surf_type < 1.5f) {
             wall_indices[wall_count++] = mesh->indices[i];
             wall_indices[wall_count++] = mesh->indices[i + 1];
             wall_indices[wall_count++] = mesh->indices[i + 2];
-        } else if (surf_type == 2.0f) {
-            // Ceiling
+        } else if (surf_type < 2.5f) {
             ceiling_indices[ceiling_count++] = mesh->indices[i];
             ceiling_indices[ceiling_count++] = mesh->indices[i + 1];
             ceiling_indices[ceiling_count++] = mesh->indices[i + 2];
+        } else if (surf_type < 3.5f) {
+            window_indices[window_count++] = mesh->indices[i];
+            window_indices[window_count++] = mesh->indices[i + 1];
+            window_indices[window_count++] = mesh->indices[i + 2];
+        } else if (surf_type < 4.5f) {
+            sphere_indices[sphere_count++] = mesh->indices[i];
+            sphere_indices[sphere_count++] = mesh->indices[i + 1];
+            sphere_indices[sphere_count++] = mesh->indices[i + 2];
+        } else if (surf_type < 5.5f) {
+            book_indices[book_count++] = mesh->indices[i];
+            book_indices[book_count++] = mesh->indices[i + 1];
+            book_indices[book_count++] = mesh->indices[i + 2];
+        } else if (surf_type < 6.5f) {
+            chair_indices[chair_count++] = mesh->indices[i];
+            chair_indices[chair_count++] = mesh->indices[i + 1];
+            chair_indices[chair_count++] = mesh->indices[i + 2];
         } else {
-            // Props (spheres, book, chair)
             props_indices[props_count++] = mesh->indices[i];
             props_indices[props_count++] = mesh->indices[i + 1];
             props_indices[props_count++] = mesh->indices[i + 2];
@@ -2165,13 +2282,70 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
     SDL_Log("Wrote geometry file: %s", ceiling_path);
 
     char props_path[512];
-    SDL_snprintf(props_path, sizeof(props_path), "%s%s_Props.usda", dir_path, base_name);
-    if (!write_geometry_usd(props_path, "Props", mesh, props_indices, props_count, NULL)) {
-        SDL_Log("Failed to write props geometry");
-        scratch_end(scratch);
-        return false;
+    bool has_window = false;
+    bool has_spheres = false;
+    bool has_book = false;
+    bool has_chair = false;
+    bool has_props = false;
+
+    if (window_count > 0) {
+        char window_path[512];
+        SDL_snprintf(window_path, sizeof(window_path), "%s%s_WindowPanels.usda", dir_path, base_name);
+        if (!write_geometry_usd(window_path, "WindowPanels", mesh, window_indices, window_count, NULL)) {
+            SDL_Log("Failed to write window panel geometry");
+            scratch_end(scratch);
+            return false;
+        }
+        SDL_Log("Wrote geometry file: %s", window_path);
+        has_window = true;
     }
-    SDL_Log("Wrote geometry file: %s", props_path);
+
+    if (sphere_count > 0) {
+        char sphere_path[512];
+        SDL_snprintf(sphere_path, sizeof(sphere_path), "%s%s_Spheres.usda", dir_path, base_name);
+        if (!write_geometry_usd(sphere_path, "Spheres", mesh, sphere_indices, sphere_count, NULL)) {
+            SDL_Log("Failed to write sphere geometry");
+            scratch_end(scratch);
+            return false;
+        }
+        SDL_Log("Wrote geometry file: %s", sphere_path);
+        has_spheres = true;
+    }
+
+    if (book_count > 0) {
+        char book_path[512];
+        SDL_snprintf(book_path, sizeof(book_path), "%s%s_Book.usda", dir_path, base_name);
+        if (!write_geometry_usd(book_path, "Book", mesh, book_indices, book_count, NULL)) {
+            SDL_Log("Failed to write book geometry");
+            scratch_end(scratch);
+            return false;
+        }
+        SDL_Log("Wrote geometry file: %s", book_path);
+        has_book = true;
+    }
+
+    if (chair_count > 0) {
+        char chair_path[512];
+        SDL_snprintf(chair_path, sizeof(chair_path), "%s%s_Chair.usda", dir_path, base_name);
+        if (!write_geometry_usd(chair_path, "Chair", mesh, chair_indices, chair_count, NULL)) {
+            SDL_Log("Failed to write chair geometry");
+            scratch_end(scratch);
+            return false;
+        }
+        SDL_Log("Wrote geometry file: %s", chair_path);
+        has_chair = true;
+    }
+
+    if (props_count > 0) {
+        SDL_snprintf(props_path, sizeof(props_path), "%s%s_Props.usda", dir_path, base_name);
+        if (!write_geometry_usd(props_path, "Props", mesh, props_indices, props_count, NULL)) {
+            SDL_Log("Failed to write props geometry");
+            scratch_end(scratch);
+            return false;
+        }
+        SDL_Log("Wrote geometry file: %s", props_path);
+        has_props = true;
+    }
 
     // Reference geometry files in main scene with material bindings
     char floor_ref[256];
@@ -2180,8 +2354,26 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
     SDL_snprintf(wall_ref, sizeof(wall_ref), "%s_Walls.usda", base_name);
     char ceiling_ref[256];
     SDL_snprintf(ceiling_ref, sizeof(ceiling_ref), "%s_Ceiling.usda", base_name);
+    char window_ref[256];
+    if (has_window) {
+        SDL_snprintf(window_ref, sizeof(window_ref), "%s_WindowPanels.usda", base_name);
+    }
+    char sphere_ref[256];
+    if (has_spheres) {
+        SDL_snprintf(sphere_ref, sizeof(sphere_ref), "%s_Spheres.usda", base_name);
+    }
+    char book_ref[256];
+    if (has_book) {
+        SDL_snprintf(book_ref, sizeof(book_ref), "%s_Book.usda", base_name);
+    }
+    char chair_ref[256];
+    if (has_chair) {
+        SDL_snprintf(chair_ref, sizeof(chair_ref), "%s_Chair.usda", base_name);
+    }
     char props_ref[256];
-    SDL_snprintf(props_ref, sizeof(props_ref), "%s_Props.usda", base_name);
+    if (has_props) {
+        SDL_snprintf(props_ref, sizeof(props_ref), "%s_Props.usda", base_name);
+    }
 
     APPENDF("    def \"Floor\" (references = @./%s@</Floor>)\n", floor_ref);
     APPEND("    {\n");
@@ -2198,9 +2390,39 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
     APPEND("        rel material:binding = </root/Materials/CeilingMaterial>\n");
     APPEND("    }\n\n");
 
-    APPENDF("    def \"Props\" (references = @./%s@</Props>)\n", props_ref);
-    APPEND("    {\n");
-    APPEND("    }\n\n");
+    if (has_window) {
+        APPENDF("    def \"WindowPanels\" (references = @./%s@</WindowPanels>)\n", window_ref);
+        APPEND("    {\n");
+        APPEND("        rel material:binding = </root/Materials/WindowMaterial>\n");
+        APPEND("    }\n\n");
+    }
+
+    if (has_spheres) {
+        APPENDF("    def \"Spheres\" (references = @./%s@</Spheres>)\n", sphere_ref);
+        APPEND("    {\n");
+        APPEND("        rel material:binding = </root/Materials/SphereMaterial>\n");
+        APPEND("    }\n\n");
+    }
+
+    if (has_book) {
+        APPENDF("    def \"Book\" (references = @./%s@</Book>)\n", book_ref);
+        APPEND("    {\n");
+        APPEND("        rel material:binding = </root/Materials/BookMaterial>\n");
+        APPEND("    }\n\n");
+    }
+
+    if (has_chair) {
+        APPENDF("    def \"Chair\" (references = @./%s@</Chair>)\n", chair_ref);
+        APPEND("    {\n");
+        APPEND("        rel material:binding = </root/Materials/ChairMaterial>\n");
+        APPEND("    }\n\n");
+    }
+
+    if (has_props) {
+        APPENDF("    def \"Props\" (references = @./%s@</Props>)\n", props_ref);
+        APPEND("    {\n");
+        APPEND("    }\n\n");
+    }
 
     // === Static lights ===
     for (uint32_t i = 0; i < app->static_light_count; i++) {
