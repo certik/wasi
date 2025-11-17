@@ -1874,23 +1874,89 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
     APPEND("def Xform \"root\"\n");
     APPEND("{\n");
 
-    // === Ground plane ===
-    APPEND("    def Mesh \"plane\"\n");
+    // === Materials ===
+    APPEND("    def Scope \"Materials\"\n");
     APPEND("    {\n");
-    APPEND("        int[] faceVertexCounts = [4]\n");
-    APPEND("        int[] faceVertexIndices = [0, 1, 2, 3]\n");
-    APPEND("        normal3f[] normals = [(0,1,0), (0,1,0), (0,1,0), (0,1,0)] (interpolation = \"vertex\")\n");
-    APPENDF("        point3f[] points = [(%.2f, 0, %.2f), (%.2f, 0, -%.2f), (-%.2f, 0, -%.2f), (-%.2f, 0, %.2f)]\n",
-            (float)MAP_WIDTH, (float)MAP_HEIGHT, (float)MAP_WIDTH, (float)MAP_HEIGHT,
-            (float)MAP_WIDTH, (float)MAP_HEIGHT, (float)MAP_WIDTH, (float)MAP_HEIGHT);
-    APPEND("        uniform token subdivisionScheme = \"none\"\n");
+    APPEND("        def Material \"FloorMaterial\"\n");
+    APPEND("        {\n");
+    APPEND("            token outputs:surface.connect = </root/Materials/FloorMaterial/PreviewSurface.outputs:surface>\n");
+    APPEND("            def Shader \"PreviewSurface\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdPreviewSurface\"\n");
+    APPEND("                color3f inputs:diffuseColor.connect = </root/Materials/FloorMaterial/DiffuseTexture.outputs:rgb>\n");
+    APPEND("                token outputs:surface\n");
+    APPEND("            }\n");
+    APPEND("            def Shader \"DiffuseTexture\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdUVTexture\"\n");
+    APPEND("                asset inputs:file = @" FLOOR_TEXTURE_PATH "@\n");
+    APPEND("                float2 inputs:st.connect = </root/Materials/FloorMaterial/Primvar.outputs:result>\n");
+    APPEND("                float3 outputs:rgb\n");
+    APPEND("            }\n");
+    APPEND("            def Shader \"Primvar\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdPrimvarReader_float2\"\n");
+    APPEND("                string inputs:varname = \"st\"\n");
+    APPEND("                float2 outputs:result\n");
+    APPEND("            }\n");
+    APPEND("        }\n\n");
+
+    APPEND("        def Material \"WallMaterial\"\n");
+    APPEND("        {\n");
+    APPEND("            token outputs:surface.connect = </root/Materials/WallMaterial/PreviewSurface.outputs:surface>\n");
+    APPEND("            def Shader \"PreviewSurface\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdPreviewSurface\"\n");
+    APPEND("                color3f inputs:diffuseColor.connect = </root/Materials/WallMaterial/DiffuseTexture.outputs:rgb>\n");
+    APPEND("                token outputs:surface\n");
+    APPEND("            }\n");
+    APPEND("            def Shader \"DiffuseTexture\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdUVTexture\"\n");
+    APPEND("                asset inputs:file = @" WALL_TEXTURE_PATH "@\n");
+    APPEND("                float2 inputs:st.connect = </root/Materials/WallMaterial/Primvar.outputs:result>\n");
+    APPEND("                float3 outputs:rgb\n");
+    APPEND("            }\n");
+    APPEND("            def Shader \"Primvar\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdPrimvarReader_float2\"\n");
+    APPEND("                string inputs:varname = \"st\"\n");
+    APPEND("                float2 outputs:result\n");
+    APPEND("            }\n");
+    APPEND("        }\n\n");
+
+    APPEND("        def Material \"CeilingMaterial\"\n");
+    APPEND("        {\n");
+    APPEND("            token outputs:surface.connect = </root/Materials/CeilingMaterial/PreviewSurface.outputs:surface>\n");
+    APPEND("            def Shader \"PreviewSurface\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdPreviewSurface\"\n");
+    APPEND("                color3f inputs:diffuseColor.connect = </root/Materials/CeilingMaterial/DiffuseTexture.outputs:rgb>\n");
+    APPEND("                token outputs:surface\n");
+    APPEND("            }\n");
+    APPEND("            def Shader \"DiffuseTexture\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdUVTexture\"\n");
+    APPEND("                asset inputs:file = @" CEILING_TEXTURE_PATH "@\n");
+    APPEND("                float2 inputs:st.connect = </root/Materials/CeilingMaterial/Primvar.outputs:result>\n");
+    APPEND("                float3 outputs:rgb\n");
+    APPEND("            }\n");
+    APPEND("            def Shader \"Primvar\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdPrimvarReader_float2\"\n");
+    APPEND("                string inputs:varname = \"st\"\n");
+    APPEND("                float2 outputs:result\n");
+    APPEND("            }\n");
+    APPEND("        }\n");
     APPEND("    }\n\n");
 
-    // === Scene mesh ===
-    APPEND("    def Mesh \"scene_geometry\"\n");
+    // === Scene Geometry ===
+    // Note: We export floor+walls together, and ceiling separately for easy visibility control
+
+    APPEND("    def Mesh \"FloorAndWalls\"\n");
     APPEND("    {\n");
 
-    // Write vertices
+    // Write all vertices (we'll filter by surface type in indices)
     APPEND("        point3f[] points = [");
     for (uint32_t i = 0; i < mesh->vertex_count; i++) {
         if (i > 0) APPEND(", ");
@@ -1932,26 +1998,121 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
         APPEND("] (interpolation = \"vertex\")\n");
     }
 
-    // Write face counts (all triangles)
-    uint32_t face_count = mesh->index_count / 3;
+    // Write face counts and indices (only floor and walls, surface_type != 2.0)
+    uint32_t floor_wall_face_count = 0;
+    for (uint32_t i = 0; i < mesh->index_count; i += 3) {
+        uint32_t idx0 = mesh->indices[i];
+        if (mesh->surface_types && mesh->surface_types[idx0] != 2.0f) {
+            floor_wall_face_count++;
+        }
+    }
+
     APPEND("        int[] faceVertexCounts = [");
-    for (uint32_t i = 0; i < face_count; i++) {
+    for (uint32_t i = 0; i < floor_wall_face_count; i++) {
         if (i > 0) APPEND(", ");
         APPEND("3");
     }
     APPEND("]\n");
 
-    // Write indices
     APPEND("        int[] faceVertexIndices = [");
-    for (uint32_t i = 0; i < mesh->index_count; i++) {
-        if (i > 0) APPEND(", ");
-        char ibuf[16];
-        SDL_snprintf(ibuf, sizeof(ibuf), "%u", (uint32_t)mesh->indices[i]);
-        APPEND(ibuf);
+    int first = 1;
+    for (uint32_t i = 0; i < mesh->index_count; i += 3) {
+        uint32_t idx0 = mesh->indices[i];
+        if (mesh->surface_types && mesh->surface_types[idx0] != 2.0f) {
+            if (!first) APPEND(", ");
+            first = 0;
+            char ibuf[64];
+            SDL_snprintf(ibuf, sizeof(ibuf), "%u, %u, %u",
+                        (uint32_t)mesh->indices[i],
+                        (uint32_t)mesh->indices[i + 1],
+                        (uint32_t)mesh->indices[i + 2]);
+            APPEND(ibuf);
+        }
     }
     APPEND("]\n");
 
     APPEND("        uniform token subdivisionScheme = \"none\"\n");
+    APPEND("        rel material:binding = </root/Materials/WallMaterial>\n");
+    APPEND("    }\n\n");
+
+    // === Ceiling (separate for easy visibility control) ===
+    uint32_t ceiling_face_count = 0;
+    for (uint32_t i = 0; i < mesh->index_count; i += 3) {
+        uint32_t idx0 = mesh->indices[i];
+        if (mesh->surface_types && mesh->surface_types[idx0] == 2.0f) {
+            ceiling_face_count++;
+        }
+    }
+
+    APPEND("    def Mesh \"Ceiling\"\n");
+    APPEND("    {\n");
+
+    // Reuse same vertices
+    APPEND("        point3f[] points = [");
+    for (uint32_t i = 0; i < mesh->vertex_count; i++) {
+        if (i > 0) APPEND(", ");
+        float x = mesh->positions[i * 3 + 0];
+        float y = mesh->positions[i * 3 + 1];
+        float z = mesh->positions[i * 3 + 2];
+        char vbuf[64];
+        SDL_snprintf(vbuf, sizeof(vbuf), "(%.6f, %.6f, %.6f)", x, y, z);
+        APPEND(vbuf);
+    }
+    APPEND("]\n");
+
+    if (mesh->normals && mesh->normal_count == mesh->vertex_count) {
+        APPEND("        normal3f[] normals = [");
+        for (uint32_t i = 0; i < mesh->vertex_count; i++) {
+            if (i > 0) APPEND(", ");
+            float nx = mesh->normals[i * 3 + 0];
+            float ny = mesh->normals[i * 3 + 1];
+            float nz = mesh->normals[i * 3 + 2];
+            char nbuf[64];
+            SDL_snprintf(nbuf, sizeof(nbuf), "(%.6f, %.6f, %.6f)", nx, ny, nz);
+            APPEND(nbuf);
+        }
+        APPEND("] (interpolation = \"vertex\")\n");
+    }
+
+    if (mesh->uvs && mesh->uv_count == mesh->vertex_count) {
+        APPEND("        texCoord2f[] primvars:st = [");
+        for (uint32_t i = 0; i < mesh->vertex_count; i++) {
+            if (i > 0) APPEND(", ");
+            float u = mesh->uvs[i * 2 + 0];
+            float v = mesh->uvs[i * 2 + 1];
+            char uvbuf[48];
+            SDL_snprintf(uvbuf, sizeof(uvbuf), "(%.6f, %.6f)", u, 1.0f - v);
+            APPEND(uvbuf);
+        }
+        APPEND("] (interpolation = \"vertex\")\n");
+    }
+
+    APPEND("        int[] faceVertexCounts = [");
+    for (uint32_t i = 0; i < ceiling_face_count; i++) {
+        if (i > 0) APPEND(", ");
+        APPEND("3");
+    }
+    APPEND("]\n");
+
+    APPEND("        int[] faceVertexIndices = [");
+    first = 1;
+    for (uint32_t i = 0; i < mesh->index_count; i += 3) {
+        uint32_t idx0 = mesh->indices[i];
+        if (mesh->surface_types && mesh->surface_types[idx0] == 2.0f) {
+            if (!first) APPEND(", ");
+            first = 0;
+            char ibuf[64];
+            SDL_snprintf(ibuf, sizeof(ibuf), "%u, %u, %u",
+                        (uint32_t)mesh->indices[i],
+                        (uint32_t)mesh->indices[i + 1],
+                        (uint32_t)mesh->indices[i + 2]);
+            APPEND(ibuf);
+        }
+    }
+    APPEND("]\n");
+
+    APPEND("        uniform token subdivisionScheme = \"none\"\n");
+    APPEND("        rel material:binding = </root/Materials/CeilingMaterial>\n");
     APPEND("    }\n\n");
 
     // === Static lights ===
@@ -1970,14 +2131,9 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
     }
 
     // === Camera ===
-    // Convert yaw/pitch to camera transform
-    float cos_yaw = fast_cos(camera_yaw);
-    float sin_yaw = fast_sin(camera_yaw);
-    float cos_pitch = fast_cos(camera_pitch);
-    float sin_pitch = fast_sin(camera_pitch);
-
-    // Camera looks in direction: (cos_yaw * cos_pitch, sin_pitch, sin_yaw * cos_pitch)
-    // For USD camera orientation, we need rotation angles
+    // USD cameras look down -Z by default, our game looks down +Z
+    // Game: yaw=0 looks along +X, yaw increases CCW (from +X toward +Z)
+    // Pitch: positive looks up
     float pitch_deg = camera_pitch * 180.0f / (float)PI;
     float yaw_deg = camera_yaw * 180.0f / (float)PI;
 
@@ -1988,9 +2144,10 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
     APPEND("        float horizontalAperture = 20.955\n");
     APPEND("        float verticalAperture = 15.2908\n");
     APPEND("        token projection = \"perspective\"\n");
-    // USD camera rotations: pitch around X, yaw around Y
-    APPENDF("        float3 xformOp:rotateXYZ = (%.6f, %.6f, 0)\n", -pitch_deg, yaw_deg);
+    // Transform order: translate first, then rotate (applied right-to-left)
+    // Add 180 to yaw to flip from -Z to +Z lookdir, negate pitch for correct up/down
     APPENDF("        double3 xformOp:translate = (%.6f, %.6f, %.6f)\n", camera_x, camera_y, camera_z);
+    APPENDF("        float3 xformOp:rotateXYZ = (%.6f, %.6f, 0)\n", -pitch_deg, yaw_deg + 180.0f);
     APPEND("        uniform token[] xformOpOrder = [\"xformOp:translate\", \"xformOp:rotateXYZ\"]\n");
     APPEND("    }\n");
 
