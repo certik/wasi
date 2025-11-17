@@ -1866,6 +1866,8 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
     // USD header
     APPEND("#usda 1.0\n");
     APPEND("(\n");
+    APPEND("    defaultPrim = \"root\"\n");
+    APPEND("    metersPerUnit = 1\n");
     APPEND("    upAxis = \"Y\"\n");
     APPEND(")\n\n");
 
