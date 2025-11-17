@@ -317,8 +317,9 @@ public:
         }
 
         printf("Loading glTF file: %s\n", filename);
-        printf("  Meshes: %zu, Nodes: %zu, Cameras: %zu, Lights: %zu\n",
-               data->meshes_count, data->nodes_count, data->cameras_count, data->lights_count);
+        printf("  Meshes: %zu, Nodes: %zu, Cameras: %zu, Lights: %zu, Materials: %zu\n",
+               data->meshes_count, data->nodes_count, data->cameras_count, data->lights_count,
+               data->materials_count);
 
         result.scene = new Scene();
 
@@ -462,6 +463,10 @@ private:
                 Material* mat = default_mat;
                 if (primitive->material) {
                     mat = load_material(primitive->material, scene);
+                    printf("      Primitive %zu: using material '%s' (%s)\n",
+                           prim_idx,
+                           primitive->material->name ? primitive->material->name : "unnamed",
+                           mat->is_emissive() ? "EMISSIVE" : "diffuse");
                 }
 
                 // Load indices or generate them
@@ -515,6 +520,19 @@ private:
 
     static Material* load_material(cgltf_material* gltf_mat, Scene* scene) {
         const char* mat_name = gltf_mat->name ? gltf_mat->name : "unnamed";
+
+        // Check for emissive material (area light)
+        Color emissive(gltf_mat->emissive_factor[0],
+                       gltf_mat->emissive_factor[1],
+                       gltf_mat->emissive_factor[2]);
+
+        if (emissive.x > 0.0f || emissive.y > 0.0f || emissive.z > 0.0f) {
+            printf("    Material '%s': emissive factor (%.2f, %.2f, %.2f)\n",
+                   mat_name, emissive.x, emissive.y, emissive.z);
+            Material* mat = new EmissiveMaterial(emissive);
+            scene->add_material(mat);
+            return mat;
+        }
 
         // Try to load baseColorTexture from PBR metallic-roughness
         if (gltf_mat->has_pbr_metallic_roughness) {
