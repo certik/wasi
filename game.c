@@ -1827,6 +1827,131 @@ static void usd_write_indent(char **buf_ptr, int *pos_ptr, int level) {
     }
 }
 
+// Extract base filename without extension
+static void get_base_filename(const char *path, char *base, size_t base_size) {
+    // Find last slash or backslash
+    int last_slash = -1;
+    for (int i = 0; path[i]; i++) {
+        if (path[i] == '/' || path[i] == '\\') {
+            last_slash = i;
+        }
+    }
+
+    // Copy from after last slash to before extension
+    int src = last_slash + 1;
+    int dst = 0;
+    while (path[src] && path[src] != '.' && dst < (int)base_size - 1) {
+        base[dst++] = path[src++];
+    }
+    base[dst] = '\0';
+}
+
+// Write a geometry mesh to a separate USD file
+static bool write_geometry_usd(const char *filename, const char *mesh_name,
+                               MeshData *mesh, uint32_t *filter_indices, uint32_t filter_count,
+                               const char *material_path) {
+    Scratch scratch = scratch_begin();
+    ensure_runtime_heap();
+
+    size_t estimated_size = mesh->vertex_count * 150 + filter_count * 20 + 10000;
+    if (estimated_size < 64 * 1024) estimated_size = 64 * 1024;
+
+    char *usd = (char *)arena_alloc(scratch.arena, estimated_size);
+    int pos = 0;
+
+    #define APPEND_GEO(str) do { \
+        for (const char *s = (str); *s && pos < (int)estimated_size - 100; s++) { \
+            usd[pos++] = *s; \
+        } \
+    } while(0)
+
+    #define APPENDF_GEO(fmt, ...) do { \
+        char temp[512]; \
+        SDL_snprintf(temp, sizeof(temp), fmt, __VA_ARGS__); \
+        APPEND_GEO(temp); \
+    } while(0)
+
+    APPEND_GEO("#usda 1.0\n\n");
+    APPENDF_GEO("def Mesh \"%s\"\n", mesh_name);
+    APPEND_GEO("{\n");
+
+    // Write vertices
+    APPEND_GEO("    point3f[] points = [");
+    for (uint32_t i = 0; i < mesh->vertex_count; i++) {
+        if (i > 0) APPEND_GEO(", ");
+        float x = mesh->positions[i * 3 + 0];
+        float y = mesh->positions[i * 3 + 1];
+        float z = mesh->positions[i * 3 + 2];
+        char vbuf[64];
+        SDL_snprintf(vbuf, sizeof(vbuf), "(%.6f, %.6f, %.6f)", x, y, z);
+        APPEND_GEO(vbuf);
+    }
+    APPEND_GEO("]\n");
+
+    // Write normals
+    if (mesh->normals && mesh->normal_count == mesh->vertex_count) {
+        APPEND_GEO("    normal3f[] normals = [");
+        for (uint32_t i = 0; i < mesh->vertex_count; i++) {
+            if (i > 0) APPEND_GEO(", ");
+            float nx = mesh->normals[i * 3 + 0];
+            float ny = mesh->normals[i * 3 + 1];
+            float nz = mesh->normals[i * 3 + 2];
+            char nbuf[64];
+            SDL_snprintf(nbuf, sizeof(nbuf), "(%.6f, %.6f, %.6f)", nx, ny, nz);
+            APPEND_GEO(nbuf);
+        }
+        APPEND_GEO("] (interpolation = \"vertex\")\n");
+    }
+
+    // Write UVs
+    if (mesh->uvs && mesh->uv_count == mesh->vertex_count) {
+        APPEND_GEO("    texCoord2f[] primvars:st = [");
+        for (uint32_t i = 0; i < mesh->vertex_count; i++) {
+            if (i > 0) APPEND_GEO(", ");
+            float u = mesh->uvs[i * 2 + 0];
+            float v = mesh->uvs[i * 2 + 1];
+            char uvbuf[48];
+            SDL_snprintf(uvbuf, sizeof(uvbuf), "(%.6f, %.6f)", u, 1.0f - v);
+            APPEND_GEO(uvbuf);
+        }
+        APPEND_GEO("] (interpolation = \"vertex\")\n");
+    }
+
+    // Write face counts
+    uint32_t face_count = filter_count / 3;
+    APPEND_GEO("    int[] faceVertexCounts = [");
+    for (uint32_t i = 0; i < face_count; i++) {
+        if (i > 0) APPEND_GEO(", ");
+        APPEND_GEO("3");
+    }
+    APPEND_GEO("]\n");
+
+    // Write indices
+    APPEND_GEO("    int[] faceVertexIndices = [");
+    for (uint32_t i = 0; i < filter_count; i++) {
+        if (i > 0) APPEND_GEO(", ");
+        char ibuf[16];
+        SDL_snprintf(ibuf, sizeof(ibuf), "%u", filter_indices[i]);
+        APPEND_GEO(ibuf);
+    }
+    APPEND_GEO("]\n");
+
+    APPEND_GEO("    uniform token subdivisionScheme = \"none\"\n");
+    if (material_path) {
+        APPENDF_GEO("    rel material:binding = <%s>\n", material_path);
+    }
+    APPEND_GEO("}\n");
+
+    #undef APPEND_GEO
+    #undef APPENDF_GEO
+
+    usd[pos] = '\0';
+
+    bool success = write_string_to_file(filename, usd, pos);
+    scratch_end(scratch);
+    return success;
+}
+
 // Export mesh and scene to USD file
 static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
                           float camera_x, float camera_y, float camera_z,
@@ -1951,168 +2076,85 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
     APPEND("    }\n\n");
 
     // === Scene Geometry ===
-    // Note: We export floor+walls together, and ceiling separately for easy visibility control
+    // Export geometry to separate files for easier hand-editing of main scene
 
-    APPEND("    def Mesh \"FloorAndWalls\"\n");
+    // Get base filename to create geometry file names
+    char base_name[256];
+    get_base_filename(filename, base_name, sizeof(base_name));
+
+    // Build directory path from original filename
+    char dir_path[512] = "";
+    int last_slash = -1;
+    for (int i = 0; filename[i]; i++) {
+        if (filename[i] == '/' || filename[i] == '\\') {
+            last_slash = i;
+        }
+    }
+    if (last_slash >= 0) {
+        for (int i = 0; i <= last_slash && i < 511; i++) {
+            dir_path[i] = filename[i];
+        }
+        dir_path[last_slash + 1] = '\0';
+    }
+
+    // Collect indices for floor/walls (surface_type != 2.0)
+    uint32_t *floor_wall_indices = (uint32_t *)arena_alloc(scratch.arena, mesh->index_count * sizeof(uint32_t));
+    uint32_t floor_wall_count = 0;
+    for (uint32_t i = 0; i < mesh->index_count; i += 3) {
+        uint32_t idx0 = mesh->indices[i];
+        if (mesh->surface_types && mesh->surface_types[idx0] != 2.0f) {
+            floor_wall_indices[floor_wall_count++] = mesh->indices[i];
+            floor_wall_indices[floor_wall_count++] = mesh->indices[i + 1];
+            floor_wall_indices[floor_wall_count++] = mesh->indices[i + 2];
+        }
+    }
+
+    // Collect indices for ceiling (surface_type == 2.0)
+    uint32_t *ceiling_indices = (uint32_t *)arena_alloc(scratch.arena, mesh->index_count * sizeof(uint32_t));
+    uint32_t ceiling_count = 0;
+    for (uint32_t i = 0; i < mesh->index_count; i += 3) {
+        uint32_t idx0 = mesh->indices[i];
+        if (mesh->surface_types && mesh->surface_types[idx0] == 2.0f) {
+            ceiling_indices[ceiling_count++] = mesh->indices[i];
+            ceiling_indices[ceiling_count++] = mesh->indices[i + 1];
+            ceiling_indices[ceiling_count++] = mesh->indices[i + 2];
+        }
+    }
+
+    // Write separate geometry files
+    char floor_wall_path[512];
+    SDL_snprintf(floor_wall_path, sizeof(floor_wall_path), "%s%s_FloorAndWalls.usda", dir_path, base_name);
+    if (!write_geometry_usd(floor_wall_path, "FloorAndWalls", mesh, floor_wall_indices,
+                            floor_wall_count, "/root/Materials/WallMaterial")) {
+        SDL_Log("Failed to write floor/wall geometry");
+        scratch_end(scratch);
+        return false;
+    }
+    SDL_Log("Wrote geometry file: %s", floor_wall_path);
+
+    char ceiling_path[512];
+    SDL_snprintf(ceiling_path, sizeof(ceiling_path), "%s%s_Ceiling.usda", dir_path, base_name);
+    if (!write_geometry_usd(ceiling_path, "Ceiling", mesh, ceiling_indices,
+                            ceiling_count, "/root/Materials/CeilingMaterial")) {
+        SDL_Log("Failed to write ceiling geometry");
+        scratch_end(scratch);
+        return false;
+    }
+    SDL_Log("Wrote geometry file: %s", ceiling_path);
+
+    // Reference geometry files in main scene (extract just the filename for reference)
+    char floor_wall_ref[256];
+    SDL_snprintf(floor_wall_ref, sizeof(floor_wall_ref), "%s_FloorAndWalls.usda", base_name);
+
+    char ceiling_ref[256];
+    SDL_snprintf(ceiling_ref, sizeof(ceiling_ref), "%s_Ceiling.usda", base_name);
+
+    APPENDF("    def \"FloorAndWalls\" (references = @./%s@</FloorAndWalls>)\n", floor_wall_ref);
     APPEND("    {\n");
-
-    // Write all vertices (we'll filter by surface type in indices)
-    APPEND("        point3f[] points = [");
-    for (uint32_t i = 0; i < mesh->vertex_count; i++) {
-        if (i > 0) APPEND(", ");
-        float x = mesh->positions[i * 3 + 0];
-        float y = mesh->positions[i * 3 + 1];
-        float z = mesh->positions[i * 3 + 2];
-        char vbuf[64];
-        SDL_snprintf(vbuf, sizeof(vbuf), "(%.6f, %.6f, %.6f)", x, y, z);
-        APPEND(vbuf);
-    }
-    APPEND("]\n");
-
-    // Write normals
-    if (mesh->normals && mesh->normal_count == mesh->vertex_count) {
-        APPEND("        normal3f[] normals = [");
-        for (uint32_t i = 0; i < mesh->vertex_count; i++) {
-            if (i > 0) APPEND(", ");
-            float nx = mesh->normals[i * 3 + 0];
-            float ny = mesh->normals[i * 3 + 1];
-            float nz = mesh->normals[i * 3 + 2];
-            char nbuf[64];
-            SDL_snprintf(nbuf, sizeof(nbuf), "(%.6f, %.6f, %.6f)", nx, ny, nz);
-            APPEND(nbuf);
-        }
-        APPEND("] (interpolation = \"vertex\")\n");
-    }
-
-    // Write UVs
-    if (mesh->uvs && mesh->uv_count == mesh->vertex_count) {
-        APPEND("        texCoord2f[] primvars:st = [");
-        for (uint32_t i = 0; i < mesh->vertex_count; i++) {
-            if (i > 0) APPEND(", ");
-            float u = mesh->uvs[i * 2 + 0];
-            float v = mesh->uvs[i * 2 + 1];
-            char uvbuf[48];
-            SDL_snprintf(uvbuf, sizeof(uvbuf), "(%.6f, %.6f)", u, 1.0f - v); // Flip Y for USD
-            APPEND(uvbuf);
-        }
-        APPEND("] (interpolation = \"vertex\")\n");
-    }
-
-    // Write face counts and indices (only floor and walls, surface_type != 2.0)
-    uint32_t floor_wall_face_count = 0;
-    for (uint32_t i = 0; i < mesh->index_count; i += 3) {
-        uint32_t idx0 = mesh->indices[i];
-        if (mesh->surface_types && mesh->surface_types[idx0] != 2.0f) {
-            floor_wall_face_count++;
-        }
-    }
-
-    APPEND("        int[] faceVertexCounts = [");
-    for (uint32_t i = 0; i < floor_wall_face_count; i++) {
-        if (i > 0) APPEND(", ");
-        APPEND("3");
-    }
-    APPEND("]\n");
-
-    APPEND("        int[] faceVertexIndices = [");
-    int first = 1;
-    for (uint32_t i = 0; i < mesh->index_count; i += 3) {
-        uint32_t idx0 = mesh->indices[i];
-        if (mesh->surface_types && mesh->surface_types[idx0] != 2.0f) {
-            if (!first) APPEND(", ");
-            first = 0;
-            char ibuf[64];
-            SDL_snprintf(ibuf, sizeof(ibuf), "%u, %u, %u",
-                        (uint32_t)mesh->indices[i],
-                        (uint32_t)mesh->indices[i + 1],
-                        (uint32_t)mesh->indices[i + 2]);
-            APPEND(ibuf);
-        }
-    }
-    APPEND("]\n");
-
-    APPEND("        uniform token subdivisionScheme = \"none\"\n");
-    APPEND("        rel material:binding = </root/Materials/WallMaterial>\n");
     APPEND("    }\n\n");
 
-    // === Ceiling (separate for easy visibility control) ===
-    uint32_t ceiling_face_count = 0;
-    for (uint32_t i = 0; i < mesh->index_count; i += 3) {
-        uint32_t idx0 = mesh->indices[i];
-        if (mesh->surface_types && mesh->surface_types[idx0] == 2.0f) {
-            ceiling_face_count++;
-        }
-    }
-
-    APPEND("    def Mesh \"Ceiling\"\n");
+    APPENDF("    def \"Ceiling\" (references = @./%s@</Ceiling>)\n", ceiling_ref);
     APPEND("    {\n");
-
-    // Reuse same vertices
-    APPEND("        point3f[] points = [");
-    for (uint32_t i = 0; i < mesh->vertex_count; i++) {
-        if (i > 0) APPEND(", ");
-        float x = mesh->positions[i * 3 + 0];
-        float y = mesh->positions[i * 3 + 1];
-        float z = mesh->positions[i * 3 + 2];
-        char vbuf[64];
-        SDL_snprintf(vbuf, sizeof(vbuf), "(%.6f, %.6f, %.6f)", x, y, z);
-        APPEND(vbuf);
-    }
-    APPEND("]\n");
-
-    if (mesh->normals && mesh->normal_count == mesh->vertex_count) {
-        APPEND("        normal3f[] normals = [");
-        for (uint32_t i = 0; i < mesh->vertex_count; i++) {
-            if (i > 0) APPEND(", ");
-            float nx = mesh->normals[i * 3 + 0];
-            float ny = mesh->normals[i * 3 + 1];
-            float nz = mesh->normals[i * 3 + 2];
-            char nbuf[64];
-            SDL_snprintf(nbuf, sizeof(nbuf), "(%.6f, %.6f, %.6f)", nx, ny, nz);
-            APPEND(nbuf);
-        }
-        APPEND("] (interpolation = \"vertex\")\n");
-    }
-
-    if (mesh->uvs && mesh->uv_count == mesh->vertex_count) {
-        APPEND("        texCoord2f[] primvars:st = [");
-        for (uint32_t i = 0; i < mesh->vertex_count; i++) {
-            if (i > 0) APPEND(", ");
-            float u = mesh->uvs[i * 2 + 0];
-            float v = mesh->uvs[i * 2 + 1];
-            char uvbuf[48];
-            SDL_snprintf(uvbuf, sizeof(uvbuf), "(%.6f, %.6f)", u, 1.0f - v);
-            APPEND(uvbuf);
-        }
-        APPEND("] (interpolation = \"vertex\")\n");
-    }
-
-    APPEND("        int[] faceVertexCounts = [");
-    for (uint32_t i = 0; i < ceiling_face_count; i++) {
-        if (i > 0) APPEND(", ");
-        APPEND("3");
-    }
-    APPEND("]\n");
-
-    APPEND("        int[] faceVertexIndices = [");
-    first = 1;
-    for (uint32_t i = 0; i < mesh->index_count; i += 3) {
-        uint32_t idx0 = mesh->indices[i];
-        if (mesh->surface_types && mesh->surface_types[idx0] == 2.0f) {
-            if (!first) APPEND(", ");
-            first = 0;
-            char ibuf[64];
-            SDL_snprintf(ibuf, sizeof(ibuf), "%u, %u, %u",
-                        (uint32_t)mesh->indices[i],
-                        (uint32_t)mesh->indices[i + 1],
-                        (uint32_t)mesh->indices[i + 2]);
-            APPEND(ibuf);
-        }
-    }
-    APPEND("]\n");
-
-    APPEND("        uniform token subdivisionScheme = \"none\"\n");
-    APPEND("        rel material:binding = </root/Materials/CeilingMaterial>\n");
     APPEND("    }\n\n");
 
     // === Static lights ===
