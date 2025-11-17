@@ -2,7 +2,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include "cgltf.h"  // Assume cgltf.h is included in the project (single-header glTF parser)
+#include <float.h>
+#define CGLTF_IMPLEMENTATION
+#include "cgltf.h"
 
 typedef struct {
     float min[3];
