@@ -2444,6 +2444,44 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
         APPEND("    }\n\n");
     }
 
+    // TODO: load from JSON
+    //bool flashlight_on = false;
+    bool flashlight_on = true;
+    if (app) {
+        if (app->state.flashlight_enabled) {
+            flashlight_on = true;
+        } else if (app->scene_uniforms.flashlight_params[0] > 0.5f) {
+            flashlight_on = true;
+        }
+    }
+
+    if (flashlight_on) {
+        const float flashlight_height_offset = 0.35f;
+        float flashlight_x = camera_x;
+        float flashlight_y = camera_y - flashlight_height_offset;
+        if (flashlight_y < 0.0f) {
+            flashlight_y = 0.0f;
+        }
+        float flashlight_z = camera_z;
+        float flashlight_pitch_deg = -camera_pitch * 180.0f / (float)PI;
+        float flashlight_yaw_deg = camera_yaw * 180.0f / (float)PI + 180.0f;
+
+        APPEND("    def SphereLight \"flashlight_spot\" (\n");
+        APPEND("        prepend apiSchemas = [\"ShapingAPI\"]\n");
+        APPEND("    )\n");
+        APPEND("    {\n");
+        APPEND("        float inputs:intensity = 350\n");
+        APPEND("        bool inputs:enableColorTemperature = 1\n");
+        APPEND("        float inputs:colorTemperature = 4800\n");
+        APPEND("        float inputs:radius = 0.16\n");
+        APPEND("        float inputs:shaping:cone:angle = 10\n");
+        APPEND("        float inputs:shaping:cone:softness = 0.2\n");
+        APPENDF("        double3 xformOp:translate = (%.6f, %.6f, %.6f)\n", flashlight_x, flashlight_y, flashlight_z);
+        APPENDF("        float3 xformOp:rotateXYZ = (%.6f, %.6f, 0)\n", flashlight_pitch_deg, flashlight_yaw_deg);
+        APPEND("        uniform token[] xformOpOrder = [\"xformOp:translate\", \"xformOp:rotateXYZ\"]\n");
+        APPEND("    }\n\n");
+    }
+
     APPEND("    def DomeLight \"NoEnvironment\"\n");
     APPEND("    {\n");
     APPEND("        float inputs:intensity = 0.0\n");
