@@ -2444,6 +2444,13 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
         APPEND("    }\n\n");
     }
 
+    APPEND("    def DomeLight \"NoEnvironment\"\n");
+    APPEND("    {\n");
+    APPEND("        float inputs:intensity = 0.0\n");
+    APPEND("        color3f inputs:color = (1, 1, 1)\n");
+    APPEND("        token inputs:texture:format = \"latlong\"\n");
+    APPEND("    }\n\n");
+
     // === Camera ===
     // USD cameras look down -Z by default, our game looks down +Z
     // Game: yaw=0 looks along +X, yaw increases CCW (from +X toward +Z)
