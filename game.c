@@ -1442,56 +1442,178 @@ static MeshData* load_ceiling_light_mesh(void) {
         return NULL;
     }
 
-    const cgltf_mesh *mesh = &data->meshes[0];
-    if (mesh->primitives_count == 0) {
-        SDL_Log("Ceiling light mesh has no primitives");
+    cgltf_size total_vertex_count = 0;
+    cgltf_size total_index_count = 0;
+    cgltf_size node_mesh_count = 0;
+    for (cgltf_size node_index = 0; node_index < data->nodes_count; node_index++) {
+        const cgltf_node *node = &data->nodes[node_index];
+        if (!node->mesh) {
+            continue;
+        }
+        const cgltf_mesh *mesh = node->mesh;
+        if (mesh->primitives_count == 0) {
+            continue;
+        }
+        node_mesh_count++;
+        for (cgltf_size prim_index = 0; prim_index < mesh->primitives_count; prim_index++) {
+            const cgltf_primitive *primitive = &mesh->primitives[prim_index];
+            if (primitive->type != cgltf_primitive_type_triangles) {
+                SDL_Log("Ceiling light primitive node %u meshPrim %u must use triangle topology", (unsigned)node_index, (unsigned)prim_index);
+                g_ceiling_light_mesh_status = -1;
+                cgltf_free(data);
+                return NULL;
+            }
+            const cgltf_accessor *position_accessor = find_attribute_accessor(primitive, cgltf_attribute_type_position, 0);
+            if (!position_accessor || position_accessor->count == 0) {
+                SDL_Log("Ceiling light primitive node %u meshPrim %u missing POSITION data", (unsigned)node_index, (unsigned)prim_index);
+                g_ceiling_light_mesh_status = -1;
+                cgltf_free(data);
+                return NULL;
+            }
+            if (position_accessor->count >= UINT16_MAX) {
+                SDL_Log("Ceiling light primitive node %u meshPrim %u vertex count unsupported: %u", (unsigned)node_index, (unsigned)prim_index, (unsigned)position_accessor->count);
+                g_ceiling_light_mesh_status = -1;
+                cgltf_free(data);
+                return NULL;
+            }
+            total_vertex_count += position_accessor->count;
+            if (primitive->indices) {
+                total_index_count += primitive->indices->count;
+            } else {
+                total_index_count += position_accessor->count;
+            }
+        }
+    }
+
+    if (node_mesh_count == 0 || total_vertex_count == 0 || total_index_count == 0) {
+        SDL_Log("Ceiling light glb has no mesh nodes");
         g_ceiling_light_mesh_status = -1;
         cgltf_free(data);
         return NULL;
     }
 
-    const cgltf_primitive *primitive = &mesh->primitives[0];
-    if (primitive->type != cgltf_primitive_type_triangles) {
-        SDL_Log("Ceiling light mesh must use triangle primitives");
-        g_ceiling_light_mesh_status = -1;
-        cgltf_free(data);
-        return NULL;
-    }
-
-    const cgltf_accessor *position_accessor = find_attribute_accessor(primitive, cgltf_attribute_type_position, 0);
-    if (!position_accessor) {
-        SDL_Log("Ceiling light mesh missing POSITION attribute");
-        g_ceiling_light_mesh_status = -1;
-        cgltf_free(data);
-        return NULL;
-    }
-
-    if (position_accessor->count == 0 || position_accessor->count >= UINT16_MAX) {
-        SDL_Log("Ceiling light mesh vertex count unsupported: %u", (unsigned)position_accessor->count);
-        g_ceiling_light_mesh_status = -1;
-        cgltf_free(data);
-        return NULL;
-    }
-
-    cgltf_size vertex_count = position_accessor->count;
-    positions = (float *)SDL_malloc(sizeof(float) * vertex_count * 3);
-    normals = (float *)SDL_malloc(sizeof(float) * vertex_count * 3);
-    uvs = (float *)SDL_malloc(sizeof(float) * vertex_count * 2);
-    if (!positions || !normals || !uvs) {
+    positions = (float *)SDL_malloc(sizeof(float) * total_vertex_count * 3);
+    normals = (float *)SDL_malloc(sizeof(float) * total_vertex_count * 3);
+    uvs = (float *)SDL_malloc(sizeof(float) * total_vertex_count * 2);
+    indices = (uint16_t *)SDL_malloc(sizeof(uint16_t) * total_index_count);
+    if (!positions || !normals || !uvs || !indices) {
         SDL_Log("Out of memory loading ceiling light mesh");
         goto fail;
     }
 
-    for (cgltf_size i = 0; i < vertex_count; i++) {
-        cgltf_float temp[3] = {0.0f, 0.0f, 0.0f};
-        if (!cgltf_accessor_read_float(position_accessor, i, temp, 3)) {
-            SDL_Log("Failed reading POSITION for vertex %u", (unsigned)i);
-            goto fail;
+    cgltf_size vertex_offset = 0;
+    cgltf_size index_offset = 0;
+    bool have_normals = true;
+    bool have_uvs = true;
+
+    for (cgltf_size node_index = 0; node_index < data->nodes_count; node_index++) {
+        const cgltf_node *node = &data->nodes[node_index];
+        if (!node->mesh || node->mesh->primitives_count == 0) {
+            continue;
         }
-        positions[i * 3 + 0] = (float)temp[0];
-        positions[i * 3 + 1] = (float)temp[1];
-        positions[i * 3 + 2] = (float)temp[2];
+        cgltf_float world_matrix[16];
+        cgltf_node_transform_world(node, world_matrix);
+        const cgltf_mesh *mesh = node->mesh;
+        for (cgltf_size prim_index = 0; prim_index < mesh->primitives_count; prim_index++) {
+            const cgltf_primitive *primitive = &mesh->primitives[prim_index];
+            const cgltf_accessor *position_accessor = find_attribute_accessor(primitive, cgltf_attribute_type_position, 0);
+            const cgltf_accessor *uv_accessor = find_attribute_accessor(primitive, cgltf_attribute_type_texcoord, 0);
+            const cgltf_accessor *normal_accessor = find_attribute_accessor(primitive, cgltf_attribute_type_normal, 0);
+
+            cgltf_size prim_vertex_count = position_accessor->count;
+            for (cgltf_size i = 0; i < prim_vertex_count; i++) {
+                cgltf_float temp[3] = {0.0f, 0.0f, 0.0f};
+                if (!cgltf_accessor_read_float(position_accessor, i, temp, 3)) {
+                    SDL_Log("Failed reading POSITION for node %u primitive %u vertex %u", (unsigned)node_index, (unsigned)prim_index, (unsigned)i);
+                    goto fail;
+                }
+                float x = (float)temp[0];
+                float y = (float)temp[1];
+                float z = (float)temp[2];
+                float tx = world_matrix[0] * x + world_matrix[4] * y + world_matrix[8] * z + world_matrix[12];
+                float ty = world_matrix[1] * x + world_matrix[5] * y + world_matrix[9] * z + world_matrix[13];
+                float tz = world_matrix[2] * x + world_matrix[6] * y + world_matrix[10] * z + world_matrix[14];
+                positions[(vertex_offset + i) * 3 + 0] = tx;
+                positions[(vertex_offset + i) * 3 + 1] = ty;
+                positions[(vertex_offset + i) * 3 + 2] = tz;
+            }
+
+            if (uv_accessor && uv_accessor->count == prim_vertex_count) {
+                for (cgltf_size i = 0; i < prim_vertex_count; i++) {
+                    cgltf_float temp[2] = {0.0f, 0.0f};
+                    if (!cgltf_accessor_read_float(uv_accessor, i, temp, 2)) {
+                        SDL_Log("Failed reading UV for node %u primitive %u vertex %u", (unsigned)node_index, (unsigned)prim_index, (unsigned)i);
+                        goto fail;
+                    }
+                    uvs[(vertex_offset + i) * 2 + 0] = (float)temp[0];
+                    uvs[(vertex_offset + i) * 2 + 1] = (float)temp[1];
+                }
+            } else {
+                have_uvs = false;
+                for (cgltf_size i = 0; i < prim_vertex_count; i++) {
+                    uvs[(vertex_offset + i) * 2 + 0] = 0.0f;
+                    uvs[(vertex_offset + i) * 2 + 1] = 0.0f;
+                }
+            }
+
+            if (normal_accessor && normal_accessor->count == prim_vertex_count) {
+                for (cgltf_size i = 0; i < prim_vertex_count; i++) {
+                    cgltf_float temp[3] = {0.0f, 1.0f, 0.0f};
+                    if (!cgltf_accessor_read_float(normal_accessor, i, temp, 3)) {
+                        SDL_Log("Failed reading normal for node %u primitive %u vertex %u", (unsigned)node_index, (unsigned)prim_index, (unsigned)i);
+                        goto fail;
+                    }
+                    float nx = (float)temp[0];
+                    float ny = (float)temp[1];
+                    float nz = (float)temp[2];
+                    float tnx = world_matrix[0] * nx + world_matrix[4] * ny + world_matrix[8] * nz;
+                    float tny = world_matrix[1] * nx + world_matrix[5] * ny + world_matrix[9] * nz;
+                    float tnz = world_matrix[2] * nx + world_matrix[6] * ny + world_matrix[10] * nz;
+                    normals[(vertex_offset + i) * 3 + 0] = tnx;
+                    normals[(vertex_offset + i) * 3 + 1] = tny;
+                    normals[(vertex_offset + i) * 3 + 2] = tnz;
+                }
+            } else {
+                have_normals = false;
+                for (cgltf_size i = 0; i < prim_vertex_count; i++) {
+                    normals[(vertex_offset + i) * 3 + 0] = 0.0f;
+                    normals[(vertex_offset + i) * 3 + 1] = -1.0f;
+                    normals[(vertex_offset + i) * 3 + 2] = 0.0f;
+                }
+            }
+
+            const cgltf_accessor *index_accessor = primitive->indices;
+            if (index_accessor) {
+                for (cgltf_size i = 0; i < index_accessor->count; i++) {
+                    cgltf_size idx = cgltf_accessor_read_index(index_accessor, i);
+                    if (idx >= prim_vertex_count) {
+                        SDL_Log("Ceiling light primitive node %u meshPrim %u index %u out of range", (unsigned)node_index, (unsigned)prim_index, (unsigned)idx);
+                        goto fail;
+                    }
+                    if (vertex_offset + idx >= UINT16_MAX) {
+                        SDL_Log("Ceiling light combined index exceeds supported range");
+                        goto fail;
+                    }
+                    indices[index_offset + i] = (uint16_t)(vertex_offset + idx);
+                }
+                index_offset += index_accessor->count;
+            } else {
+                for (cgltf_size i = 0; i < prim_vertex_count; i++) {
+                    if (vertex_offset + i >= UINT16_MAX) {
+                        SDL_Log("Ceiling light implicit index exceeds supported range");
+                        goto fail;
+                    }
+                    indices[index_offset + i] = (uint16_t)(vertex_offset + i);
+                }
+                index_offset += prim_vertex_count;
+            }
+
+            vertex_offset += prim_vertex_count;
+        }
     }
+
+    cgltf_size vertex_count = total_vertex_count;
+    cgltf_size index_count = total_index_count;
 
     float min_x = positions[0];
     float min_y = positions[1];
@@ -1511,71 +1633,7 @@ static MeshData* load_ceiling_light_mesh(void) {
         if (z > max_z) max_z = z;
     }
 
-    const cgltf_accessor *uv_accessor = find_attribute_accessor(primitive, cgltf_attribute_type_texcoord, 0);
-    if (uv_accessor && uv_accessor->count == vertex_count) {
-        for (cgltf_size i = 0; i < vertex_count; i++) {
-            cgltf_float temp[2] = {0.0f, 0.0f};
-            if (!cgltf_accessor_read_float(uv_accessor, i, temp, 2)) {
-                SDL_Log("Failed reading UV for vertex %u", (unsigned)i);
-                goto fail;
-            }
-            uvs[i * 2 + 0] = (float)temp[0];
-            uvs[i * 2 + 1] = (float)temp[1];
-        }
-    } else {
-        base_memset(uvs, 0, vertex_count * 2 * sizeof(float));
-    }
-
-    cgltf_size index_count = 0;
-    const cgltf_accessor *index_accessor = primitive->indices;
-    if (index_accessor) {
-        index_count = index_accessor->count;
-        if (index_count == 0) {
-            SDL_Log("Ceiling light mesh has zero indices");
-            goto fail;
-        }
-        indices = (uint16_t *)SDL_malloc(sizeof(uint16_t) * index_count);
-        if (!indices) {
-            SDL_Log("Out of memory allocating ceiling light indices");
-            goto fail;
-        }
-        for (cgltf_size i = 0; i < index_count; i++) {
-            cgltf_size idx = cgltf_accessor_read_index(index_accessor, i);
-            if (idx >= UINT16_MAX) {
-                SDL_Log("Ceiling light index %u exceeds supported range", (unsigned)idx);
-                goto fail;
-            }
-            indices[i] = (uint16_t)idx;
-        }
-    } else {
-        index_count = vertex_count;
-        indices = (uint16_t *)SDL_malloc(sizeof(uint16_t) * index_count);
-        if (!indices) {
-            SDL_Log("Out of memory allocating implicit indices for ceiling light");
-            goto fail;
-        }
-        for (cgltf_size i = 0; i < index_count; i++) {
-            if (i >= UINT16_MAX) {
-                SDL_Log("Implicit ceiling light index %u exceeds supported range", (unsigned)i);
-                goto fail;
-            }
-            indices[i] = (uint16_t)i;
-        }
-    }
-
-    const cgltf_accessor *normal_accessor = find_attribute_accessor(primitive, cgltf_attribute_type_normal, 0);
-    if (normal_accessor && normal_accessor->count == vertex_count) {
-        for (cgltf_size i = 0; i < vertex_count; i++) {
-            cgltf_float temp[3] = {0.0f, 1.0f, 0.0f};
-            if (!cgltf_accessor_read_float(normal_accessor, i, temp, 3)) {
-                SDL_Log("Failed reading normal for vertex %u", (unsigned)i);
-                goto fail;
-            }
-            normals[i * 3 + 0] = (float)temp[0];
-            normals[i * 3 + 1] = (float)temp[1];
-            normals[i * 3 + 2] = (float)temp[2];
-        }
-    } else {
+    if (!have_normals) {
         compute_normals_from_triangles(positions, indices, vertex_count, index_count, normals);
     }
 
