@@ -2435,10 +2435,10 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
 
         APPENDF("    def SphereLight \"ceiling_light_%u\"\n", i);
         APPEND("    {\n");
-        APPENDF("        color3f inputs:color = (%.6f, %.6f, %.6f)\n", light_color[0], light_color[1], light_color[2]);
         APPENDF("        float inputs:intensity = %.1f\n", CEILING_LIGHT_USD_INTENSITY);
         APPENDF("        float inputs:radius = %.2f\n", CEILING_LIGHT_RADIUS);
-        APPENDF("        float inputs:temperature = %.1f\n", CEILING_LIGHT_USD_TEMPERATURE);
+        APPENDF("        float inputs:colorTemperature = %.1f\n", CEILING_LIGHT_USD_TEMPERATURE);
+        APPEND("        bool inputs:enableColorTemperature = 1\n");
         APPENDF("        double3 xformOp:translate = (%.6f, %.6f, %.6f)\n", light_pos[0], light_pos[1], light_pos[2]);
         APPEND("        uniform token[] xformOpOrder = [\"xformOp:translate\"]\n");
         APPEND("    }\n\n");
