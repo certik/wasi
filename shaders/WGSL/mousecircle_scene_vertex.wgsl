@@ -11,6 +11,8 @@ struct SceneUniforms {
     flashlightDir: vec4f,
     flashlightParams: vec4f,
     screenParams: vec4f,
+    ceilingLightEmissive: vec4f,
+    ceilingLightDiffuser: vec4f,
 };
 
 struct VertexInput {

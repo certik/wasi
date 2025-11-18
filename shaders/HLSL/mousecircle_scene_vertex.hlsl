@@ -13,6 +13,8 @@ struct SceneUniforms {
     float4 flashlightDir;
     float4 flashlightParams;
     float4 screenParams;
+    float4 ceilingLightEmissive;
+    float4 ceilingLightDiffuser;
 };
 
 struct VertexInput {
@@ -43,6 +45,8 @@ cbuffer SceneUniforms : register(b0, space1) {
     float4 flashlightDir;
     float4 flashlightParams;
     float4 screenParams;
+    float4 ceilingLightEmissive;
+    float4 ceilingLightDiffuser;
 }
 
 struct VertexOutput_main {
