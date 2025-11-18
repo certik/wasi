@@ -112,14 +112,19 @@ MaterialProperties get_material_properties(float surface_type)
                         if ((surface_type < 5.5)) {
                             const MaterialProperties materialproperties_5 = ConstructMaterialProperties(36.0, 0.4);
                             return materialproperties_5;
+                        } else {
+                            if ((surface_type < 6.5)) {
+                                const MaterialProperties materialproperties_6 = ConstructMaterialProperties(30.0, 0.5);
+                                return materialproperties_6;
+                            }
                         }
                     }
                 }
             }
         }
     }
-    const MaterialProperties materialproperties_6 = ConstructMaterialProperties(30.0, 0.5);
-    return materialproperties_6;
+    const MaterialProperties materialproperties_7 = ConstructMaterialProperties(22.0, 0.35);
+    return materialproperties_7;
 }
 
 StaticLightContribution ConstructStaticLightContribution(float3 arg0, float3 arg1) {
@@ -314,7 +319,11 @@ float4 main_(FragmentInput_main fragmentinput_main) : SV_Target0
                         if ((input.surfaceType < 5.5)) {
                             baseColor = bookColor.xyz;
                         } else {
-                            baseColor = chairColor.xyz;
+                            if ((input.surfaceType < 6.5)) {
+                                baseColor = chairColor.xyz;
+                            } else {
+                                baseColor = float3(0.95, 0.94, 0.88);
+                            }
                         }
                     }
                 }
@@ -322,41 +331,41 @@ float4 main_(FragmentInput_main fragmentinput_main) : SV_Target0
         }
     }
     float3 n = normalize(input.normal);
-    const MaterialProperties _e61 = get_material_properties(input.surfaceType);
-    float4 _e64 = cameraPos;
-    view_dir = (_e64.xyz - input.worldPos);
-    float3 _e69 = view_dir;
-    float view_len = length(_e69);
+    const MaterialProperties _e68 = get_material_properties(input.surfaceType);
+    float4 _e71 = cameraPos;
+    view_dir = (_e71.xyz - input.worldPos);
+    float3 _e76 = view_dir;
+    float view_len = length(_e76);
     if ((view_len > 0.0001)) {
-        float3 _e73 = view_dir;
-        view_dir = (_e73 / (view_len).xxx);
+        float3 _e80 = view_dir;
+        view_dir = (_e80 / (view_len).xxx);
     } else {
         view_dir = float3(0.0, 0.0, 1.0);
     }
-    float3 _e81 = view_dir;
-    const StaticLightContribution _e82 = compute_static_lighting(n, input.worldPos, _e81, _e61);
-    float3 _e84 = view_dir;
-    const FlashlightContribution _e85 = compute_flashlight(n, input.worldPos, frag_coord, _e84, _e61);
-    float _e89 = screenParams.w;
-    if ((_e89 > 0.5)) {
+    float3 _e88 = view_dir;
+    const StaticLightContribution _e89 = compute_static_lighting(n, input.worldPos, _e88, _e68);
+    float3 _e91 = view_dir;
+    const FlashlightContribution _e92 = compute_flashlight(n, input.worldPos, frag_coord, _e91, _e68);
+    float _e96 = screenParams.w;
+    if ((_e96 > 0.5)) {
         float3 mapped = ((normalize(input.normal) * 0.5) + (0.5).xxx);
         return float4(mapped, 1.0);
     }
     float ambient = staticLightParams.z;
-    float4 _e108 = cameraPos;
-    float fogFactor = exp((-(distance(input.worldPos, _e108.xyz)) * 0.08));
-    float3 _e115 = baseColor;
-    color = (_e115 * (ambient + _e85.diffuse));
-    float3 _e120 = baseColor;
-    float3 _e123 = color;
-    color = (_e123 + (_e120 * _e82.diffuse));
-    float3 _e126 = color;
-    color = (_e126 + _e82.specular);
-    float3 _e134 = color;
-    color = (_e134 + (_e85.specular * float3(1.0, 0.95, 0.85)));
-    float4 _e138 = fogColor;
-    float3 _e140 = color;
-    color = lerp(_e138.xyz, _e140, fogFactor);
-    float3 _e142 = color;
-    return float4(_e142, 1.0);
+    float4 _e115 = cameraPos;
+    float fogFactor = exp((-(distance(input.worldPos, _e115.xyz)) * 0.08));
+    float3 _e122 = baseColor;
+    color = (_e122 * (ambient + _e92.diffuse));
+    float3 _e127 = baseColor;
+    float3 _e130 = color;
+    color = (_e130 + (_e127 * _e89.diffuse));
+    float3 _e133 = color;
+    color = (_e133 + _e89.specular);
+    float3 _e141 = color;
+    color = (_e141 + (_e92.specular * float3(1.0, 0.95, 0.85)));
+    float4 _e145 = fogColor;
+    float3 _e147 = color;
+    color = lerp(_e145.xyz, _e147, fogFactor);
+    float3 _e149 = color;
+    return float4(_e149, 1.0);
 }
