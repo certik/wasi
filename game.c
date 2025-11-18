@@ -52,6 +52,9 @@ typedef __builtin_va_list __gnuc_va_list;
 #define CEILING_LIGHT_HEIGHT (WALL_HEIGHT - 0.1f)
 #define CEILING_LIGHT_RANGE 4.5f
 #define CEILING_LIGHT_INTENSITY 1.4f
+#define CEILING_LIGHT_RADIUS 0.05f
+#define CEILING_LIGHT_POWER 280.0f
+#define CEILING_LIGHT_USD_INTENSITY 90.0f
 #define MIN_AMBIENT_LIGHT 0.03f
 #define FLASHLIGHT_RANGE 9.0f
 #define FLASHLIGHT_INTENSITY 2.5f
@@ -2432,8 +2435,9 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
         APPENDF("    def SphereLight \"ceiling_light_%u\"\n", i);
         APPEND("    {\n");
         APPENDF("        color3f inputs:color = (%.6f, %.6f, %.6f)\n", light_color[0], light_color[1], light_color[2]);
-        APPEND("        float inputs:intensity = 1.0\n");
-        APPEND("        float inputs:radius = 0.1\n");
+        APPENDF("        float inputs:intensity = %.1f\n", CEILING_LIGHT_USD_INTENSITY);
+        APPENDF("        float inputs:radius = %.2f\n", CEILING_LIGHT_RADIUS);
+        APPENDF("        float inputs:power = %.1f\n", CEILING_LIGHT_POWER);
         APPENDF("        double3 xformOp:translate = (%.6f, %.6f, %.6f)\n", light_pos[0], light_pos[1], light_pos[2]);
         APPEND("        uniform token[] xformOpOrder = [\"xformOp:translate\"]\n");
         APPEND("    }\n\n");
