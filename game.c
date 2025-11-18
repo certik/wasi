@@ -52,6 +52,10 @@ typedef __builtin_va_list __gnuc_va_list;
 #define CEILING_LIGHT_HEIGHT (WALL_HEIGHT - 0.1f)
 #define CEILING_LIGHT_RANGE 4.5f
 #define CEILING_LIGHT_INTENSITY 1.4f
+#define CEILING_LIGHT_RADIUS 0.05f
+#define CEILING_LIGHT_POWER 280.0f
+#define CEILING_LIGHT_USD_INTENSITY 90.0f
+#define CEILING_LIGHT_USD_TEMPERATURE 2700.0f
 #define MIN_AMBIENT_LIGHT 0.03f
 #define FLASHLIGHT_RANGE 9.0f
 #define FLASHLIGHT_INTENSITY 2.5f
@@ -234,6 +238,9 @@ typedef struct {
 
     bool export_obj_mode;     // If true, export OBJ and exit
     char export_obj_path[256]; // Output path for OBJ file
+
+    bool export_usd_mode;     // If true, export USD and exit
+    char export_usd_path[256]; // Output path for USD file
 } GameApp;
 
 static GameApp g_App;
@@ -245,6 +252,7 @@ static Arena *g_shader_arena = NULL;
 #define CEILING_TEXTURE_PATH "assets/OfficeCeiling001_1K-JPG_Color.jpg"
 #define SPHERE_TEXTURE_PATH "assets/Land_ocean_ice_2048.jpg"
 #define BOOK_TEXTURE_PATH "assets/checker_board_4k.png"
+#define WINDOW_TEXTURE_PATH BOOK_TEXTURE_PATH
 #define CHAIR_TEXTURE_PATH "assets/chair_02_diff_1k.jpg"
 #define SPHERE_OBJ_PATH "assets/equirectangular_sphere.obj"
 #define BOOK_OBJ_PATH "assets/book.obj"
@@ -1419,6 +1427,9 @@ static void gm_toggle_horizontal_movement(GameState *state) {
     state->horizontal_movement = !state->horizontal_movement;
 }
 
+// Forward declaration for JSON save function (defined later in the file)
+static bool save_state_to_json(const GameState *state, const char *filename);
+
 static void gm_handle_key_press(GameState *state, uint8_t key_code) {
     switch (key_code) {
         case 'm':
@@ -1456,6 +1467,10 @@ static void gm_handle_key_press(GameState *state, uint8_t key_code) {
         case 'l':
         case 'L':
             state->flashlight_enabled = !state->flashlight_enabled;
+            break;
+        case 'k':
+        case 'K':
+            save_state_to_json(state, "game_state.json");
             break;
         default:
             break;
@@ -1801,6 +1816,812 @@ static bool export_mtl_file(const char *obj_filename) {
     if (success) {
         SDL_Log("Exported MTL file: %s", mtl_filename);
     }
+    return success;
+}
+
+// ============================================================================
+// USD export functions
+// ============================================================================
+
+// Helper functions for USD export (adapted from usd_test.c)
+static void usd_write_indent(char **buf_ptr, int *pos_ptr, int level) {
+    for (int i = 0; i < level; i++) {
+        for (const char *s = "    "; *s; s++) {
+            (*buf_ptr)[(*pos_ptr)++] = *s;
+        }
+    }
+}
+
+// Extract base filename without extension
+static void get_base_filename(const char *path, char *base, size_t base_size) {
+    // Find last slash or backslash
+    int last_slash = -1;
+    for (int i = 0; path[i]; i++) {
+        if (path[i] == '/' || path[i] == '\\') {
+            last_slash = i;
+        }
+    }
+
+    // Copy from after last slash to before extension
+    int src = last_slash + 1;
+    int dst = 0;
+    while (path[src] && path[src] != '.' && dst < (int)base_size - 1) {
+        base[dst++] = path[src++];
+    }
+    base[dst] = '\0';
+}
+
+// Write a geometry mesh to a separate USD file
+static bool write_geometry_usd(const char *filename, const char *mesh_name,
+                               MeshData *mesh, uint32_t *filter_indices, uint32_t filter_count,
+                               const char *material_path) {
+    Scratch scratch = scratch_begin();
+    ensure_runtime_heap();
+
+    size_t estimated_size = mesh->vertex_count * 150 + filter_count * 20 + 10000;
+    if (estimated_size < 64 * 1024) estimated_size = 64 * 1024;
+
+    char *usd = (char *)arena_alloc(scratch.arena, estimated_size);
+    int pos = 0;
+
+    #define APPEND_GEO(str) do { \
+        for (const char *s = (str); *s && pos < (int)estimated_size - 100; s++) { \
+            usd[pos++] = *s; \
+        } \
+    } while(0)
+
+    #define APPENDF_GEO(fmt, ...) do { \
+        char temp[512]; \
+        SDL_snprintf(temp, sizeof(temp), fmt, __VA_ARGS__); \
+        APPEND_GEO(temp); \
+    } while(0)
+
+    APPEND_GEO("#usda 1.0\n\n");
+    APPENDF_GEO("def Mesh \"%s\"\n", mesh_name);
+    APPEND_GEO("{\n");
+
+    // Write vertices
+    APPEND_GEO("    point3f[] points = [");
+    for (uint32_t i = 0; i < mesh->vertex_count; i++) {
+        if (i > 0) APPEND_GEO(", ");
+        float x = mesh->positions[i * 3 + 0];
+        float y = mesh->positions[i * 3 + 1];
+        float z = mesh->positions[i * 3 + 2];
+        char vbuf[64];
+        SDL_snprintf(vbuf, sizeof(vbuf), "(%.6f, %.6f, %.6f)", x, y, z);
+        APPEND_GEO(vbuf);
+    }
+    APPEND_GEO("]\n");
+
+    // Write normals
+    if (mesh->normals && mesh->normal_count == mesh->vertex_count) {
+        APPEND_GEO("    normal3f[] normals = [");
+        for (uint32_t i = 0; i < mesh->vertex_count; i++) {
+            if (i > 0) APPEND_GEO(", ");
+            float nx = mesh->normals[i * 3 + 0];
+            float ny = mesh->normals[i * 3 + 1];
+            float nz = mesh->normals[i * 3 + 2];
+            char nbuf[64];
+            SDL_snprintf(nbuf, sizeof(nbuf), "(%.6f, %.6f, %.6f)", nx, ny, nz);
+            APPEND_GEO(nbuf);
+        }
+        APPEND_GEO("] (interpolation = \"vertex\")\n");
+    }
+
+    // Write UVs (uv_count is number of floats, should be 2x vertex_count)
+    if (mesh->uvs && mesh->uv_count >= mesh->vertex_count * 2) {
+        APPEND_GEO("    texCoord2f[] primvars:st = [");
+        for (uint32_t i = 0; i < mesh->vertex_count; i++) {
+            if (i > 0) APPEND_GEO(", ");
+            float u = mesh->uvs[i * 2 + 0];
+            float v = mesh->uvs[i * 2 + 1];
+            char uvbuf[48];
+            SDL_snprintf(uvbuf, sizeof(uvbuf), "(%.6f, %.6f)", u, 1.0f - v);
+            APPEND_GEO(uvbuf);
+        }
+        APPEND_GEO("] (interpolation = \"vertex\")\n");
+    }
+
+    // Write face counts
+    uint32_t face_count = filter_count / 3;
+    APPEND_GEO("    int[] faceVertexCounts = [");
+    for (uint32_t i = 0; i < face_count; i++) {
+        if (i > 0) APPEND_GEO(", ");
+        APPEND_GEO("3");
+    }
+    APPEND_GEO("]\n");
+
+    // Write indices
+    APPEND_GEO("    int[] faceVertexIndices = [");
+    for (uint32_t i = 0; i < filter_count; i++) {
+        if (i > 0) APPEND_GEO(", ");
+        char ibuf[16];
+        SDL_snprintf(ibuf, sizeof(ibuf), "%u", filter_indices[i]);
+        APPEND_GEO(ibuf);
+    }
+    APPEND_GEO("]\n");
+
+    APPEND_GEO("    uniform token subdivisionScheme = \"none\"\n");
+    APPEND_GEO("}\n");
+
+    #undef APPEND_GEO
+    #undef APPENDF_GEO
+
+    usd[pos] = '\0';
+
+    bool success = write_string_to_file(filename, usd, pos);
+    scratch_end(scratch);
+    return success;
+}
+
+// Export mesh and scene to USD file
+static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
+                          float camera_x, float camera_y, float camera_z,
+                          float camera_yaw, float camera_pitch) {
+    if (!mesh || !filename || !app) {
+        SDL_Log("export_to_usd: invalid arguments");
+        return false;
+    }
+
+    SDL_Log("Exporting scene to USD: %s", filename);
+    SDL_Log("Camera: pos(%.2f,%.2f,%.2f) yaw=%.2f pitch=%.2f",
+            camera_x, camera_y, camera_z, camera_yaw, camera_pitch);
+    SDL_Log("Static lights: %u", app->static_light_count);
+    SDL_Log("Mesh data: vertices=%u uvs=%u normals=%u indices=%u",
+            mesh->vertex_count, mesh->uv_count, mesh->normal_count, mesh->index_count);
+    SDL_Log("UV pointer: %p", (void*)mesh->uvs);
+
+    Scratch scratch = scratch_begin();
+    ensure_runtime_heap();
+
+    // Allocate buffer for USD content (estimate generously)
+    size_t estimated_size = mesh->vertex_count * 150 + mesh->index_count * 20 + 100000;
+    if (estimated_size < 256 * 1024) estimated_size = 256 * 1024;
+
+    char *usd = (char *)arena_alloc(scratch.arena, estimated_size);
+    int pos = 0;
+
+    #define APPEND(str) do { \
+        for (const char *s = (str); *s && pos < (int)estimated_size - 100; s++) { \
+            usd[pos++] = *s; \
+        } \
+    } while(0)
+
+    #define APPENDF(fmt, ...) do { \
+        char temp[512]; \
+        SDL_snprintf(temp, sizeof(temp), fmt, __VA_ARGS__); \
+        APPEND(temp); \
+    } while(0)
+
+    // USD header
+    APPEND("#usda 1.0\n");
+    APPEND("(\n");
+    APPEND("    defaultPrim = \"root\"\n");
+    APPEND("    metersPerUnit = 1\n");
+    APPEND("    upAxis = \"Y\"\n");
+    APPEND(")\n\n");
+
+    APPEND("def Xform \"root\"\n");
+    APPEND("{\n");
+
+    // === Materials ===
+    APPEND("    def Scope \"Materials\"\n");
+    APPEND("    {\n");
+    APPEND("        def Material \"FloorMaterial\"\n");
+    APPEND("        {\n");
+    APPEND("            token outputs:surface.connect = </root/Materials/FloorMaterial/PreviewSurface.outputs:surface>\n");
+    APPEND("            def Shader \"PreviewSurface\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdPreviewSurface\"\n");
+    APPEND("                color3f inputs:diffuseColor.connect = </root/Materials/FloorMaterial/DiffuseTexture.outputs:rgb>\n");
+    APPEND("                token outputs:surface\n");
+    APPEND("            }\n");
+    APPEND("            def Shader \"DiffuseTexture\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdUVTexture\"\n");
+    APPEND("                asset inputs:file = @" FLOOR_TEXTURE_PATH "@\n");
+    APPEND("                float2 inputs:st.connect = </root/Materials/FloorMaterial/Primvar.outputs:result>\n");
+    APPEND("                float3 outputs:rgb\n");
+    APPEND("            }\n");
+    APPEND("            def Shader \"Primvar\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdPrimvarReader_float2\"\n");
+    APPEND("                string inputs:varname = \"st\"\n");
+    APPEND("                float2 outputs:result\n");
+    APPEND("            }\n");
+    APPEND("        }\n\n");
+
+    APPEND("        def Material \"WallMaterial\"\n");
+    APPEND("        {\n");
+    APPEND("            token outputs:surface.connect = </root/Materials/WallMaterial/PreviewSurface.outputs:surface>\n");
+    APPEND("            def Shader \"PreviewSurface\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdPreviewSurface\"\n");
+    APPEND("                color3f inputs:diffuseColor.connect = </root/Materials/WallMaterial/DiffuseTexture.outputs:rgb>\n");
+    APPEND("                token outputs:surface\n");
+    APPEND("            }\n");
+    APPEND("            def Shader \"DiffuseTexture\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdUVTexture\"\n");
+    APPEND("                asset inputs:file = @" WALL_TEXTURE_PATH "@\n");
+    APPEND("                float2 inputs:st.connect = </root/Materials/WallMaterial/Primvar.outputs:result>\n");
+    APPEND("                float3 outputs:rgb\n");
+    APPEND("            }\n");
+    APPEND("            def Shader \"Primvar\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdPrimvarReader_float2\"\n");
+    APPEND("                string inputs:varname = \"st\"\n");
+    APPEND("                float2 outputs:result\n");
+    APPEND("            }\n");
+    APPEND("        }\n\n");
+
+    APPEND("        def Material \"CeilingMaterial\"\n");
+    APPEND("        {\n");
+    APPEND("            token outputs:surface.connect = </root/Materials/CeilingMaterial/PreviewSurface.outputs:surface>\n");
+    APPEND("            def Shader \"PreviewSurface\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdPreviewSurface\"\n");
+    APPEND("                color3f inputs:diffuseColor.connect = </root/Materials/CeilingMaterial/DiffuseTexture.outputs:rgb>\n");
+    APPEND("                token outputs:surface\n");
+    APPEND("            }\n");
+    APPEND("            def Shader \"DiffuseTexture\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdUVTexture\"\n");
+    APPEND("                asset inputs:file = @" CEILING_TEXTURE_PATH "@\n");
+    APPEND("                float2 inputs:st.connect = </root/Materials/CeilingMaterial/Primvar.outputs:result>\n");
+    APPEND("                float3 outputs:rgb\n");
+    APPEND("            }\n");
+    APPEND("            def Shader \"Primvar\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdPrimvarReader_float2\"\n");
+    APPEND("                string inputs:varname = \"st\"\n");
+    APPEND("                float2 outputs:result\n");
+    APPEND("            }\n");
+    APPEND("        }\n");
+    APPEND("        def Material \"WindowMaterial\"\n");
+    APPEND("        {\n");
+    APPEND("            token outputs:surface.connect = </root/Materials/WindowMaterial/PreviewSurface.outputs:surface>\n");
+    APPEND("            def Shader \"PreviewSurface\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdPreviewSurface\"\n");
+    APPEND("                color3f inputs:diffuseColor.connect = </root/Materials/WindowMaterial/DiffuseTexture.outputs:rgb>\n");
+    APPEND("                token outputs:surface\n");
+    APPEND("            }\n");
+    APPEND("            def Shader \"DiffuseTexture\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdUVTexture\"\n");
+    APPEND("                asset inputs:file = @" WINDOW_TEXTURE_PATH "@\n");
+    APPEND("                float2 inputs:st.connect = </root/Materials/WindowMaterial/Primvar.outputs:result>\n");
+    APPEND("                float3 outputs:rgb\n");
+    APPEND("            }\n");
+    APPEND("            def Shader \"Primvar\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdPrimvarReader_float2\"\n");
+    APPEND("                string inputs:varname = \"st\"\n");
+    APPEND("                float2 outputs:result\n");
+    APPEND("            }\n");
+    APPEND("        }\n\n");
+
+    APPEND("        def Material \"SphereMaterial\"\n");
+    APPEND("        {\n");
+    APPEND("            token outputs:surface.connect = </root/Materials/SphereMaterial/PreviewSurface.outputs:surface>\n");
+    APPEND("            def Shader \"PreviewSurface\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdPreviewSurface\"\n");
+    APPEND("                color3f inputs:diffuseColor.connect = </root/Materials/SphereMaterial/DiffuseTexture.outputs:rgb>\n");
+    APPEND("                token outputs:surface\n");
+    APPEND("            }\n");
+    APPEND("            def Shader \"DiffuseTexture\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdUVTexture\"\n");
+    APPEND("                asset inputs:file = @" SPHERE_TEXTURE_PATH "@\n");
+    APPEND("                float2 inputs:st.connect = </root/Materials/SphereMaterial/Primvar.outputs:result>\n");
+    APPEND("                float3 outputs:rgb\n");
+    APPEND("            }\n");
+    APPEND("            def Shader \"Primvar\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdPrimvarReader_float2\"\n");
+    APPEND("                string inputs:varname = \"st\"\n");
+    APPEND("                float2 outputs:result\n");
+    APPEND("            }\n");
+    APPEND("        }\n\n");
+
+    APPEND("        def Material \"BookMaterial\"\n");
+    APPEND("        {\n");
+    APPEND("            token outputs:surface.connect = </root/Materials/BookMaterial/PreviewSurface.outputs:surface>\n");
+    APPEND("            def Shader \"PreviewSurface\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdPreviewSurface\"\n");
+    APPEND("                color3f inputs:diffuseColor.connect = </root/Materials/BookMaterial/DiffuseTexture.outputs:rgb>\n");
+    APPEND("                token outputs:surface\n");
+    APPEND("            }\n");
+    APPEND("            def Shader \"DiffuseTexture\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdUVTexture\"\n");
+    APPEND("                asset inputs:file = @" BOOK_TEXTURE_PATH "@\n");
+    APPEND("                float2 inputs:st.connect = </root/Materials/BookMaterial/Primvar.outputs:result>\n");
+    APPEND("                float3 outputs:rgb\n");
+    APPEND("            }\n");
+    APPEND("            def Shader \"Primvar\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdPrimvarReader_float2\"\n");
+    APPEND("                string inputs:varname = \"st\"\n");
+    APPEND("                float2 outputs:result\n");
+    APPEND("            }\n");
+    APPEND("        }\n\n");
+
+    APPEND("        def Material \"ChairMaterial\"\n");
+    APPEND("        {\n");
+    APPEND("            token outputs:surface.connect = </root/Materials/ChairMaterial/PreviewSurface.outputs:surface>\n");
+    APPEND("            def Shader \"PreviewSurface\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdPreviewSurface\"\n");
+    APPEND("                color3f inputs:diffuseColor.connect = </root/Materials/ChairMaterial/DiffuseTexture.outputs:rgb>\n");
+    APPEND("                token outputs:surface\n");
+    APPEND("            }\n");
+    APPEND("            def Shader \"DiffuseTexture\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdUVTexture\"\n");
+    APPEND("                asset inputs:file = @" CHAIR_TEXTURE_PATH "@\n");
+    APPEND("                float2 inputs:st.connect = </root/Materials/ChairMaterial/Primvar.outputs:result>\n");
+    APPEND("                float3 outputs:rgb\n");
+    APPEND("            }\n");
+    APPEND("            def Shader \"Primvar\"\n");
+    APPEND("            {\n");
+    APPEND("                uniform token info:id = \"UsdPrimvarReader_float2\"\n");
+    APPEND("                string inputs:varname = \"st\"\n");
+    APPEND("                float2 outputs:result\n");
+    APPEND("            }\n");
+    APPEND("        }\n");
+    APPEND("    }\n\n");
+
+    // === Scene Geometry ===
+    // Export geometry to separate files for easier hand-editing of main scene
+
+    // Get base filename to create geometry file names
+    char base_name[256];
+    get_base_filename(filename, base_name, sizeof(base_name));
+
+    // Build directory path from original filename
+    char dir_path[512] = "";
+    int last_slash = -1;
+    for (int i = 0; filename[i]; i++) {
+        if (filename[i] == '/' || filename[i] == '\\') {
+            last_slash = i;
+        }
+    }
+    if (last_slash >= 0) {
+        for (int i = 0; i <= last_slash && i < 511; i++) {
+            dir_path[i] = filename[i];
+        }
+        dir_path[last_slash + 1] = '\0';
+    }
+
+    // Collect indices by surface type
+    // 0.0f = floor, 1.0f = walls, 2.0f = ceiling,
+    // 3.0f = window frames, 4.0f = spheres, 5.0f = book, 6.0f = chair
+    uint32_t *floor_indices = (uint32_t *)arena_alloc(scratch.arena, mesh->index_count * sizeof(uint32_t));
+    uint32_t floor_count = 0;
+    uint32_t *wall_indices = (uint32_t *)arena_alloc(scratch.arena, mesh->index_count * sizeof(uint32_t));
+    uint32_t wall_count = 0;
+    uint32_t *ceiling_indices = (uint32_t *)arena_alloc(scratch.arena, mesh->index_count * sizeof(uint32_t));
+    uint32_t ceiling_count = 0;
+    uint32_t *window_indices = (uint32_t *)arena_alloc(scratch.arena, mesh->index_count * sizeof(uint32_t));
+    uint32_t window_count = 0;
+    uint32_t *sphere_indices = (uint32_t *)arena_alloc(scratch.arena, mesh->index_count * sizeof(uint32_t));
+    uint32_t sphere_count = 0;
+    uint32_t *book_indices = (uint32_t *)arena_alloc(scratch.arena, mesh->index_count * sizeof(uint32_t));
+    uint32_t book_count = 0;
+    uint32_t *chair_indices = (uint32_t *)arena_alloc(scratch.arena, mesh->index_count * sizeof(uint32_t));
+    uint32_t chair_count = 0;
+    uint32_t *props_indices = (uint32_t *)arena_alloc(scratch.arena, mesh->index_count * sizeof(uint32_t));
+    uint32_t props_count = 0;
+
+    for (uint32_t i = 0; i < mesh->index_count; i += 3) {
+        uint32_t idx0 = mesh->indices[i];
+        if (!mesh->surface_types) continue;
+
+        float surf_type = mesh->surface_types[idx0];
+        if (surf_type < 0.5f) {
+            floor_indices[floor_count++] = mesh->indices[i];
+            floor_indices[floor_count++] = mesh->indices[i + 1];
+            floor_indices[floor_count++] = mesh->indices[i + 2];
+        } else if (surf_type < 1.5f) {
+            wall_indices[wall_count++] = mesh->indices[i];
+            wall_indices[wall_count++] = mesh->indices[i + 1];
+            wall_indices[wall_count++] = mesh->indices[i + 2];
+        } else if (surf_type < 2.5f) {
+            ceiling_indices[ceiling_count++] = mesh->indices[i];
+            ceiling_indices[ceiling_count++] = mesh->indices[i + 1];
+            ceiling_indices[ceiling_count++] = mesh->indices[i + 2];
+        } else if (surf_type < 3.5f) {
+            window_indices[window_count++] = mesh->indices[i];
+            window_indices[window_count++] = mesh->indices[i + 1];
+            window_indices[window_count++] = mesh->indices[i + 2];
+        } else if (surf_type < 4.5f) {
+            sphere_indices[sphere_count++] = mesh->indices[i];
+            sphere_indices[sphere_count++] = mesh->indices[i + 1];
+            sphere_indices[sphere_count++] = mesh->indices[i + 2];
+        } else if (surf_type < 5.5f) {
+            book_indices[book_count++] = mesh->indices[i];
+            book_indices[book_count++] = mesh->indices[i + 1];
+            book_indices[book_count++] = mesh->indices[i + 2];
+        } else if (surf_type < 6.5f) {
+            chair_indices[chair_count++] = mesh->indices[i];
+            chair_indices[chair_count++] = mesh->indices[i + 1];
+            chair_indices[chair_count++] = mesh->indices[i + 2];
+        } else {
+            props_indices[props_count++] = mesh->indices[i];
+            props_indices[props_count++] = mesh->indices[i + 1];
+            props_indices[props_count++] = mesh->indices[i + 2];
+        }
+    }
+
+    // Write separate geometry files
+    char floor_path[512];
+    SDL_snprintf(floor_path, sizeof(floor_path), "%s%s_Floor.usda", dir_path, base_name);
+    if (!write_geometry_usd(floor_path, "Floor", mesh, floor_indices, floor_count, NULL)) {
+        SDL_Log("Failed to write floor geometry");
+        scratch_end(scratch);
+        return false;
+    }
+    SDL_Log("Wrote geometry file: %s", floor_path);
+
+    char wall_path[512];
+    SDL_snprintf(wall_path, sizeof(wall_path), "%s%s_Walls.usda", dir_path, base_name);
+    if (!write_geometry_usd(wall_path, "Walls", mesh, wall_indices, wall_count, NULL)) {
+        SDL_Log("Failed to write wall geometry");
+        scratch_end(scratch);
+        return false;
+    }
+    SDL_Log("Wrote geometry file: %s", wall_path);
+
+    char ceiling_path[512];
+    SDL_snprintf(ceiling_path, sizeof(ceiling_path), "%s%s_Ceiling.usda", dir_path, base_name);
+    if (!write_geometry_usd(ceiling_path, "Ceiling", mesh, ceiling_indices, ceiling_count, NULL)) {
+        SDL_Log("Failed to write ceiling geometry");
+        scratch_end(scratch);
+        return false;
+    }
+    SDL_Log("Wrote geometry file: %s", ceiling_path);
+
+    char props_path[512];
+    bool has_window = false;
+    bool has_spheres = false;
+    bool has_book = false;
+    bool has_chair = false;
+    bool has_props = false;
+
+    if (window_count > 0) {
+        char window_path[512];
+        SDL_snprintf(window_path, sizeof(window_path), "%s%s_WindowPanels.usda", dir_path, base_name);
+        if (!write_geometry_usd(window_path, "WindowPanels", mesh, window_indices, window_count, NULL)) {
+            SDL_Log("Failed to write window panel geometry");
+            scratch_end(scratch);
+            return false;
+        }
+        SDL_Log("Wrote geometry file: %s", window_path);
+        has_window = true;
+    }
+
+    if (sphere_count > 0) {
+        char sphere_path[512];
+        SDL_snprintf(sphere_path, sizeof(sphere_path), "%s%s_Spheres.usda", dir_path, base_name);
+        if (!write_geometry_usd(sphere_path, "Spheres", mesh, sphere_indices, sphere_count, NULL)) {
+            SDL_Log("Failed to write sphere geometry");
+            scratch_end(scratch);
+            return false;
+        }
+        SDL_Log("Wrote geometry file: %s", sphere_path);
+        has_spheres = true;
+    }
+
+    if (book_count > 0) {
+        char book_path[512];
+        SDL_snprintf(book_path, sizeof(book_path), "%s%s_Book.usda", dir_path, base_name);
+        if (!write_geometry_usd(book_path, "Book", mesh, book_indices, book_count, NULL)) {
+            SDL_Log("Failed to write book geometry");
+            scratch_end(scratch);
+            return false;
+        }
+        SDL_Log("Wrote geometry file: %s", book_path);
+        has_book = true;
+    }
+
+    if (chair_count > 0) {
+        char chair_path[512];
+        SDL_snprintf(chair_path, sizeof(chair_path), "%s%s_Chair.usda", dir_path, base_name);
+        if (!write_geometry_usd(chair_path, "Chair", mesh, chair_indices, chair_count, NULL)) {
+            SDL_Log("Failed to write chair geometry");
+            scratch_end(scratch);
+            return false;
+        }
+        SDL_Log("Wrote geometry file: %s", chair_path);
+        has_chair = true;
+    }
+
+    if (props_count > 0) {
+        SDL_snprintf(props_path, sizeof(props_path), "%s%s_Props.usda", dir_path, base_name);
+        if (!write_geometry_usd(props_path, "Props", mesh, props_indices, props_count, NULL)) {
+            SDL_Log("Failed to write props geometry");
+            scratch_end(scratch);
+            return false;
+        }
+        SDL_Log("Wrote geometry file: %s", props_path);
+        has_props = true;
+    }
+
+    // Reference geometry files in main scene with material bindings
+    char floor_ref[256];
+    SDL_snprintf(floor_ref, sizeof(floor_ref), "%s_Floor.usda", base_name);
+    char wall_ref[256];
+    SDL_snprintf(wall_ref, sizeof(wall_ref), "%s_Walls.usda", base_name);
+    char ceiling_ref[256];
+    SDL_snprintf(ceiling_ref, sizeof(ceiling_ref), "%s_Ceiling.usda", base_name);
+    char window_ref[256];
+    if (has_window) {
+        SDL_snprintf(window_ref, sizeof(window_ref), "%s_WindowPanels.usda", base_name);
+    }
+    char sphere_ref[256];
+    if (has_spheres) {
+        SDL_snprintf(sphere_ref, sizeof(sphere_ref), "%s_Spheres.usda", base_name);
+    }
+    char book_ref[256];
+    if (has_book) {
+        SDL_snprintf(book_ref, sizeof(book_ref), "%s_Book.usda", base_name);
+    }
+    char chair_ref[256];
+    if (has_chair) {
+        SDL_snprintf(chair_ref, sizeof(chair_ref), "%s_Chair.usda", base_name);
+    }
+    char props_ref[256];
+    if (has_props) {
+        SDL_snprintf(props_ref, sizeof(props_ref), "%s_Props.usda", base_name);
+    }
+
+    APPENDF("    def \"Floor\" (references = @./%s@</Floor>)\n", floor_ref);
+    APPEND("    {\n");
+    APPEND("        rel material:binding = </root/Materials/FloorMaterial>\n");
+    APPEND("    }\n\n");
+
+    APPENDF("    def \"Walls\" (references = @./%s@</Walls>)\n", wall_ref);
+    APPEND("    {\n");
+    APPEND("        rel material:binding = </root/Materials/WallMaterial>\n");
+    APPEND("    }\n\n");
+
+    APPENDF("    def \"Ceiling\" (references = @./%s@</Ceiling>)\n", ceiling_ref);
+    APPEND("    {\n");
+    APPEND("        rel material:binding = </root/Materials/CeilingMaterial>\n");
+    APPEND("    }\n\n");
+
+    if (has_window) {
+        APPENDF("    def \"WindowPanels\" (references = @./%s@</WindowPanels>)\n", window_ref);
+        APPEND("    {\n");
+        APPEND("        rel material:binding = </root/Materials/WindowMaterial>\n");
+        APPEND("    }\n\n");
+    }
+
+    if (has_spheres) {
+        APPENDF("    def \"Spheres\" (references = @./%s@</Spheres>)\n", sphere_ref);
+        APPEND("    {\n");
+        APPEND("        rel material:binding = </root/Materials/SphereMaterial>\n");
+        APPEND("    }\n\n");
+    }
+
+    if (has_book) {
+        APPENDF("    def \"Book\" (references = @./%s@</Book>)\n", book_ref);
+        APPEND("    {\n");
+        APPEND("        rel material:binding = </root/Materials/BookMaterial>\n");
+        APPEND("    }\n\n");
+    }
+
+    if (has_chair) {
+        APPENDF("    def \"Chair\" (references = @./%s@</Chair>)\n", chair_ref);
+        APPEND("    {\n");
+        APPEND("        rel material:binding = </root/Materials/ChairMaterial>\n");
+        APPEND("    }\n\n");
+    }
+
+    if (has_props) {
+        APPENDF("    def \"Props\" (references = @./%s@</Props>)\n", props_ref);
+        APPEND("    {\n");
+        APPEND("    }\n\n");
+    }
+
+    // === Static lights ===
+    for (uint32_t i = 0; i < app->static_light_count; i++) {
+        float *light_pos = app->static_light_positions[i];
+        float *light_color = app->static_light_colors[i];
+
+        APPENDF("    def SphereLight \"ceiling_light_%u\"\n", i);
+        APPEND("    {\n");
+        APPENDF("        float inputs:intensity = %.1f\n", CEILING_LIGHT_USD_INTENSITY);
+        APPENDF("        float inputs:radius = %.2f\n", CEILING_LIGHT_RADIUS);
+        APPENDF("        float inputs:colorTemperature = %.1f\n", CEILING_LIGHT_USD_TEMPERATURE);
+        APPEND("        bool inputs:enableColorTemperature = 1\n");
+        APPENDF("        double3 xformOp:translate = (%.6f, %.6f, %.6f)\n", light_pos[0], light_pos[1], light_pos[2]);
+        APPEND("        uniform token[] xformOpOrder = [\"xformOp:translate\"]\n");
+        APPEND("    }\n\n");
+    }
+
+    // TODO: load from JSON
+    //bool flashlight_on = false;
+    bool flashlight_on = true;
+    if (app) {
+        if (app->state.flashlight_enabled) {
+            flashlight_on = true;
+        } else if (app->scene_uniforms.flashlight_params[0] > 0.5f) {
+            flashlight_on = true;
+        }
+    }
+
+    if (flashlight_on) {
+        const float flashlight_height_offset = 0.35f;
+        float flashlight_x = camera_x;
+        float flashlight_y = camera_y - flashlight_height_offset;
+        if (flashlight_y < 0.0f) {
+            flashlight_y = 0.0f;
+        }
+        float flashlight_z = camera_z;
+        float flashlight_pitch_deg = -camera_pitch * 180.0f / (float)PI;
+        float flashlight_yaw_deg = camera_yaw * 180.0f / (float)PI + 180.0f;
+
+        APPEND("    def SphereLight \"flashlight_spot\" (\n");
+        APPEND("        prepend apiSchemas = [\"ShapingAPI\"]\n");
+        APPEND("    )\n");
+        APPEND("    {\n");
+        APPEND("        float inputs:intensity = 350\n");
+        APPEND("        bool inputs:enableColorTemperature = 1\n");
+        APPEND("        float inputs:colorTemperature = 4800\n");
+        APPEND("        float inputs:radius = 0.16\n");
+        APPEND("        float inputs:shaping:cone:angle = 10\n");
+        APPEND("        float inputs:shaping:cone:softness = 0.2\n");
+        APPENDF("        double3 xformOp:translate = (%.6f, %.6f, %.6f)\n", flashlight_x, flashlight_y, flashlight_z);
+        APPENDF("        float3 xformOp:rotateXYZ = (%.6f, %.6f, 0)\n", flashlight_pitch_deg, flashlight_yaw_deg);
+        APPEND("        uniform token[] xformOpOrder = [\"xformOp:translate\", \"xformOp:rotateXYZ\"]\n");
+        APPEND("    }\n\n");
+    }
+
+    APPEND("    def DomeLight \"NoEnvironment\"\n");
+    APPEND("    {\n");
+    APPEND("        float inputs:intensity = 0.0\n");
+    APPEND("        color3f inputs:color = (1, 1, 1)\n");
+    APPEND("        token inputs:texture:format = \"latlong\"\n");
+    APPEND("    }\n\n");
+
+    // === Camera ===
+    // USD cameras look down -Z by default, our game looks down +Z
+    // Game: yaw=0 looks along +X, yaw increases CCW (from +X toward +Z)
+    // Pitch: positive looks up
+    float pitch_deg = camera_pitch * 180.0f / (float)PI;
+    float yaw_deg = camera_yaw * 180.0f / (float)PI;
+
+    APPEND("    def Camera \"camera\"\n");
+    APPEND("    {\n");
+    APPEND("        float2 clippingRange = (0.1, 10000)\n");
+    APPEND("        float focalLength = 35\n");
+    APPEND("        float horizontalAperture = 20.955\n");
+    APPEND("        float verticalAperture = 15.2908\n");
+    APPEND("        token projection = \"perspective\"\n");
+    // Transform order: translate first, then rotate (applied right-to-left)
+    // Add 180 to yaw to flip from -Z to +Z lookdir, negate pitch for correct up/down
+    APPENDF("        double3 xformOp:translate = (%.6f, %.6f, %.6f)\n", camera_x, camera_y, camera_z);
+    APPENDF("        float3 xformOp:rotateXYZ = (%.6f, %.6f, 0)\n", -pitch_deg, yaw_deg + 180.0f);
+    APPEND("        uniform token[] xformOpOrder = [\"xformOp:translate\", \"xformOp:rotateXYZ\"]\n");
+    APPEND("    }\n");
+
+    APPEND("}\n");
+
+    #undef APPEND
+    #undef APPENDF
+
+    usd[pos] = '\0';
+
+    bool success = write_string_to_file(filename, usd, pos);
+    if (success) {
+        SDL_Log("USD export completed: %s", filename);
+    }
+    scratch_end(scratch);
+    return success;
+}
+
+// ============================================================================
+// JSON State Save/Load functions
+// ============================================================================
+
+// Save game state to JSON file
+static bool save_state_to_json(const GameState *state, const char *filename) {
+    if (!state || !filename) {
+        SDL_Log("save_state_to_json: invalid arguments");
+        return false;
+    }
+
+    Scratch scratch = scratch_begin();
+    ensure_runtime_heap();
+
+    // Allocate buffer for JSON content (estimate 2KB should be enough)
+    char *json = (char *)arena_alloc(scratch.arena, 4096);
+    int pos = 0;
+
+    // Helper macro to append string
+    #define APPEND(str) do { \
+        for (const char *s = (str); *s && pos < 4090; s++) { \
+            json[pos++] = *s; \
+        } \
+    } while(0)
+
+    APPEND("{\n");
+    APPEND("  \"camera\": {\n");
+
+    // Camera position
+    APPEND("    \"position\": [");
+    pos += float_to_str(state->camera_x, json + pos, 100);
+    APPEND(", ");
+    pos += float_to_str(state->camera_y, json + pos, 100);
+    APPEND(", ");
+    pos += float_to_str(state->camera_z, json + pos, 100);
+    APPEND("],\n");
+
+    // Camera orientation
+    APPEND("    \"yaw\": ");
+    pos += float_to_str(state->yaw, json + pos, 100);
+    APPEND(",\n");
+    APPEND("    \"pitch\": ");
+    pos += float_to_str(state->pitch, json + pos, 100);
+    APPEND("\n");
+
+    APPEND("  },\n");
+    APPEND("  \"state\": {\n");
+
+    // Boolean states
+    APPEND("    \"flashlight_enabled\": ");
+    APPEND(state->flashlight_enabled ? "true" : "false");
+    APPEND(",\n");
+
+    APPEND("    \"map_visible\": ");
+    APPEND(state->map_visible ? "true" : "false");
+    APPEND(",\n");
+
+    APPEND("    \"map_relative_mode\": ");
+    APPEND(state->map_relative_mode ? "true" : "false");
+    APPEND(",\n");
+
+    APPEND("    \"hud_visible\": ");
+    APPEND(state->hud_visible ? "true" : "false");
+    APPEND(",\n");
+
+    APPEND("    \"textures_enabled\": ");
+    APPEND(state->textures_enabled ? "true" : "false");
+    APPEND(",\n");
+
+    APPEND("    \"triangle_mode\": ");
+    APPEND(state->triangle_mode ? "true" : "false");
+    APPEND(",\n");
+
+    APPEND("    \"debug_mode\": ");
+    APPEND(state->debug_mode ? "true" : "false");
+    APPEND(",\n");
+
+    APPEND("    \"horizontal_movement\": ");
+    APPEND(state->horizontal_movement ? "true" : "false");
+    APPEND(",\n");
+
+    APPEND("    \"normal_debug\": ");
+    APPEND(state->normal_debug ? "true" : "false");
+    APPEND("\n");
+
+    APPEND("  }\n");
+    APPEND("}\n");
+
+    #undef APPEND
+
+    json[pos] = '\0';
+
+    bool success = write_string_to_file(filename, json, pos);
+    if (success) {
+        SDL_Log("Saved game state to: %s", filename);
+    }
+    scratch_end(scratch);
     return success;
 }
 
@@ -2296,7 +3117,7 @@ static void build_overlay(GameApp *app) {
     SDL_snprintf(lines[4], sizeof(lines[4]), "FLASH %s NORMAL %s",
                  state->flashlight_enabled ? "ON" : "OFF",
                  state->normal_debug ? "ON" : "OFF");
-    SDL_snprintf(lines[5], sizeof(lines[5]), "TOGGLE M/R/H/T/I/B/F/L/N");
+    SDL_snprintf(lines[5], sizeof(lines[5]), "TOGGLE M/R/H/T/I/B/F/L/N/K");
 
     uint32_t offset = 0;
     int line_count = SDL_arraysize(lines);
@@ -3289,6 +4110,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     g_App.test_frames_count = 0;
     g_App.export_obj_mode = false;
     g_App.export_obj_path[0] = '\0';
+    g_App.export_usd_mode = false;
+    g_App.export_usd_path[0] = '\0';
 
     for (int i = 1; i < argc; i++) {
         if (base_strcmp(argv[i], "--test-frames") == 0 && i + 1 < argc) {
@@ -3304,15 +4127,25 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
             }
             g_App.export_obj_path[j] = '\0';
             i++;  // Skip the next argument since we consumed it
+        } else if (base_strcmp(argv[i], "--export-usd") == 0 && i + 1 < argc) {
+            g_App.export_usd_mode = true;
+            // Copy the filename
+            int j = 0;
+            while (argv[i + 1][j] && j < 255) {
+                g_App.export_usd_path[j] = argv[i + 1][j];
+                j++;
+            }
+            g_App.export_usd_path[j] = '\0';
+            i++;  // Skip the next argument since we consumed it
         } else if (argv[i][0] == '-') {
             // Unknown argument starting with '-'
             SDL_Log("Error: Unknown command line argument '%s'", argv[i]);
-            SDL_Log("Usage: %s [--test-frames N] [--export-obj FILENAME]", argv[0]);
+            SDL_Log("Usage: %s [--test-frames N] [--export-obj FILENAME] [--export-usd FILENAME]", argv[0]);
             return SDL_APP_FAILURE;
         } else {
             // Positional argument (not expected)
             SDL_Log("Error: Unexpected argument '%s'", argv[i]);
-            SDL_Log("Usage: %s [--test-frames N] [--export-obj FILENAME]", argv[0]);
+            SDL_Log("Usage: %s [--test-frames N] [--export-obj FILENAME] [--export-usd FILENAME]", argv[0]);
             return SDL_APP_FAILURE;
         }
     }
@@ -3351,6 +4184,48 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         }
 
         SDL_Log("Export completed successfully");
+        return SDL_APP_SUCCESS;  // Exit successfully without running the game
+    }
+
+    // Handle USD export mode: generate mesh and export to USD with camera and lights
+    if (g_App.export_usd_mode) {
+        SDL_Log("USD export mode enabled, output: %s", g_App.export_usd_path);
+
+        // Initialize map data (same as in init_game)
+        load_map_with_lights(&g_App);
+
+        // Generate the mesh
+        float start_x = 1.5f;
+        float start_z = 1.5f;
+        float start_yaw = 0.0f;
+        find_start_position(g_map_data, MAP_WIDTH, MAP_HEIGHT, &start_x, &start_z, &start_yaw);
+
+        MeshData *mesh = generate_mesh(g_map_data, MAP_WIDTH, MAP_HEIGHT, start_x, start_z);
+        if (!mesh) {
+            SDL_Log("Failed to generate mesh");
+            return SDL_APP_FAILURE;
+        }
+
+        // Try to load camera position from saved state
+        float camera_x = start_x;
+        float camera_y = 1.7f;  // Default person height
+        float camera_z = start_z;
+        float camera_yaw = start_yaw;
+        float camera_pitch = 0.0f;
+
+        // TODO: Load from game_state.json if it exists
+        // For now, use defaults
+
+        // Export to USD file with scene, camera, and lights
+        bool usd_success = export_to_usd(&g_App, mesh, g_App.export_usd_path,
+                                          camera_x, camera_y, camera_z,
+                                          camera_yaw, camera_pitch);
+        if (!usd_success) {
+            SDL_Log("Failed to export USD file");
+            return SDL_APP_FAILURE;
+        }
+
+        SDL_Log("USD export completed successfully");
         return SDL_APP_SUCCESS;  // Exit successfully without running the game
     }
 
