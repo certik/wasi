@@ -262,7 +262,7 @@ static Arena *g_shader_arena = NULL;
 #define BOOK_OBJ_PATH "assets/book.obj"
 #define CHAIR_OBJ_PATH "assets/chair.obj"
 #define CEILING_LIGHT_MODEL_PATH "assets/ceiling_light.glb"
-#define CEILING_LIGHT_MODEL_SCALE 1.0f
+#define CEILING_LIGHT_MODEL_SCALE 0.5f
 #define CEILING_LIGHT_SURFACE_TYPE 7.0f
 
 static string g_scene_vertex_shader = {0};
@@ -1493,6 +1493,24 @@ static MeshData* load_ceiling_light_mesh(void) {
         positions[i * 3 + 2] = (float)temp[2];
     }
 
+    float min_x = positions[0];
+    float min_y = positions[1];
+    float min_z = positions[2];
+    float max_x = positions[0];
+    float max_y = positions[1];
+    float max_z = positions[2];
+    for (cgltf_size i = 1; i < vertex_count; i++) {
+        float x = positions[i * 3 + 0];
+        float y = positions[i * 3 + 1];
+        float z = positions[i * 3 + 2];
+        if (x < min_x) min_x = x;
+        if (y < min_y) min_y = y;
+        if (z < min_z) min_z = z;
+        if (x > max_x) max_x = x;
+        if (y > max_y) max_y = y;
+        if (z > max_z) max_z = z;
+    }
+
     const cgltf_accessor *uv_accessor = find_attribute_accessor(primitive, cgltf_attribute_type_texcoord, 0);
     if (uv_accessor && uv_accessor->count == vertex_count) {
         for (cgltf_size i = 0; i < vertex_count; i++) {
@@ -1560,6 +1578,10 @@ static MeshData* load_ceiling_light_mesh(void) {
     } else {
         compute_normals_from_triangles(positions, indices, vertex_count, index_count, normals);
     }
+
+    SDL_Log("Ceiling light mesh bounds: min(%.3f, %.3f, %.3f) max(%.3f, %.3f, %.3f) size(%.3f, %.3f, %.3f)",
+            min_x, min_y, min_z, max_x, max_y, max_z,
+            max_x - min_x, max_y - min_y, max_z - min_z);
 
     g_ceiling_light_mesh_data.positions = positions;
     g_ceiling_light_mesh_data.uvs = uvs;
