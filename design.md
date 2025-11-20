@@ -196,6 +196,50 @@ The engine and tools move scene data through a serialized format; these should l
 
 -----
 
+#### How the Asset / Rendering Pipeline plugs into the plugin architecture
+
+- **Renderer-as-plugin:** Treat the renderer as another plugin with a narrow contract. It subscribes to the core’s `FPS_EntityState` array and also consumes a `Scene` (static world mesh + textures) loaded through the asset pipeline. The renderer does *not* mutate core state.
+
+- **Data flow on startup:** 
+  1) Platform initializes memory/IO.  
+  2) Asset loader maps or reads a scene blob (`platform_read_file_mmap` → `scene_load_from_memory`, or buffered read → `scene_load_from_file`).  
+  3) Renderer plugin is created (`engine_create(SDL_GPUDevice*)`), uploads static geometry (`engine_upload_scene`), loads textures (`engine_load_textures`).  
+  4) Core and gameplay/physics plugins are registered. Renderer receives the `Scene*` plus per-frame dynamic data (camera + uniforms) from the gameplay layer.
+
+- **Per-frame loop:** 
+  - Input → `FPS_Core_Update`.  
+  - Renderer pulls truth via `FPS_Core_GetEntities` and submits draw calls with the already-uploaded scene buffers: `engine_render(engine, cmdbuf, render_pass, uniforms_ptr, uniform_size)`. Uniforms come from game code (e.g., camera matrices, lights).
+
+- **Asset loading rules:** 
+  - Prefer zero-copy: `platform_read_file_mmap` to get `(handle, data, size)` and pass `use_mmap=true` to `scene_load_from_memory`; release with `platform_file_unmap` inside `scene_free`.  
+  - Fallback: buffered read (`read_file`) into arena storage; call `scene_load_from_memory` with `use_mmap=false`, `mmap_handle=0`.  
+  - Builder side uses an arena (no malloc) to generate and serialize scene blobs; saving uses `scene_builder_save` (fd write via platform API).
+
+- **Renderer plugin interface (proposal, aligning with existing engine):**
+  ```c
+  typedef struct FPS_Renderer_T* FPS_Renderer;
+
+  // Construct/destroy with platform/SDL GPU device
+  FPS_Renderer FPS_Renderer_Create(SDL_GPUDevice *device);
+  void FPS_Renderer_Destroy(FPS_Renderer r);
+
+  // Static scene upload (once at load)
+  bool FPS_Renderer_LoadScene(FPS_Renderer r, const Scene *scene);
+
+  // Optional: load/refresh textures separately
+  bool FPS_Renderer_LoadTextures(FPS_Renderer r, const Scene *scene);
+
+  // Per-frame draw: entities from core + game-provided uniforms
+  bool FPS_Renderer_Draw(FPS_Renderer r,
+                         const FPS_EntityState *entities, int count,
+                         const void *uniforms, uint32_t uniform_size,
+                         SDL_GPUCommandBuffer *cmdbuf,
+                         SDL_GPURenderPass *render_pass);
+  ```
+  This wraps the existing `engine_*` API and makes the renderer swappable without exposing SDL details to the core.
+
+-----
+
 ### 7\. Tooling: The "Recorder"
 
 Because we architected the Core to take a generic `FPS_InputFrame` and output `FPS_EntityState`, we can build a "Black Box Recorder" trivially.
