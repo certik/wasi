@@ -28,6 +28,9 @@ extern int dup2(int oldfd, int newfd);
 extern int fcntl(int fd, int cmd, ...);
 extern ssize_t readv(int fd, const struct iovec *iov, int iovcnt);
 extern off_t lseek(int fd, off_t offset, int whence);
+extern int munmap(void *addr, size_t len);
+extern void* malloc(size_t size);
+extern void free(void* ptr);
 
 // Protection and mapping flags (macOS-specific values)
 #define PROT_NONE  0x00
@@ -36,6 +39,7 @@ extern off_t lseek(int fd, off_t offset, int whence);
 
 #define MAP_PRIVATE 0x0002
 #define MAP_ANONYMOUS 0x1000  // Different from Linux
+#define MAP_FAILED ((void*)-1)
 
 // fcntl commands
 #define F_DUPFD 0
@@ -258,6 +262,70 @@ int wasi_args_get(char** argv, char* argv_buf) {
         *buf_ptr++ = '\0';
     }
     return 0;
+}
+
+typedef struct {
+    void* addr;
+    size_t size;
+} MmapHandle;
+
+bool platform_read_file_mmap(const char *filename, uint64_t *out_handle, void **out_data, size_t *out_size) {
+    if (!filename || !out_handle || !out_data || !out_size) return false;
+    *out_handle = 0;
+    *out_data = NULL;
+    *out_size = 0;
+
+    int fd = open(filename, O_RDONLY, 0);
+    if (fd < 0) {
+        return false;
+    }
+
+    off_t end = lseek(fd, 0, WASI_SEEK_END);
+    if (end < 0) {
+        close(fd);
+        return false;
+    }
+
+    size_t file_size = (size_t)end;
+    if (lseek(fd, 0, WASI_SEEK_SET) < 0) {
+        close(fd);
+        return false;
+    }
+
+    if (file_size == 0) {
+        close(fd);
+        *out_size = 0;
+        return true;
+    }
+
+    void *addr = mmap(NULL, file_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+    close(fd);
+    if (addr == MAP_FAILED) {
+        return false;
+    }
+
+    MmapHandle *handle = (MmapHandle *)malloc(sizeof(MmapHandle));
+    if (!handle) {
+        munmap(addr, file_size);
+        return false;
+    }
+
+    handle->addr = addr;
+    handle->size = file_size;
+
+    *out_handle = (uint64_t)(uintptr_t)handle;
+    *out_data = addr;
+    *out_size = file_size;
+    return true;
+}
+
+void platform_file_unmap(uint64_t handle) {
+    if (handle == 0) return;
+    MmapHandle *h = (MmapHandle *)(uintptr_t)handle;
+    if (h->addr && h->size > 0) {
+        munmap(h->addr, h->size);
+    }
+    free(h);
 }
 
 #ifndef PLATFORM_SKIP_ENTRY

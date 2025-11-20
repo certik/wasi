@@ -18,8 +18,9 @@ typedef struct Scene Scene;
 
 // Load scene from memory blob (takes ownership, will munmap/free on scene_free)
 // blob_size is the total size of the blob in bytes
-// use_mmap: if true, blob was mmap'd and should be munmap'd; if false, use free()
-Scene* scene_load_from_memory(void *blob, uint64_t blob_size, bool use_mmap);
+// use_mmap: if true, blob was mmap'd and should be released via platform_file_unmap
+// mmap_handle: opaque handle returned by platform_read_file_mmap (0 if not mapped)
+Scene* scene_load_from_memory(void *blob, uint64_t blob_size, bool use_mmap, uint64_t mmap_handle);
 
 // Load scene from file (uses mmap for zero-copy)
 Scene* scene_load_from_file(const char *path);

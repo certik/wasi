@@ -22,7 +22,8 @@
 struct Scene {
     void *blob;              // Pointer to mmap'd or malloc'd blob
     uint64_t blob_size;      // Total size of blob
-    bool use_mmap;           // If true, munmap on free; else free()
+    bool use_mmap;           // If true, release via platform_file_unmap
+    uint64_t mmap_handle;    // Opaque handle for platform_file_unmap (0 if not mapped)
 
     SceneHeader *header;     // Pointer to header
     SceneVertex *vertices;   // Pointer to vertices (after fixup)
@@ -195,7 +196,7 @@ static void fixup_scene_pointers(Scene *scene) {
 // Scene API
 // ============================================================================
 
-Scene* scene_load_from_memory(void *blob, uint64_t blob_size, bool use_mmap) {
+Scene* scene_load_from_memory(void *blob, uint64_t blob_size, bool use_mmap, uint64_t mmap_handle) {
     if (!blob) {
         SDL_Log("scene_load_from_memory: blob is NULL");
         return NULL;
@@ -221,6 +222,7 @@ Scene* scene_load_from_memory(void *blob, uint64_t blob_size, bool use_mmap) {
     scene->blob = blob;
     scene->blob_size = blob_size;
     scene->use_mmap = use_mmap;
+    scene->mmap_handle = mmap_handle;
     scene->header = header;
 
     fixup_scene_pointers(scene);
@@ -232,57 +234,56 @@ Scene* scene_load_from_memory(void *blob, uint64_t blob_size, bool use_mmap) {
 }
 
 Scene* scene_load_from_file(const char *path) {
-#if defined(__wasi__)
-    (void)path;
-    SDL_Log("scene_load_from_file is not supported on WASI; use scene_load_from_memory instead");
-    return NULL;
-#else
     if (!path) {
         SDL_Log("scene_load_from_file: path is NULL");
         return NULL;
     }
 
-    // Open file
-    int fd = open(path, O_RDONLY);
-    if (fd < 0) {
+    uint64_t mmap_handle = 0;
+    void *data = NULL;
+    size_t size = 0;
+    if (platform_read_file_mmap(path, &mmap_handle, &data, &size)) {
+        if (size == 0 || data == NULL) {
+            SDL_Log("scene_load_from_file: file %s is empty", path);
+            platform_file_unmap(mmap_handle);
+            return NULL;
+        }
+        SDL_Log("Loaded scene file %s via mmap (%zu bytes)", path, size);
+        return scene_load_from_memory(data, (uint64_t)size, true, mmap_handle);
+    }
+
+    SDL_Log("scene_load_from_file: mmap unavailable, falling back to buffered read");
+
+    SDL_IOStream *file = SDL_IOFromFile(path, "rb");
+    if (!file) {
         SDL_Log("scene_load_from_file: failed to open %s", path);
         return NULL;
     }
 
-    // Get file size
-    off_t size = lseek(fd, 0, SEEK_END);
-    if (size < 0) {
-        SDL_Log("scene_load_from_file: failed to get size of %s", path);
-        close(fd);
+    Sint64 file_size = SDL_GetIOSize(file);
+    if (file_size <= 0) {
+        SDL_Log("scene_load_from_file: invalid size for %s", path);
+        SDL_CloseIO(file);
         return NULL;
     }
 
-    if (size == 0) {
-        SDL_Log("scene_load_from_file: file %s is empty", path);
-        close(fd);
+    void *blob = malloc((size_t)file_size);
+    if (!blob) {
+        SDL_Log("scene_load_from_file: out of memory reading %s", path);
+        SDL_CloseIO(file);
         return NULL;
     }
 
-    // mmap the file
-    void *blob = mmap(NULL, (size_t)size, PROT_READ, MAP_PRIVATE, fd, 0);
-    close(fd); // Can close fd after mmap
-
-    if (blob == MAP_FAILED) {
-        SDL_Log("scene_load_from_file: failed to mmap %s", path);
+    size_t read_bytes = SDL_ReadIO(file, blob, (size_t)file_size);
+    SDL_CloseIO(file);
+    if (read_bytes != (size_t)file_size) {
+        SDL_Log("scene_load_from_file: short read on %s", path);
+        free(blob);
         return NULL;
     }
 
-    SDL_Log("Loaded scene file %s (%lld bytes)", path, (long long)size);
-
-    // Load from memory with use_mmap=true
-    Scene *scene = scene_load_from_memory(blob, (uint64_t)size, true);
-    if (!scene) {
-        munmap(blob, (size_t)size);
-        return NULL;
-    }
-
-    return scene;
-#endif
+    SDL_Log("Loaded scene file %s via buffered read (%lld bytes)", path, (long long)file_size);
+    return scene_load_from_memory(blob, (uint64_t)file_size, false, 0);
 }
 
 const SceneVertex* scene_get_vertices(const Scene *scene, uint32_t *out_count) {
@@ -341,11 +342,7 @@ void scene_free(Scene *scene) {
     if (!scene) return;
 
     if (scene->use_mmap) {
-#if !defined(__wasi__)
-        munmap(scene->blob, (size_t)scene->blob_size);
-#else
-        free(scene->blob);
-#endif
+        platform_file_unmap(scene->mmap_handle);
     } else {
         free(scene->blob);
     }

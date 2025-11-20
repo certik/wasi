@@ -3902,7 +3902,7 @@ static int complete_gpu_setup(GameApp *app) {
     arena_free(scene_arena);
 
     // Load scene from blob (engine will free owned_blob on shutdown)
-    app->scene = scene_load_from_memory(owned_blob, blob_size, false);
+    app->scene = scene_load_from_memory(owned_blob, blob_size, false, 0);
     if (!app->scene) {
         SDL_Log("Failed to load scene");
         free(owned_blob);

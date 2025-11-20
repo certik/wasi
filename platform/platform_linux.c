@@ -13,6 +13,7 @@
 #define SYS_LSEEK 8
 #define SYS_MMAP 9
 #define SYS_MPROTECT 10
+#define SYS_MUNMAP 11
 #define SYS_READV 19
 #define SYS_WRITEV 20
 #define SYS_DUP 32
@@ -32,6 +33,7 @@
 #define PROT_WRITE 0x2
 #define MAP_PRIVATE 0x02
 #define MAP_ANONYMOUS 0x20
+#define MAP_FAILED ((void*)-1)
 
 // Our emulated heap state for Linux
 static uint8_t* linux_heap_base = NULL;
@@ -41,6 +43,10 @@ static const size_t RESERVED_SIZE = 1ULL << 32; // Reserve 4GB of virtual addres
 // Command line arguments storage
 static int stored_argc = 0;
 static char** stored_argv = NULL;
+
+// Minimal malloc/free declarations (provided by our stdlib implementation)
+extern void* malloc(size_t size);
+extern void free(void* ptr);
 
 // Helper function to make a raw syscall.
 static inline long syscall(long n, long a1, long a2, long a3, long a4, long a5, long a6) {
@@ -270,6 +276,79 @@ int wasi_args_sizes_get(size_t* argc, size_t* argv_buf_size) {
     }
     *argv_buf_size = total_size;
     return 0;
+}
+
+typedef struct {
+    void* addr;
+    size_t size;
+} MmapHandle;
+
+bool platform_read_file_mmap(const char *filename, uint64_t *out_handle, void **out_data, size_t *out_size) {
+    if (!filename || !out_handle || !out_data || !out_size) return false;
+    *out_handle = 0;
+    *out_data = NULL;
+    *out_size = 0;
+
+    long fd = syscall(SYS_OPENAT, (long)AT_FDCWD, (long)filename, (long)O_RDONLY, 0, 0, 0);
+    if (fd < 0) {
+        return false;
+    }
+
+    long end = syscall(SYS_LSEEK, fd, 0, WASI_SEEK_END, 0, 0, 0);
+    if (end < 0) {
+        syscall(SYS_CLOSE, fd, 0, 0, 0, 0, 0);
+        return false;
+    }
+    size_t file_size = (size_t)end;
+
+    // Reset to start
+    if (syscall(SYS_LSEEK, fd, 0, WASI_SEEK_SET, 0, 0, 0) < 0) {
+        syscall(SYS_CLOSE, fd, 0, 0, 0, 0, 0);
+        return false;
+    }
+
+    if (file_size == 0) {
+        syscall(SYS_CLOSE, fd, 0, 0, 0, 0, 0);
+        *out_size = 0;
+        return true;
+    }
+
+    void* addr = (void*)syscall(
+        SYS_MMAP,
+        (long)NULL,
+        (long)file_size,
+        (long)(PROT_READ | PROT_WRITE),
+        (long)MAP_PRIVATE,
+        (long)fd,
+        (long)0
+    );
+    syscall(SYS_CLOSE, fd, 0, 0, 0, 0, 0);
+
+    if (addr == MAP_FAILED) {
+        return false;
+    }
+
+    MmapHandle *handle = (MmapHandle *)malloc(sizeof(MmapHandle));
+    if (!handle) {
+        syscall(SYS_MUNMAP, (long)addr, (long)file_size, 0, 0, 0, 0);
+        return false;
+    }
+    handle->addr = addr;
+    handle->size = file_size;
+
+    *out_handle = (uint64_t)(uintptr_t)handle;
+    *out_data = addr;
+    *out_size = file_size;
+    return true;
+}
+
+void platform_file_unmap(uint64_t handle) {
+    if (handle == 0) return;
+    MmapHandle *h = (MmapHandle *)(uintptr_t)handle;
+    if (h->addr && h->size > 0) {
+        syscall(SYS_MUNMAP, (long)h->addr, (long)h->size, 0, 0, 0, 0);
+    }
+    free(h);
 }
 
 int wasi_args_get(char** argv, char* argv_buf) {
