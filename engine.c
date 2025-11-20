@@ -21,11 +21,6 @@ struct Scene {
     uint64_t mmap_handle;    // Opaque handle for platform_file_unmap (0 if not mapped)
 
     SceneHeader *header;     // Pointer to header
-    SceneVertex *vertices;   // Pointer to vertices (after fixup)
-    uint16_t *indices;       // Pointer to indices
-    SceneLight *lights;      // Pointer to lights
-    SceneTexture *textures;  // Pointer to textures (after fixup)
-    char *strings;           // Pointer to string arena
 };
 
 // Engine rendering context
@@ -134,47 +129,37 @@ static void fixup_scene_pointers(Scene *scene) {
     // Fix up array pointers
     if (header->vertex_count > 0) {
         header->vertices = (SceneVertex *)(base + (uintptr_t)header->vertices);
-        scene->vertices = header->vertices;
     } else {
         header->vertices = NULL;
-        scene->vertices = NULL;
     }
 
     if (header->index_count > 0) {
         header->indices = (uint16_t *)(base + (uintptr_t)header->indices);
-        scene->indices = header->indices;
     } else {
         header->indices = NULL;
-        scene->indices = NULL;
     }
 
     if (header->light_count > 0) {
         header->lights = (SceneLight *)(base + (uintptr_t)header->lights);
-        scene->lights = header->lights;
     } else {
         header->lights = NULL;
-        scene->lights = NULL;
     }
 
     if (header->texture_count > 0) {
         header->textures = (SceneTexture *)(base + (uintptr_t)header->textures);
-        scene->textures = header->textures;
     } else {
         header->textures = NULL;
-        scene->textures = NULL;
     }
 
     if (header->string_size > 0) {
         header->strings = base + (uintptr_t)header->strings;
-        scene->strings = header->strings;
     } else {
         header->strings = NULL;
-        scene->strings = NULL;
     }
 
     // Fix up texture path_offset -> pointer
     for (uint32_t i = 0; i < header->texture_count; i++) {
-        SceneTexture *tex = &scene->textures[i];
+        SceneTexture *tex = &header->textures[i];
         // Validate string offset is within string arena
         if (tex->path_offset >= header->string_size) {
             SDL_Log("Warning: texture %u path_offset %llu out of bounds (string_size=%llu)",
@@ -183,7 +168,7 @@ static void fixup_scene_pointers(Scene *scene) {
         }
         // Convert offset to pointer by storing pointer in path_offset field
         // This is a bit of a hack, but works since we're converting offset->ptr
-        tex->path_offset = (uint64_t)(uintptr_t)(scene->strings + tex->path_offset);
+        tex->path_offset = (uint64_t)(uintptr_t)(header->strings + tex->path_offset);
     }
 }
 
@@ -281,56 +266,8 @@ Scene* scene_load_from_file(const char *path) {
     return scene_load_from_memory(blob, (uint64_t)file_size, false, 0);
 }
 
-const SceneVertex* scene_get_vertices(const Scene *scene, uint32_t *out_count) {
-    if (!scene) {
-        if (out_count) *out_count = 0;
-        return NULL;
-    }
-    if (out_count) {
-        *out_count = scene->header->vertex_count;
-    }
-    return scene->vertices;
-}
-
-const uint16_t* scene_get_indices(const Scene *scene, uint32_t *out_count) {
-    if (!scene) {
-        if (out_count) *out_count = 0;
-        return NULL;
-    }
-    if (out_count) {
-        *out_count = scene->header->index_count;
-    }
-    return scene->indices;
-}
-
-const SceneLight* scene_get_lights(const Scene *scene, uint32_t *out_count) {
-    if (!scene) {
-        if (out_count) *out_count = 0;
-        return NULL;
-    }
-    if (out_count) {
-        *out_count = scene->header->light_count;
-    }
-    return scene->lights;
-}
-
-uint32_t scene_get_texture_count(const Scene *scene) {
-    if (!scene) return 0;
-    return scene->header->texture_count;
-}
-
-const char* scene_get_texture_path(const Scene *scene, uint32_t surface_type_id) {
-    if (!scene) return NULL;
-
-    // Find texture with matching surface_type_id
-    for (uint32_t i = 0; i < scene->header->texture_count; i++) {
-        if (scene->textures[i].surface_type_id == surface_type_id) {
-            // path_offset was converted to pointer in fixup_scene_pointers
-            return (const char *)(uintptr_t)scene->textures[i].path_offset;
-        }
-    }
-
-    return NULL; // Not found
+const SceneHeader* scene_get_header(const Scene *scene) {
+    return scene ? scene->header : NULL;
 }
 
 void scene_free(Scene *scene) {
@@ -398,9 +335,11 @@ bool engine_upload_scene(Engine *engine, const Scene *scene) {
         return false;
     }
 
-    uint32_t vertex_count, index_count;
-    const SceneVertex *vertices = scene_get_vertices(scene, &vertex_count);
-    const uint16_t *indices = scene_get_indices(scene, &index_count);
+    const SceneHeader *header = scene->header;
+    uint32_t vertex_count = header->vertex_count;
+    uint32_t index_count = header->index_count;
+    const SceneVertex *vertices = header->vertices;
+    const uint16_t *indices = header->indices;
 
     if (!vertices || vertex_count == 0) {
         SDL_Log("engine_upload_scene: no vertices");
@@ -535,7 +474,8 @@ bool engine_load_textures(Engine *engine, const Scene *scene) {
         return false;
     }
 
-    uint32_t texture_count = scene_get_texture_count(scene);
+    const SceneHeader *header = scene->header;
+    uint32_t texture_count = header->texture_count;
     SDL_Log("Loading %u textures", texture_count);
 
     if (texture_count == 0) {
@@ -549,15 +489,15 @@ bool engine_load_textures(Engine *engine, const Scene *scene) {
     }
 
     // Load each texture
-    for (uint32_t i = 0; i < scene->header->texture_count; i++) {
-        uint32_t surface_type_id = scene->textures[i].surface_type_id;
+    for (uint32_t i = 0; i < texture_count; i++) {
+        uint32_t surface_type_id = header->textures[i].surface_type_id;
         int binding_slot = map_surface_type_to_slot(surface_type_id);
         if (binding_slot < 0 || binding_slot >= 8) {
             SDL_Log("Warning: texture %u has unsupported surface_type_id %u, skipping", i, surface_type_id);
             continue;
         }
 
-        const char *path = (const char *)(uintptr_t)scene->textures[i].path_offset;
+        const char *path = (const char *)(uintptr_t)header->textures[i].path_offset;
         if (!path || path[0] == '\0') {
             SDL_Log("Warning: texture %u has empty path, skipping", i);
             continue;

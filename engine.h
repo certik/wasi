@@ -26,14 +26,8 @@ Scene* scene_load_from_memory(void *blob, uint64_t blob_size, bool use_mmap, uin
 // Load scene from file (uses mmap for zero-copy)
 Scene* scene_load_from_file(const char *path);
 
-// Get scene data for rendering
-const SceneVertex* scene_get_vertices(const Scene *scene, uint32_t *out_count);
-const uint16_t* scene_get_indices(const Scene *scene, uint32_t *out_count);
-const SceneLight* scene_get_lights(const Scene *scene, uint32_t *out_count);
-
-// Get texture info (returns number of textures, fills arrays if non-NULL)
-uint32_t scene_get_texture_count(const Scene *scene);
-const char* scene_get_texture_path(const Scene *scene, uint32_t surface_type_id);
+// Access scene header (owns pointers to all buffers after fixup)
+const SceneHeader* scene_get_header(const Scene *scene);
 
 // Free scene (munmap or free blob, free Scene struct)
 void scene_free(Scene *scene);

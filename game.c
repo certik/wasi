@@ -4094,7 +4094,11 @@ static void update_game(GameApp *app) {
     uint32_t light_count = 0;
     const SceneLight *lights = NULL;
     if (app->scene) {
-        lights = scene_get_lights(app->scene, &light_count);
+        const SceneHeader *scene_header = scene_get_header(app->scene);
+        if (scene_header) {
+            light_count = scene_header->light_count;
+            lights = scene_header->lights;
+        }
     }
     if (light_count > MAX_STATIC_LIGHTS) {
         light_count = MAX_STATIC_LIGHTS;
