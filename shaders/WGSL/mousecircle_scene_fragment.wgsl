@@ -65,8 +65,10 @@ fn get_material_properties(surface_type: f32) -> MaterialProperties {
         return MaterialProperties(48.0, 0.8); // Sphere
     } else if (surface_type < 5.5) {
         return MaterialProperties(36.0, 0.4); // Book
+    } else if (surface_type < 6.5) {
+        return MaterialProperties(30.0, 0.5); // Chair
     }
-    return MaterialProperties(30.0, 0.5); // Chair and others
+    return MaterialProperties(22.0, 0.35); // Ceiling light housing
 }
 
 fn compute_static_lighting(normal: vec3f, world_pos: vec3f, view_dir: vec3f, material: MaterialProperties) -> StaticLightContribution {
@@ -190,9 +192,12 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
     } else if (input.surfaceType < 5.5) {
         // Book mesh
         baseColor = bookColor.rgb;
-    } else {
+    } else if (input.surfaceType < 6.5) {
         // Chair mesh
         baseColor = chairColor.rgb;
+    } else {
+        // Ceiling light fixture baked color
+        baseColor = vec3f(0.95, 0.94, 0.88);
     }
 
     let n = normalize(input.normal);

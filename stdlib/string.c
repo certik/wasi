@@ -34,3 +34,27 @@ int memcmp(const void *s1, const void *s2, size_t n) {
 void *memchr(const void *s, int c, size_t n) {
     return base_memchr(s, c, n);
 }
+
+char *strchr(const char *s, int c) {
+    return base_strchr(s, c);
+}
+
+char *strrchr(const char *s, int c) {
+    return base_strrchr(s, c);
+}
+
+char *strncpy(char *dest, const char *src, size_t n) {
+    return base_strncpy(dest, src, n);
+}
+
+size_t strcspn(const char *s, const char *reject) {
+    return base_strcspn(s, reject);
+}
+
+int strncmp(const char *s1, const char *s2, size_t n) {
+    return base_strncmp(s1, s2, n);
+}
+
+char *strstr(const char *haystack, const char *needle) {
+    return base_strstr(haystack, needle);
+}

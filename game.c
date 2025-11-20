@@ -23,6 +23,7 @@ typedef __builtin_va_list __gnuc_va_list;
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <stdlib.h>
 
 #include <base/arena.h>
 #include <base/buddy.h>
@@ -36,6 +37,9 @@ typedef __builtin_va_list __gnuc_va_list;
 #include <base/base_io.h>
 
 #include "gm_font_data.h"
+
+#define CGLTF_IMPLEMENTATION
+#include "tpl/cgltf.h"
 
 #ifndef SDL_arraysize
 #define SDL_arraysize(arr) (sizeof(arr) / sizeof((arr)[0]))
@@ -246,6 +250,7 @@ typedef struct {
 static GameApp g_App;
 static bool g_buddy_initialized = false;
 static Arena *g_shader_arena = NULL;
+static Arena *g_mesh_arena = NULL;
 
 #define FLOOR_TEXTURE_PATH "assets/WoodFloor007_1K-JPG_Color.jpg"
 #define WALL_TEXTURE_PATH "assets/Concrete046_1K-JPG_Color.jpg"
@@ -257,6 +262,9 @@ static Arena *g_shader_arena = NULL;
 #define SPHERE_OBJ_PATH "assets/equirectangular_sphere.obj"
 #define BOOK_OBJ_PATH "assets/book.obj"
 #define CHAIR_OBJ_PATH "assets/chair.obj"
+#define CEILING_LIGHT_MODEL_PATH "assets/ceiling_light.glb"
+#define CEILING_LIGHT_MODEL_SCALE 0.5f
+#define CEILING_LIGHT_SURFACE_TYPE 7.0f
 
 static string g_scene_vertex_shader = {0};
 static string g_scene_fragment_shader = {0};
@@ -274,6 +282,9 @@ static void ensure_runtime_heap(void) {
     }
     if (g_shader_arena == NULL) {
         g_shader_arena = arena_new(64 * 1024);
+    }
+    if (g_mesh_arena == NULL) {
+        g_mesh_arena = arena_new(512 * 1024);
     }
 }
 
@@ -688,6 +699,7 @@ static void push_east_segment(MeshGenContext *ctx, float x, float z, float y0, f
 }
 
 static MeshData* load_obj_file(const char *path);
+static MeshData* load_ceiling_light_mesh(void);
 static Arena *g_obj_file_arena = NULL;
 static float mesh_min_y(const MeshData *mesh);
 static void add_mesh_instance(MeshGenContext *ctx, const MeshData *mesh,
@@ -703,7 +715,8 @@ static uint16_t g_index_storage[MAX_GENERATED_INDICES];
 static MeshData g_mesh_data_storage;
 static MapVertex g_temp_vertices[MAX_SCENE_VERTICES];
 
-static MeshData* generate_mesh(int *map, int width, int height, float spawn_x, float spawn_z) {
+static MeshData* generate_mesh(GameApp *app, int *map, int width, int height,
+                               float spawn_x, float spawn_z) {
     MeshGenContext ctx = {0};
     ctx.positions = g_positions_storage;
     ctx.uvs = g_uvs_storage;
@@ -920,6 +933,16 @@ static MeshData* generate_mesh(int *map, int width, int height, float spawn_x, f
         add_mesh_instance(&ctx, chair_mesh, chair_scale, chair_x, chair_y, chair_z, 6.0f);
     }
 
+    MeshData *ceiling_mesh = load_ceiling_light_mesh();
+    if (ceiling_mesh && app) {
+        const float light_scale = CEILING_LIGHT_MODEL_SCALE;
+        for (uint32_t i = 0; i < app->static_light_count; i++) {
+            float *pos = app->static_light_positions[i];
+            add_mesh_instance(&ctx, ceiling_mesh, light_scale, pos[0], pos[1], pos[2],
+                              CEILING_LIGHT_SURFACE_TYPE);
+        }
+    }
+
     g_mesh_data_storage.positions = g_positions_storage;
     g_mesh_data_storage.uvs = g_uvs_storage;
     g_mesh_data_storage.normals = g_normals_storage;
@@ -963,6 +986,8 @@ static float g_obj_normals[OBJ_MAX_VERTICES * 3];
 static float g_obj_surface_types[OBJ_MAX_VERTICES];
 static uint16_t g_obj_indices[OBJ_MAX_INDICES];
 static MeshData g_obj_mesh_data;
+static MeshData g_ceiling_light_mesh_data;
+static int g_ceiling_light_mesh_status = 0;
 
 // Temporary storage for OBJ parsing (static to avoid stack overflow)
 static float g_temp_obj_positions[OBJ_MAX_TEMP_VERTICES * 3];
@@ -1276,6 +1301,379 @@ static MeshData* load_obj_file(const char *path) {
 cleanup:
     scratch_end(scratch);
     return result;
+}
+
+static const char *cgltf_result_to_string(cgltf_result result) {
+    switch (result) {
+        case cgltf_result_success: return "success";
+        case cgltf_result_data_too_short: return "data too short";
+        case cgltf_result_unknown_format: return "unknown format";
+        case cgltf_result_invalid_json: return "invalid json";
+        case cgltf_result_invalid_gltf: return "invalid gltf";
+        case cgltf_result_invalid_options: return "invalid options";
+        case cgltf_result_file_not_found: return "file not found";
+        case cgltf_result_io_error: return "io error";
+        case cgltf_result_out_of_memory: return "out of memory";
+        case cgltf_result_legacy_gltf: return "legacy gltf";
+        case cgltf_result_max_enum: return "max enum";
+    }
+    return "unknown error";
+}
+
+static const cgltf_accessor* find_attribute_accessor(const cgltf_primitive *primitive,
+                                                     cgltf_attribute_type type,
+                                                     int index) {
+    if (!primitive) {
+        return NULL;
+    }
+    for (cgltf_size i = 0; i < primitive->attributes_count; i++) {
+        const cgltf_attribute *attr = &primitive->attributes[i];
+        if (attr->type == type && attr->index == index) {
+            return attr->data;
+        }
+    }
+    return NULL;
+}
+
+static void compute_normals_from_triangles(float *positions, uint16_t *indices,
+                                           cgltf_size vertex_count, cgltf_size index_count,
+                                           float *normals) {
+    if (!positions || !indices || !normals) {
+        return;
+    }
+
+    base_memset(normals, 0, vertex_count * 3 * sizeof(float));
+    for (cgltf_size i = 0; i + 2 < index_count; i += 3) {
+        uint16_t i0 = indices[i + 0];
+        uint16_t i1 = indices[i + 1];
+        uint16_t i2 = indices[i + 2];
+        if (i0 >= vertex_count || i1 >= vertex_count || i2 >= vertex_count) {
+            continue;
+        }
+
+        float vx0 = positions[i0 * 3 + 0];
+        float vy0 = positions[i0 * 3 + 1];
+        float vz0 = positions[i0 * 3 + 2];
+
+        float vx1 = positions[i1 * 3 + 0];
+        float vy1 = positions[i1 * 3 + 1];
+        float vz1 = positions[i1 * 3 + 2];
+
+        float vx2 = positions[i2 * 3 + 0];
+        float vy2 = positions[i2 * 3 + 1];
+        float vz2 = positions[i2 * 3 + 2];
+
+        float ax = vx1 - vx0;
+        float ay = vy1 - vy0;
+        float az = vz1 - vz0;
+
+        float bx = vx2 - vx0;
+        float by = vy2 - vy0;
+        float bz = vz2 - vz0;
+
+        float nx = ay * bz - az * by;
+        float ny = az * bx - ax * bz;
+        float nz = ax * by - ay * bx;
+
+        normals[i0 * 3 + 0] += nx;
+        normals[i0 * 3 + 1] += ny;
+        normals[i0 * 3 + 2] += nz;
+
+        normals[i1 * 3 + 0] += nx;
+        normals[i1 * 3 + 1] += ny;
+        normals[i1 * 3 + 2] += nz;
+
+        normals[i2 * 3 + 0] += nx;
+        normals[i2 * 3 + 1] += ny;
+        normals[i2 * 3 + 2] += nz;
+    }
+
+    for (cgltf_size i = 0; i < vertex_count; i++) {
+        float nx = normals[i * 3 + 0];
+        float ny = normals[i * 3 + 1];
+        float nz = normals[i * 3 + 2];
+        float len = fast_sqrtf(nx * nx + ny * ny + nz * nz);
+        if (len > 0.0001f) {
+            float inv = 1.0f / len;
+            normals[i * 3 + 0] = nx * inv;
+            normals[i * 3 + 1] = ny * inv;
+            normals[i * 3 + 2] = nz * inv;
+        } else {
+            normals[i * 3 + 0] = 0.0f;
+            normals[i * 3 + 1] = -1.0f;
+            normals[i * 3 + 2] = 0.0f;
+        }
+    }
+}
+
+static MeshData* load_ceiling_light_mesh(void) {
+    if (g_ceiling_light_mesh_status == 1) {
+        if (g_ceiling_light_mesh_data.vertex_count > 0) {
+            return &g_ceiling_light_mesh_data;
+        }
+        return NULL;
+    }
+    if (g_ceiling_light_mesh_status == -1) {
+        return NULL;
+    }
+
+    ensure_runtime_heap();
+
+    cgltf_options options = {0};
+    cgltf_data *data = NULL;
+    float *positions = NULL;
+    float *normals = NULL;
+    float *uvs = NULL;
+    uint16_t *indices = NULL;
+
+    cgltf_result result = cgltf_parse_file(&options, CEILING_LIGHT_MODEL_PATH, &data);
+    if (result != cgltf_result_success) {
+        SDL_Log("Failed to parse %s: %s", CEILING_LIGHT_MODEL_PATH, cgltf_result_to_string(result));
+        g_ceiling_light_mesh_status = -1;
+        return NULL;
+    }
+
+    result = cgltf_load_buffers(&options, data, CEILING_LIGHT_MODEL_PATH);
+    if (result != cgltf_result_success) {
+        SDL_Log("Failed to load buffers for %s: %s", CEILING_LIGHT_MODEL_PATH, cgltf_result_to_string(result));
+        g_ceiling_light_mesh_status = -1;
+        cgltf_free(data);
+        return NULL;
+    }
+
+    if (data->meshes_count == 0) {
+        SDL_Log("Ceiling light glb contains no meshes");
+        g_ceiling_light_mesh_status = -1;
+        cgltf_free(data);
+        return NULL;
+    }
+
+    cgltf_size total_vertex_count = 0;
+    cgltf_size total_index_count = 0;
+    cgltf_size node_mesh_count = 0;
+    for (cgltf_size node_index = 0; node_index < data->nodes_count; node_index++) {
+        const cgltf_node *node = &data->nodes[node_index];
+        if (!node->mesh) {
+            continue;
+        }
+        const cgltf_mesh *mesh = node->mesh;
+        if (mesh->primitives_count == 0) {
+            continue;
+        }
+        node_mesh_count++;
+        for (cgltf_size prim_index = 0; prim_index < mesh->primitives_count; prim_index++) {
+            const cgltf_primitive *primitive = &mesh->primitives[prim_index];
+            if (primitive->type != cgltf_primitive_type_triangles) {
+                SDL_Log("Ceiling light primitive node %u meshPrim %u must use triangle topology", (unsigned)node_index, (unsigned)prim_index);
+                g_ceiling_light_mesh_status = -1;
+                cgltf_free(data);
+                return NULL;
+            }
+            const cgltf_accessor *position_accessor = find_attribute_accessor(primitive, cgltf_attribute_type_position, 0);
+            if (!position_accessor || position_accessor->count == 0) {
+                SDL_Log("Ceiling light primitive node %u meshPrim %u missing POSITION data", (unsigned)node_index, (unsigned)prim_index);
+                g_ceiling_light_mesh_status = -1;
+                cgltf_free(data);
+                return NULL;
+            }
+            if (position_accessor->count >= UINT16_MAX) {
+                SDL_Log("Ceiling light primitive node %u meshPrim %u vertex count unsupported: %u", (unsigned)node_index, (unsigned)prim_index, (unsigned)position_accessor->count);
+                g_ceiling_light_mesh_status = -1;
+                cgltf_free(data);
+                return NULL;
+            }
+            total_vertex_count += position_accessor->count;
+            if (primitive->indices) {
+                total_index_count += primitive->indices->count;
+            } else {
+                total_index_count += position_accessor->count;
+            }
+        }
+    }
+
+    if (node_mesh_count == 0 || total_vertex_count == 0 || total_index_count == 0) {
+        SDL_Log("Ceiling light glb has no mesh nodes");
+        g_ceiling_light_mesh_status = -1;
+        cgltf_free(data);
+        return NULL;
+    }
+
+    positions = (float *)arena_alloc(g_mesh_arena, sizeof(float) * total_vertex_count * 3);
+    normals = (float *)arena_alloc(g_mesh_arena, sizeof(float) * total_vertex_count * 3);
+    uvs = (float *)arena_alloc(g_mesh_arena, sizeof(float) * total_vertex_count * 2);
+    indices = (uint16_t *)arena_alloc(g_mesh_arena, sizeof(uint16_t) * total_index_count);
+    if (!positions || !normals || !uvs || !indices) {
+        SDL_Log("Out of memory loading ceiling light mesh");
+        goto fail;
+    }
+
+    cgltf_size vertex_offset = 0;
+    cgltf_size index_offset = 0;
+    bool have_normals = true;
+    bool have_uvs = true;
+
+    for (cgltf_size node_index = 0; node_index < data->nodes_count; node_index++) {
+        const cgltf_node *node = &data->nodes[node_index];
+        if (!node->mesh || node->mesh->primitives_count == 0) {
+            continue;
+        }
+        cgltf_float world_matrix[16];
+        cgltf_node_transform_world(node, world_matrix);
+        const cgltf_mesh *mesh = node->mesh;
+        for (cgltf_size prim_index = 0; prim_index < mesh->primitives_count; prim_index++) {
+            const cgltf_primitive *primitive = &mesh->primitives[prim_index];
+            const cgltf_accessor *position_accessor = find_attribute_accessor(primitive, cgltf_attribute_type_position, 0);
+            const cgltf_accessor *uv_accessor = find_attribute_accessor(primitive, cgltf_attribute_type_texcoord, 0);
+            const cgltf_accessor *normal_accessor = find_attribute_accessor(primitive, cgltf_attribute_type_normal, 0);
+
+            cgltf_size prim_vertex_count = position_accessor->count;
+            for (cgltf_size i = 0; i < prim_vertex_count; i++) {
+                cgltf_float temp[3] = {0.0f, 0.0f, 0.0f};
+                if (!cgltf_accessor_read_float(position_accessor, i, temp, 3)) {
+                    SDL_Log("Failed reading POSITION for node %u primitive %u vertex %u", (unsigned)node_index, (unsigned)prim_index, (unsigned)i);
+                    goto fail;
+                }
+                float x = (float)temp[0];
+                float y = (float)temp[1];
+                float z = (float)temp[2];
+                float tx = world_matrix[0] * x + world_matrix[4] * y + world_matrix[8] * z + world_matrix[12];
+                float ty = world_matrix[1] * x + world_matrix[5] * y + world_matrix[9] * z + world_matrix[13];
+                float tz = world_matrix[2] * x + world_matrix[6] * y + world_matrix[10] * z + world_matrix[14];
+                positions[(vertex_offset + i) * 3 + 0] = tx;
+                positions[(vertex_offset + i) * 3 + 1] = ty;
+                positions[(vertex_offset + i) * 3 + 2] = tz;
+            }
+
+            if (uv_accessor && uv_accessor->count == prim_vertex_count) {
+                for (cgltf_size i = 0; i < prim_vertex_count; i++) {
+                    cgltf_float temp[2] = {0.0f, 0.0f};
+                    if (!cgltf_accessor_read_float(uv_accessor, i, temp, 2)) {
+                        SDL_Log("Failed reading UV for node %u primitive %u vertex %u", (unsigned)node_index, (unsigned)prim_index, (unsigned)i);
+                        goto fail;
+                    }
+                    uvs[(vertex_offset + i) * 2 + 0] = (float)temp[0];
+                    uvs[(vertex_offset + i) * 2 + 1] = (float)temp[1];
+                }
+            } else {
+                have_uvs = false;
+                for (cgltf_size i = 0; i < prim_vertex_count; i++) {
+                    uvs[(vertex_offset + i) * 2 + 0] = 0.0f;
+                    uvs[(vertex_offset + i) * 2 + 1] = 0.0f;
+                }
+            }
+
+            if (normal_accessor && normal_accessor->count == prim_vertex_count) {
+                for (cgltf_size i = 0; i < prim_vertex_count; i++) {
+                    cgltf_float temp[3] = {0.0f, 1.0f, 0.0f};
+                    if (!cgltf_accessor_read_float(normal_accessor, i, temp, 3)) {
+                        SDL_Log("Failed reading normal for node %u primitive %u vertex %u", (unsigned)node_index, (unsigned)prim_index, (unsigned)i);
+                        goto fail;
+                    }
+                    float nx = (float)temp[0];
+                    float ny = (float)temp[1];
+                    float nz = (float)temp[2];
+                    float tnx = world_matrix[0] * nx + world_matrix[4] * ny + world_matrix[8] * nz;
+                    float tny = world_matrix[1] * nx + world_matrix[5] * ny + world_matrix[9] * nz;
+                    float tnz = world_matrix[2] * nx + world_matrix[6] * ny + world_matrix[10] * nz;
+                    normals[(vertex_offset + i) * 3 + 0] = tnx;
+                    normals[(vertex_offset + i) * 3 + 1] = tny;
+                    normals[(vertex_offset + i) * 3 + 2] = tnz;
+                }
+            } else {
+                have_normals = false;
+                for (cgltf_size i = 0; i < prim_vertex_count; i++) {
+                    normals[(vertex_offset + i) * 3 + 0] = 0.0f;
+                    normals[(vertex_offset + i) * 3 + 1] = -1.0f;
+                    normals[(vertex_offset + i) * 3 + 2] = 0.0f;
+                }
+            }
+
+            const cgltf_accessor *index_accessor = primitive->indices;
+            if (index_accessor) {
+                for (cgltf_size i = 0; i < index_accessor->count; i++) {
+                    cgltf_size idx = cgltf_accessor_read_index(index_accessor, i);
+                    if (idx >= prim_vertex_count) {
+                        SDL_Log("Ceiling light primitive node %u meshPrim %u index %u out of range", (unsigned)node_index, (unsigned)prim_index, (unsigned)idx);
+                        goto fail;
+                    }
+                    if (vertex_offset + idx >= UINT16_MAX) {
+                        SDL_Log("Ceiling light combined index exceeds supported range");
+                        goto fail;
+                    }
+                    indices[index_offset + i] = (uint16_t)(vertex_offset + idx);
+                }
+                index_offset += index_accessor->count;
+            } else {
+                for (cgltf_size i = 0; i < prim_vertex_count; i++) {
+                    if (vertex_offset + i >= UINT16_MAX) {
+                        SDL_Log("Ceiling light implicit index exceeds supported range");
+                        goto fail;
+                    }
+                    indices[index_offset + i] = (uint16_t)(vertex_offset + i);
+                }
+                index_offset += prim_vertex_count;
+            }
+
+            vertex_offset += prim_vertex_count;
+        }
+    }
+
+    cgltf_size vertex_count = total_vertex_count;
+    cgltf_size index_count = total_index_count;
+
+    float min_x = positions[0];
+    float min_y = positions[1];
+    float min_z = positions[2];
+    float max_x = positions[0];
+    float max_y = positions[1];
+    float max_z = positions[2];
+    for (cgltf_size i = 1; i < vertex_count; i++) {
+        float x = positions[i * 3 + 0];
+        float y = positions[i * 3 + 1];
+        float z = positions[i * 3 + 2];
+        if (x < min_x) min_x = x;
+        if (y < min_y) min_y = y;
+        if (z < min_z) min_z = z;
+        if (x > max_x) max_x = x;
+        if (y > max_y) max_y = y;
+        if (z > max_z) max_z = z;
+    }
+
+    if (!have_normals) {
+        compute_normals_from_triangles(positions, indices, vertex_count, index_count, normals);
+    }
+
+    SDL_Log("Ceiling light mesh bounds: min(%.3f, %.3f, %.3f) max(%.3f, %.3f, %.3f) size(%.3f, %.3f, %.3f)",
+            min_x, min_y, min_z, max_x, max_y, max_z,
+            max_x - min_x, max_y - min_y, max_z - min_z);
+
+    g_ceiling_light_mesh_data.positions = positions;
+    g_ceiling_light_mesh_data.uvs = uvs;
+    g_ceiling_light_mesh_data.normals = normals;
+    g_ceiling_light_mesh_data.surface_types = NULL;
+    g_ceiling_light_mesh_data.triangle_ids = NULL;
+    g_ceiling_light_mesh_data.indices = indices;
+    g_ceiling_light_mesh_data.position_count = (uint32_t)vertex_count;
+    g_ceiling_light_mesh_data.uv_count = (uint32_t)vertex_count;
+    g_ceiling_light_mesh_data.normal_count = (uint32_t)vertex_count;
+    g_ceiling_light_mesh_data.vertex_count = (uint32_t)vertex_count;
+    g_ceiling_light_mesh_data.index_count = (uint32_t)index_count;
+
+    positions = NULL;
+    normals = NULL;
+    uvs = NULL;
+    indices = NULL;
+
+    cgltf_free(data);
+    g_ceiling_light_mesh_status = 1;
+    SDL_Log("Loaded ceiling light mesh (%u vertices, %u indices)",
+            g_ceiling_light_mesh_data.vertex_count, g_ceiling_light_mesh_data.index_count);
+    return &g_ceiling_light_mesh_data;
+
+fail:
+    if (data) cgltf_free(data);
+    g_ceiling_light_mesh_status = -1;
+    return NULL;
 }
 
 static float mesh_min_y(const MeshData *mesh) {
@@ -3448,7 +3846,7 @@ static int complete_gpu_setup(GameApp *app) {
     float start_yaw = 0.0f;
     find_start_position(g_map_data, MAP_WIDTH, MAP_HEIGHT, &start_x, &start_z, &start_yaw);
 
-    MeshData *mesh = generate_mesh(g_map_data, MAP_WIDTH, MAP_HEIGHT, start_x, start_z);
+    MeshData *mesh = generate_mesh(app, g_map_data, MAP_WIDTH, MAP_HEIGHT, start_x, start_z);
     app->scene_vertex_count = mesh->vertex_count;
     app->scene_index_count = mesh->index_count;
 
@@ -4163,7 +4561,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         float start_yaw = 0.0f;
         find_start_position(g_map_data, MAP_WIDTH, MAP_HEIGHT, &start_x, &start_z, &start_yaw);
 
-        MeshData *mesh = generate_mesh(g_map_data, MAP_WIDTH, MAP_HEIGHT, start_x, start_z);
+        MeshData *mesh = generate_mesh(&g_App, g_map_data, MAP_WIDTH, MAP_HEIGHT, start_x, start_z);
         if (!mesh) {
             SDL_Log("Failed to generate mesh");
             return SDL_APP_FAILURE;
@@ -4200,7 +4598,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         float start_yaw = 0.0f;
         find_start_position(g_map_data, MAP_WIDTH, MAP_HEIGHT, &start_x, &start_z, &start_yaw);
 
-        MeshData *mesh = generate_mesh(g_map_data, MAP_WIDTH, MAP_HEIGHT, start_x, start_z);
+        MeshData *mesh = generate_mesh(&g_App, g_map_data, MAP_WIDTH, MAP_HEIGHT, start_x, start_z);
         if (!mesh) {
             SDL_Log("Failed to generate mesh");
             return SDL_APP_FAILURE;

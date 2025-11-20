@@ -64,13 +64,22 @@ const stdoutDecoder = new TextDecoder();
                         return 0;
                     }
                     let written = 0;
+                    let output = '';
                     const view = new DataView(wasmMemory.buffer);
                     for (let i = 0; i < iovs_len; i++) {
                         const ptr = view.getUint32(iovs + i * 8, true);
                         const len = view.getUint32(iovs + i * 8 + 4, true);
                         const bytes = new Uint8Array(wasmMemory.buffer, ptr, len);
-                        console.log(stdoutDecoder.decode(bytes));
+                        output += stdoutDecoder.decode(bytes, { stream: true });
                         written += len;
+                    }
+                    if (output.length > 0) {
+                        // Remove trailing newline if present, since console.log adds one
+                        if (output.endsWith('\n')) {
+                            console.log(output.slice(0, -1));
+                        } else {
+                            console.log(output);
+                        }
                     }
                     view.setUint32(nwritten, written, true);
                     return 0;

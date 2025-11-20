@@ -182,6 +182,9 @@ clang \
     base/exit.c \
     base/mat4.c \
     base/base_math.c \
+    stdlib/string.c \
+    stdlib/stdlib.c \
+    stdlib/stdio.c \
     native/wasi_wasm.c
 """
 

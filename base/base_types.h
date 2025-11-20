@@ -32,10 +32,12 @@ typedef signed long long int64_t;
 #if defined(_WIN32) && defined(_WIN64)
     // For 64 bit Windows the long is 4 bytes, but pointer is 8 bytes
     typedef uint64_t uintptr_t;
+    typedef uint64_t ptrdiff_t;
 #else
     // For 32 bit platforms and wasm64 the long and a pointer is 4 bytes, for
     // 64 bit macOS/Linux the long and pointer is 8 bytes
     typedef unsigned long uintptr_t;
+    typedef unsigned long ptrdiff_t;
 #endif
 
 #if defined(_WIN32) && defined(_WIN64)
@@ -82,9 +84,11 @@ typedef signed long long int64_t;
 #define UINT64_C(value) value##ull
 #define INTMAX_C(value) INT64_C(value)
 #define UINTMAX_C(value) UINT64_C(value)
+#define UINT16_MAX ((uint16_t)0xFFFFu)
 #define INT32_MAX ((int32_t)0x7FFFFFFF)
 #define UINT32_MAX ((uint32_t)0xFFFFFFFFu)
 #define INT64_MAX ((int64_t)0x7FFFFFFFFFFFFFFFll)
 #define UINT64_MAX ((uint64_t)0xFFFFFFFFFFFFFFFFull)
+#define FLT_MAX 3.402823466e+38F
 
 #endif
