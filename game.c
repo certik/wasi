@@ -214,9 +214,6 @@ typedef struct {
     bool overlay_dirty;
 
     SceneUniforms scene_uniforms;
-    uint32_t static_light_count;
-    float static_light_positions[MAX_STATIC_LIGHTS][3];
-    float static_light_colors[MAX_STATIC_LIGHTS][3];
 
     Scene *scene;
     Engine *engine;
@@ -412,6 +409,7 @@ static Uint32 shader_code_size(string source) {
 // ============================================================================
 // Mesh generation helpers copied from gm.c (trimmed to necessary pieces)
 // ============================================================================
+#if 0
 
 typedef struct {
     float *positions;
@@ -1708,6 +1706,29 @@ static void add_mesh_instance(MeshGenContext *ctx, const MeshData *mesh,
     }
 }
 
+#endif // MESH_GENERATION_UNUSED
+
+static inline float clamp_pitch(float pitch) {
+    const float max_pitch = PI / 2.0f - 0.01f;
+    if (pitch < -max_pitch) {
+        return -max_pitch;
+    }
+    if (pitch > max_pitch) {
+        return max_pitch;
+    }
+    return pitch;
+}
+
+static inline float clampf(float v, float min, float max) {
+    if (v < min) return min;
+    if (v > max) return max;
+    return v;
+}
+
+static inline int is_solid_cell(int value) {
+    return (value == 1) || (value == 2) || (value == 3);
+}
+
 static int is_walkable(const GameState *state, float x, float z) {
     int min_x = (int)(x - state->collision_radius);
     int max_x = (int)(x + state->collision_radius);
@@ -1988,48 +2009,6 @@ static const int g_default_map[MAP_HEIGHT][MAP_WIDTH] = {
 
 static int g_map_data[MAP_WIDTH * MAP_HEIGHT];
 
-static const float g_light_color_palette[][3] = {
-    {1.00f, 0.95f, 0.85f}, // Warm white
-    {0.90f, 0.95f, 1.00f}, // Cool tint
-    {0.96f, 0.90f, 1.00f}, // Soft magenta hue
-};
-
-static void load_map_with_lights(GameApp *app) {
-    app->static_light_count = 0;
-    base_memset(app->static_light_positions, 0, sizeof(app->static_light_positions));
-    base_memset(app->static_light_colors, 0, sizeof(app->static_light_colors));
-    const size_t palette_count = SDL_arraysize(g_light_color_palette);
-    for (int z = 0; z < MAP_HEIGHT; z++) {
-        for (int x = 0; x < MAP_WIDTH; x++) {
-            int cell = g_default_map[z][x];
-            if (cell == LIGHT_FLOOR_CELL) {
-                if (app->static_light_count < MAX_STATIC_LIGHTS) {
-                    float *pos = app->static_light_positions[app->static_light_count];
-                    pos[0] = (float)x + 0.5f;
-                    pos[1] = CEILING_LIGHT_HEIGHT;
-                    pos[2] = (float)z + 0.5f;
-                    float *color = app->static_light_colors[app->static_light_count];
-                    if (palette_count > 0) {
-                        const float *palette = g_light_color_palette[app->static_light_count % palette_count];
-                        color[0] = palette[0] * CEILING_LIGHT_INTENSITY;
-                        color[1] = palette[1] * CEILING_LIGHT_INTENSITY;
-                        color[2] = palette[2] * CEILING_LIGHT_INTENSITY;
-                    } else {
-                        color[0] = CEILING_LIGHT_INTENSITY;
-                        color[1] = CEILING_LIGHT_INTENSITY;
-                        color[2] = CEILING_LIGHT_INTENSITY;
-                    }
-                    app->static_light_count++;
-                } else {
-                    SDL_Log("WARNING: Max static lights reached, ignoring cell (%d,%d)", x, z);
-                }
-                cell = 0;
-            }
-            g_map_data[z * MAP_WIDTH + x] = cell;
-        }
-    }
-}
-
 static int find_start_position(int *map, int width, int height,
                                float *startX, float *startZ, float *startYaw) {
     for (int z = 0; z < height; z++) {
@@ -2055,9 +2034,136 @@ static int find_start_position(int *map, int width, int height,
     return 0;
 }
 
+// Build a scene blob using scene_builder (shared by runtime and export paths).
+// On success, returns heap-owned blob (caller frees via scene_free) and spawn info.
+static bool build_scene_blob(GameApp *app,
+                             uint8_t **out_blob, uint64_t *out_blob_size,
+                             float *out_spawn_x, float *out_spawn_z, float *out_spawn_yaw) {
+    if (!out_blob || !out_blob_size || !out_spawn_x || !out_spawn_z || !out_spawn_yaw) {
+        SDL_Log("build_scene_blob: invalid arguments");
+        return false;
+    }
+
+    // Initialize map data from default map (leave light markers for scene_builder)
+    for (int z = 0; z < MAP_HEIGHT; z++) {
+        for (int x = 0; x < MAP_WIDTH; x++) {
+            g_map_data[z * MAP_WIDTH + x] = g_default_map[z][x];
+        }
+    }
+
+    float spawn_x = 1.5f;
+    float spawn_z = 1.5f;
+    float spawn_yaw = 0.0f;
+    find_start_position(g_map_data, MAP_WIDTH, MAP_HEIGHT, &spawn_x, &spawn_z, &spawn_yaw);
+
+    Arena *scene_arena = arena_new(8 * 1024 * 1024);
+    SceneBuilder *builder = scene_builder_create(scene_arena);
+
+    SceneConfig config = (SceneConfig){0};
+    config.map_data = g_map_data;
+    config.map_width = MAP_WIDTH;
+    config.map_height = MAP_HEIGHT;
+    config.spawn_x = spawn_x;
+    config.spawn_z = spawn_z;
+    config.sphere_obj_path = SPHERE_OBJ_PATH;
+    config.book_obj_path = BOOK_OBJ_PATH;
+    config.chair_obj_path = CHAIR_OBJ_PATH;
+    config.ceiling_light_gltf_path = CEILING_LIGHT_MODEL_PATH;
+    config.floor_texture_path = FLOOR_TEXTURE_PATH;
+    config.wall_texture_path = WALL_TEXTURE_PATH;
+    config.ceiling_texture_path = CEILING_TEXTURE_PATH;
+    config.sphere_texture_path = SPHERE_TEXTURE_PATH;
+    config.book_texture_path = BOOK_TEXTURE_PATH;
+    config.chair_texture_path = CHAIR_TEXTURE_PATH;
+    config.window_texture_path = WINDOW_TEXTURE_PATH;
+    config.ceiling_light_texture_path = CHAIR_TEXTURE_PATH;
+
+    bool ok = scene_builder_generate(builder, &config);
+    if (!ok) {
+        SDL_Log("build_scene_blob: failed to generate scene");
+        scene_builder_free(builder);
+        arena_free(scene_arena);
+        return false;
+    }
+
+    uint8_t *serialized = NULL;
+    uint64_t serialized_size = scene_builder_serialize(builder, &serialized);
+    if (!serialized || serialized_size == 0) {
+        SDL_Log("build_scene_blob: failed to serialize scene");
+        scene_builder_free(builder);
+        arena_free(scene_arena);
+        return false;
+    }
+
+    uint8_t *owned_blob = (uint8_t *)malloc((size_t)serialized_size);
+    if (!owned_blob) {
+        SDL_Log("build_scene_blob: out of memory allocating scene blob");
+        scene_builder_free(builder);
+        arena_free(scene_arena);
+        return false;
+    }
+    base_memcpy(owned_blob, serialized, (size_t)serialized_size);
+
+    scene_builder_free(builder);
+    arena_free(scene_arena);
+
+    *out_blob = owned_blob;
+    *out_blob_size = serialized_size;
+    *out_spawn_x = spawn_x;
+    *out_spawn_z = spawn_z;
+    *out_spawn_yaw = spawn_yaw;
+    return true;
+}
+
 // ============================================================================
 // OBJ export functions
 // ============================================================================
+
+// Helper: copy SceneHeader data into a temporary MeshData view (SoA arrays).
+static bool build_mesh_view_from_scene(const SceneHeader *scene, Scratch scratch, MeshData *out) {
+    if (!scene || !out) {
+        return false;
+    }
+
+    uint32_t vertex_count = scene->vertex_count;
+    uint32_t index_count = scene->index_count;
+
+    out->vertex_count = vertex_count;
+    out->index_count = index_count;
+    out->position_count = vertex_count;
+    out->uv_count = vertex_count;
+    out->normal_count = vertex_count;
+
+    out->positions = (float *)arena_alloc(scratch.arena, sizeof(float) * vertex_count * 3);
+    out->uvs = (float *)arena_alloc(scratch.arena, sizeof(float) * vertex_count * 2);
+    out->normals = (float *)arena_alloc(scratch.arena, sizeof(float) * vertex_count * 3);
+    out->surface_types = (float *)arena_alloc(scratch.arena, sizeof(float) * vertex_count);
+    out->triangle_ids = NULL;
+    out->indices = (uint16_t *)scene->indices;
+
+    if (!out->positions || !out->uvs || !out->normals || !out->surface_types) {
+        SDL_Log("build_mesh_view_from_scene: allocation failed");
+        return false;
+    }
+
+    const SceneVertex *verts = scene->vertices;
+    for (uint32_t i = 0; i < vertex_count; i++) {
+        out->positions[i * 3 + 0] = verts[i].position[0];
+        out->positions[i * 3 + 1] = verts[i].position[1];
+        out->positions[i * 3 + 2] = verts[i].position[2];
+
+        out->uvs[i * 2 + 0] = verts[i].uv[0];
+        out->uvs[i * 2 + 1] = verts[i].uv[1];
+
+        out->normals[i * 3 + 0] = verts[i].normal[0];
+        out->normals[i * 3 + 1] = verts[i].normal[1];
+        out->normals[i * 3 + 2] = verts[i].normal[2];
+
+        out->surface_types[i] = verts[i].surface_type;
+    }
+
+    return true;
+}
 
 // Helper function to write string to file
 static bool write_string_to_file(const char *filename, const char *data, size_t length) {
@@ -2341,10 +2447,10 @@ static bool write_geometry_usd(const char *filename, const char *mesh_name,
 }
 
 // Export mesh and scene to USD file
-static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
+static bool export_to_usd(GameApp *app, const SceneHeader *scene, const char *filename,
                           float camera_x, float camera_y, float camera_z,
                           float camera_yaw, float camera_pitch) {
-    if (!mesh || !filename || !app) {
+    if (!scene || !filename || !app) {
         SDL_Log("export_to_usd: invalid arguments");
         return false;
     }
@@ -2352,13 +2458,18 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
     SDL_Log("Exporting scene to USD: %s", filename);
     SDL_Log("Camera: pos(%.2f,%.2f,%.2f) yaw=%.2f pitch=%.2f",
             camera_x, camera_y, camera_z, camera_yaw, camera_pitch);
-    SDL_Log("Static lights: %u", app->static_light_count);
-    SDL_Log("Mesh data: vertices=%u uvs=%u normals=%u indices=%u",
-            mesh->vertex_count, mesh->uv_count, mesh->normal_count, mesh->index_count);
-    SDL_Log("UV pointer: %p", (void*)mesh->uvs);
+    SDL_Log("Mesh data: vertices=%u indices=%u",
+            scene->vertex_count, scene->index_count);
 
     Scratch scratch = scratch_begin();
     ensure_runtime_heap();
+
+    MeshData mesh_view = (MeshData){0};
+    if (!build_mesh_view_from_scene(scene, scratch, &mesh_view)) {
+        scratch_end(scratch);
+        return false;
+    }
+    MeshData *mesh = &mesh_view;
 
     // Allocate buffer for USD content (estimate generously)
     size_t estimated_size = mesh->vertex_count * 150 + mesh->index_count * 20 + 100000;
@@ -2815,9 +2926,10 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
     }
 
     // === Static lights ===
-    for (uint32_t i = 0; i < app->static_light_count; i++) {
-        float *light_pos = app->static_light_positions[i];
-        float *light_color = app->static_light_colors[i];
+    const uint32_t static_light_count = scene->light_count;
+    const SceneLight *static_lights = scene->lights;
+    for (uint32_t i = 0; i < static_light_count; i++) {
+        const SceneLight *light = &static_lights[i];
 
         APPENDF("    def SphereLight \"ceiling_light_%u\"\n", i);
         APPEND("    {\n");
@@ -2825,7 +2937,8 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
         APPENDF("        float inputs:radius = %.2f\n", CEILING_LIGHT_RADIUS);
         APPENDF("        float inputs:colorTemperature = %.1f\n", CEILING_LIGHT_USD_TEMPERATURE);
         APPEND("        bool inputs:enableColorTemperature = 1\n");
-        APPENDF("        double3 xformOp:translate = (%.6f, %.6f, %.6f)\n", light_pos[0], light_pos[1], light_pos[2]);
+        APPENDF("        double3 xformOp:translate = (%.6f, %.6f, %.6f)\n",
+                light->position[0], light->position[1], light->position[2]);
         APPEND("        uniform token[] xformOpOrder = [\"xformOp:translate\"]\n");
         APPEND("    }\n\n");
     }
@@ -3012,12 +3125,20 @@ static bool save_state_to_json(const GameState *state, const char *filename) {
 }
 
 // Export mesh to OBJ file
-static bool export_mesh_to_obj(MeshData *mesh, const char *filename) {
+static bool export_mesh_to_obj(const SceneHeader *scene, const char *filename) {
     Scratch scratch = scratch_begin();
-    if (!mesh || !filename) {
+    if (!scene || !filename) {
         SDL_Log("export_mesh_to_obj: invalid arguments");
+        scratch_end(scratch);
         return false;
     }
+
+    MeshData mesh_view = (MeshData){0};
+    if (!build_mesh_view_from_scene(scene, scratch, &mesh_view)) {
+        scratch_end(scratch);
+        return false;
+    }
+    MeshData *mesh = &mesh_view;
 
     SDL_Log("Exporting mesh to OBJ: %s", filename);
     SDL_Log("Vertices: %u, Indices: %u", mesh->vertex_count, mesh->index_count);
@@ -3827,76 +3948,18 @@ static int complete_gpu_setup(GameApp *app) {
     SDL_ReleaseGPUShader(app->device, overlay_vs);
     SDL_ReleaseGPUShader(app->device, overlay_fs);
 
-    // Initialize map data from default map
-    // Keep lights (value 9) in the map so scene_builder can extract them
-    for (int z = 0; z < MAP_HEIGHT; z++) {
-        for (int x = 0; x < MAP_WIDTH; x++) {
-            g_map_data[z * MAP_WIDTH + x] = g_default_map[z][x];
-        }
-    }
-
-    float spawn_x = 1.5f;
-    float spawn_z = 1.5f;
-    float spawn_yaw = 0.0f;
-    find_start_position(g_map_data, MAP_WIDTH, MAP_HEIGHT, &spawn_x, &spawn_z, &spawn_yaw);
-
-    // Build scene in memory using scene_builder
-    Arena *scene_arena = arena_new(8 * 1024 * 1024);
-    SceneBuilder *builder = scene_builder_create(scene_arena);
-
-    SceneConfig config = {0};
-    config.map_data = g_map_data;
-    config.map_width = MAP_WIDTH;
-    config.map_height = MAP_HEIGHT;
-    config.spawn_x = spawn_x;
-    config.spawn_z = spawn_z;
-    config.sphere_obj_path = SPHERE_OBJ_PATH;
-    config.book_obj_path = BOOK_OBJ_PATH;
-    config.chair_obj_path = CHAIR_OBJ_PATH;
-    config.ceiling_light_gltf_path = CEILING_LIGHT_MODEL_PATH;
-    config.floor_texture_path = FLOOR_TEXTURE_PATH;
-    config.wall_texture_path = WALL_TEXTURE_PATH;
-    config.ceiling_texture_path = CEILING_TEXTURE_PATH;
-    config.sphere_texture_path = SPHERE_TEXTURE_PATH;
-    config.book_texture_path = BOOK_TEXTURE_PATH;
-    config.chair_texture_path = CHAIR_TEXTURE_PATH;
-    config.window_texture_path = WINDOW_TEXTURE_PATH;
-    config.ceiling_light_texture_path = CHAIR_TEXTURE_PATH;
-
-    if (!scene_builder_generate(builder, &config)) {
-        SDL_Log("Failed to generate scene");
-        scene_builder_free(builder);
+    uint8_t *scene_blob = NULL;
+    uint64_t scene_blob_size = 0;
+    float spawn_x = 0.0f, spawn_z = 0.0f, spawn_yaw = 0.0f;
+    if (!build_scene_blob(app, &scene_blob, &scene_blob_size, &spawn_x, &spawn_z, &spawn_yaw)) {
         return -1;
     }
-
-    // Serialize to blob
-    uint8_t *blob = NULL;
-    uint64_t blob_size = scene_builder_serialize(builder, &blob);
-    if (!blob || blob_size == 0) {
-        SDL_Log("Failed to serialize scene");
-        scene_builder_free(builder);
-        arena_free(scene_arena);
-        return -1;
-    }
-
-    // Copy blob to heap-owned memory so scene_free can free it safely
-    uint8_t *owned_blob = (uint8_t *)malloc((size_t)blob_size);
-    if (!owned_blob) {
-        SDL_Log("Out of memory allocating scene blob");
-        scene_builder_free(builder);
-        arena_free(scene_arena);
-        return -1;
-    }
-    base_memcpy(owned_blob, blob, (size_t)blob_size);
-
-    scene_builder_free(builder);
-    arena_free(scene_arena);
 
     // Load scene from blob (engine will free owned_blob on shutdown)
-    app->scene = scene_load_from_memory(owned_blob, blob_size, false, 0);
+    app->scene = scene_load_from_memory(scene_blob, scene_blob_size, false, 0);
     if (!app->scene) {
         SDL_Log("Failed to load scene");
-        free(owned_blob);
+        free(scene_blob);
         return -1;
     }
 
@@ -4393,31 +4456,34 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     if (g_App.export_obj_mode) {
         SDL_Log("Export mode enabled, output: %s", g_App.export_obj_path);
 
-        ensure_runtime_heap();
-        load_map_with_lights(&g_App);
-
-        float start_x = 1.5f;
-        float start_z = 1.5f;
-        float start_yaw = 0.0f;
-        find_start_position(g_map_data, MAP_WIDTH, MAP_HEIGHT, &start_x, &start_z, &start_yaw);
-
-        MeshData *mesh = generate_mesh(&g_App, g_map_data, MAP_WIDTH, MAP_HEIGHT, start_x, start_z);
-        if (!mesh) {
-            SDL_Log("Failed to generate mesh");
+        uint8_t *scene_blob = NULL;
+        uint64_t scene_blob_size = 0;
+        float spawn_x = 0.0f, spawn_z = 0.0f, spawn_yaw = 0.0f;
+        if (!build_scene_blob(&g_App, &scene_blob, &scene_blob_size, &spawn_x, &spawn_z, &spawn_yaw)) {
             return SDL_APP_FAILURE;
         }
 
-        // Export to OBJ file
-        bool obj_success = export_mesh_to_obj(mesh, g_App.export_obj_path);
-        if (!obj_success) {
-            SDL_Log("Failed to export OBJ file");
+        Scene *scene = scene_load_from_memory(scene_blob, scene_blob_size, false, 0);
+        if (!scene) {
+            SDL_Log("Failed to load scene for export");
+            free(scene_blob);
             return SDL_APP_FAILURE;
         }
 
-        // Export MTL file
+        const SceneHeader *header = scene_get_header(scene);
+        if (!header) {
+            SDL_Log("Failed to access scene header");
+            scene_free(scene);
+            return SDL_APP_FAILURE;
+        }
+
+        bool obj_success = export_mesh_to_obj(header, g_App.export_obj_path);
         bool mtl_success = export_mtl_file(g_App.export_obj_path);
-        if (!mtl_success) {
-            SDL_Log("Failed to export MTL file");
+
+        scene_free(scene);
+
+        if (!obj_success || !mtl_success) {
+            SDL_Log("Failed to export OBJ/MTL files");
             return SDL_APP_FAILURE;
         }
 
@@ -4429,17 +4495,24 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     if (g_App.export_usd_mode) {
         SDL_Log("USD export mode enabled, output: %s", g_App.export_usd_path);
 
-        ensure_runtime_heap();
-        load_map_with_lights(&g_App);
+        uint8_t *scene_blob = NULL;
+        uint64_t scene_blob_size = 0;
+        float start_x = 0.0f, start_z = 0.0f, start_yaw = 0.0f;
+        if (!build_scene_blob(&g_App, &scene_blob, &scene_blob_size, &start_x, &start_z, &start_yaw)) {
+            return SDL_APP_FAILURE;
+        }
 
-        float start_x = 1.5f;
-        float start_z = 1.5f;
-        float start_yaw = 0.0f;
-        find_start_position(g_map_data, MAP_WIDTH, MAP_HEIGHT, &start_x, &start_z, &start_yaw);
+        Scene *scene = scene_load_from_memory(scene_blob, scene_blob_size, false, 0);
+        if (!scene) {
+            SDL_Log("Failed to load scene for USD export");
+            free(scene_blob);
+            return SDL_APP_FAILURE;
+        }
 
-        MeshData *mesh = generate_mesh(&g_App, g_map_data, MAP_WIDTH, MAP_HEIGHT, start_x, start_z);
-        if (!mesh) {
-            SDL_Log("Failed to generate mesh");
+        const SceneHeader *header = scene_get_header(scene);
+        if (!header) {
+            SDL_Log("Failed to access scene header");
+            scene_free(scene);
             return SDL_APP_FAILURE;
         }
 
@@ -4454,9 +4527,10 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         // For now, use defaults
 
         // Export to USD file with scene, camera, and lights
-        bool usd_success = export_to_usd(&g_App, mesh, g_App.export_usd_path,
+        bool usd_success = export_to_usd(&g_App, header, g_App.export_usd_path,
                                           camera_x, camera_y, camera_z,
                                           camera_yaw, camera_pitch);
+        scene_free(scene);
         if (!usd_success) {
             SDL_Log("Failed to export USD file");
             return SDL_APP_FAILURE;
