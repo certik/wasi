@@ -44,9 +44,14 @@ static const size_t RESERVED_SIZE = 1ULL << 32; // Reserve 4GB of virtual addres
 static int stored_argc = 0;
 static char** stored_argv = NULL;
 
-// Minimal malloc/free declarations (provided by our stdlib implementation)
-extern void* malloc(size_t size);
-extern void free(void* ptr);
+typedef struct {
+    void* addr;
+    size_t size;
+    bool in_use;
+} MmapHandle;
+
+#define MMAP_HANDLE_CAP 10
+static MmapHandle g_mmap_handles[MMAP_HANDLE_CAP] = {0};
 
 // Helper function to make a raw syscall.
 static inline long syscall(long n, long a1, long a2, long a3, long a4, long a5, long a6) {
@@ -328,15 +333,23 @@ bool platform_read_file_mmap(const char *filename, uint64_t *out_handle, void **
         return false;
     }
 
-    MmapHandle *handle = (MmapHandle *)malloc(sizeof(MmapHandle));
-    if (!handle) {
+    int slot = -1;
+    for (int i = 0; i < MMAP_HANDLE_CAP; i++) {
+        if (!g_mmap_handles[i].in_use) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot == -1) {
         syscall(SYS_MUNMAP, (long)addr, (long)file_size, 0, 0, 0, 0);
         return false;
     }
-    handle->addr = addr;
-    handle->size = file_size;
 
-    *out_handle = (uint64_t)(uintptr_t)handle;
+    g_mmap_handles[slot].addr = addr;
+    g_mmap_handles[slot].size = file_size;
+    g_mmap_handles[slot].in_use = true;
+
+    *out_handle = (uint64_t)(slot + 1);
     *out_data = addr;
     *out_size = file_size;
     return true;
@@ -344,11 +357,16 @@ bool platform_read_file_mmap(const char *filename, uint64_t *out_handle, void **
 
 void platform_file_unmap(uint64_t handle) {
     if (handle == 0) return;
-    MmapHandle *h = (MmapHandle *)(uintptr_t)handle;
+    uint64_t idx = handle - 1;
+    if (idx >= MMAP_HANDLE_CAP) return;
+    MmapHandle *h = &g_mmap_handles[idx];
+    if (!h->in_use) return;
     if (h->addr && h->size > 0) {
         syscall(SYS_MUNMAP, (long)h->addr, (long)h->size, 0, 0, 0, 0);
     }
-    free(h);
+    h->addr = NULL;
+    h->size = 0;
+    h->in_use = false;
 }
 
 int wasi_args_get(char** argv, char* argv_buf) {

@@ -67,8 +67,6 @@ __declspec(dllimport) HANDLE __stdcall CreateFileMappingA(HANDLE hFile, void* lp
 __declspec(dllimport) LPVOID __stdcall MapViewOfFile(HANDLE hFileMappingObject, DWORD dwDesiredAccess, DWORD dwFileOffsetHigh, DWORD dwFileOffsetLow, size_t dwNumberOfBytesToMap);
 __declspec(dllimport) int __stdcall UnmapViewOfFile(LPCVOID lpBaseAddress);
 __declspec(dllimport) int __stdcall GetFileSizeEx(HANDLE hFile, LARGE_INTEGER* lpFileSize);
-__declspec(dllimport) void* __cdecl malloc(size_t size);
-__declspec(dllimport) void __cdecl free(void* ptr);
 
 // Our emulated heap state for Windows
 static uint8_t* windows_heap_base = NULL;
@@ -79,6 +77,17 @@ static const size_t RESERVED_SIZE = 1ULL << 32; // Reserve 4GB of virtual addres
 static int stored_argc = 0;
 static char** stored_argv = NULL;
 static char* stored_argv_buf = NULL;
+
+typedef struct {
+    void   *view;
+    HANDLE  hFile;
+    HANDLE  hMapping;
+    size_t  size;
+    bool    in_use;
+} MmapHandle;
+
+#define MMAP_HANDLE_CAP 10
+static MmapHandle g_mmap_handles[MMAP_HANDLE_CAP] = {0};
 
 // Emulation of `fd_write` using Windows WriteFile API
 uint32_t wasi_fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nwritten) {
@@ -479,10 +488,6 @@ int wasi_args_get(char** argv, char* argv_buf) {
 }
 
 typedef struct {
-    void   *view;
-    HANDLE  hFile;
-    HANDLE  hMapping;
-    size_t  size;
 } MmapHandle;
 
 bool platform_read_file_mmap(const char *filename, uint64_t *out_handle, void **out_data, size_t *out_size) {
@@ -541,20 +546,27 @@ bool platform_read_file_mmap(const char *filename, uint64_t *out_handle, void **
         return false;
     }
 
-    MmapHandle *internal = (MmapHandle *)malloc(sizeof(MmapHandle));
-    if (!internal) {
+    int slot = -1;
+    for (int i = 0; i < MMAP_HANDLE_CAP; i++) {
+        if (!g_mmap_handles[i].in_use) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot == -1) {
         UnmapViewOfFile(view);
         CloseHandle(hMapping);
         CloseHandle(hFile);
         return false;
     }
 
-    internal->view = view;
-    internal->hFile = hFile;
-    internal->hMapping = hMapping;
-    internal->size = file_size;
+    g_mmap_handles[slot].view = view;
+    g_mmap_handles[slot].hFile = hFile;
+    g_mmap_handles[slot].hMapping = hMapping;
+    g_mmap_handles[slot].size = file_size;
+    g_mmap_handles[slot].in_use = true;
 
-    *out_handle = (uint64_t)(uintptr_t)internal;
+    *out_handle = (uint64_t)(slot + 1);
     *out_data = view;
     *out_size = file_size;
     return true;
@@ -563,7 +575,12 @@ bool platform_read_file_mmap(const char *filename, uint64_t *out_handle, void **
 void platform_file_unmap(uint64_t handle) {
     if (handle == 0) return;
 
-    MmapHandle *internal = (MmapHandle *)(uintptr_t)handle;
+    uint64_t idx = handle - 1;
+    if (idx >= MMAP_HANDLE_CAP) return;
+
+    MmapHandle *internal = &g_mmap_handles[idx];
+    if (!internal->in_use) return;
+
     if (internal->view) {
         UnmapViewOfFile(internal->view);
     }
@@ -573,7 +590,11 @@ void platform_file_unmap(uint64_t handle) {
     if (internal->hFile) {
         CloseHandle(internal->hFile);
     }
-    free(internal);
+    internal->view = NULL;
+    internal->hFile = NULL;
+    internal->hMapping = NULL;
+    internal->size = 0;
+    internal->in_use = false;
 }
 
 #ifndef PLATFORM_SKIP_ENTRY
