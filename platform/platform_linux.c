@@ -75,12 +75,24 @@ void wasi_proc_exit(int status) {
 
 // Initializes the heap using mmap. We reserve large chunk of virtual
 // address space but don't commit any physical memory to it initially.
-#ifdef WASI_LINUX_SKIP_ENTRY
-void ensure_heap_initialized() {
-#else
 static void ensure_heap_initialized() {
-#endif
     if (linux_heap_base == NULL) {
+#ifdef PLATFORM_USE_EXTERNAL_STDLIB
+        // Use libc mmap when external stdlib is available
+        extern void* mmap(void *addr, size_t len, int prot, int flags, int fd, long offset);
+        linux_heap_base = (uint8_t*)mmap(
+            NULL,
+            RESERVED_SIZE,
+            0,  // PROT_NONE
+            MAP_PRIVATE | MAP_ANONYMOUS,
+            -1,
+            0
+        );
+        if (linux_heap_base == (void*)-1) {
+            linux_heap_base = NULL;
+        }
+#else
+        // Use raw syscall for nostdlib builds
         long mmap_ret = syscall(
             SYS_MMAP,
             (long)NULL,          // address hint
@@ -95,6 +107,7 @@ static void ensure_heap_initialized() {
         } else {
             linux_heap_base = (uint8_t*)mmap_ret;
         }
+#endif
     }
 }
 
@@ -125,6 +138,16 @@ void* wasi_heap_grow(size_t num_bytes) {
     }
 
     // Use mprotect to make the pages readable and writable, which commits them.
+#ifdef PLATFORM_USE_EXTERNAL_STDLIB
+    // Use libc mprotect when external stdlib is available
+    extern int mprotect(void *addr, size_t len, int prot);
+    int ret = mprotect(
+        (void*)(linux_heap_base + (committed_pages * WASM_PAGE_SIZE)),
+        num_pages * WASM_PAGE_SIZE,
+        PROT_READ | PROT_WRITE
+    );
+#else
+    // Use raw syscall for nostdlib builds
     long ret = syscall(
         SYS_MPROTECT,
         (long)(linux_heap_base + (committed_pages * WASM_PAGE_SIZE)),
@@ -132,6 +155,7 @@ void* wasi_heap_grow(size_t num_bytes) {
         (long)(PROT_READ | PROT_WRITE),
         0, 0, 0
     );
+#endif
 
     if (ret != 0) {
         return NULL; // mprotect failed
