@@ -4386,17 +4386,13 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         }
     }
 
-
-    // COMMENTED OUT - export mode requires old mesh generation code
-    /*
-    // Handle export mode: generate mesh and export to OBJ, then exit
+    // Handle export modes early to avoid SDL video/device initialization in headless CI
     if (g_App.export_obj_mode) {
         SDL_Log("Export mode enabled, output: %s", g_App.export_obj_path);
 
-        // Initialize map data (same as in init_game)
+        ensure_runtime_heap();
         load_map_with_lights(&g_App);
 
-        // Generate the mesh
         float start_x = 1.5f;
         float start_z = 1.5f;
         float start_yaw = 0.0f;
@@ -4430,10 +4426,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     if (g_App.export_usd_mode) {
         SDL_Log("USD export mode enabled, output: %s", g_App.export_usd_path);
 
-        // Initialize map data (same as in init_game)
+        ensure_runtime_heap();
         load_map_with_lights(&g_App);
 
-        // Generate the mesh
         float start_x = 1.5f;
         float start_z = 1.5f;
         float start_yaw = 0.0f;
@@ -4467,7 +4462,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         SDL_Log("USD export completed successfully");
         return SDL_APP_SUCCESS;  // Exit successfully without running the game
     }
-    */
 
     int init_status = init_game(&g_App);
     if (init_status < 0) {
