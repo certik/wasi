@@ -1388,7 +1388,7 @@ static void compute_normals_from_triangles(float *positions, uint16_t *indices,
         float nx = normals[i * 3 + 0];
         float ny = normals[i * 3 + 1];
         float nz = normals[i * 3 + 2];
-        float len = SDL_sqrtf(nx * nx + ny * ny + nz * nz);
+        float len = fast_sqrtf(nx * nx + ny * ny + nz * nz);
         if (len > 0.0001f) {
             float inv = 1.0f / len;
             normals[i * 3 + 0] = nx * inv;
