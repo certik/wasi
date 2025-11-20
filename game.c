@@ -4496,12 +4496,10 @@ static int simple_atoi(const char *str) {
 // SDL callbacks
 // ============================================================================
 
-void ensure_heap_initialized();
-void buddy_init();
+void platform_init(int argc, char** argv);
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
-    ensure_heap_initialized();
-    buddy_init();
+    platform_init(argc, argv);
 
     // Parse command-line arguments
     g_App.test_frames_max = 0;    // 0 = unlimited

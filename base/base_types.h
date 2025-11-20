@@ -1,7 +1,7 @@
 #pragma once
 
-// When building with SDL (which uses system headers), use standard headers
-#if defined(WASI_LINUX_SKIP_ENTRY) || defined(WASI_MACOS_SKIP_ENTRY) || defined(WASI_WINDOWS_SKIP_ENTRY)
+// When building with external stdlib (e.g., SDL), use standard headers
+#ifdef PLATFORM_USE_EXTERNAL_STDLIB
 // Define __gnuc_va_list for wchar.h (needed on Linux when using conda clang, not needed for MSVC)
 #if defined(__clang__) || defined(__GNUC__)
 #ifndef __GNUC_VA_LIST
@@ -27,7 +27,7 @@ typedef signed long long int64_t;
 #endif
 
 // Pointer-sized integer type and size types (only for nostdlib builds)
-#if !defined(WASI_LINUX_SKIP_ENTRY) && !defined(WASI_MACOS_SKIP_ENTRY) && !defined(WASI_WINDOWS_SKIP_ENTRY)
+#ifndef PLATFORM_USE_EXTERNAL_STDLIB
 
 #if defined(_WIN32) && defined(_WIN64)
     // For 64 bit Windows the long is 4 bytes, but pointer is 8 bytes
@@ -64,7 +64,7 @@ typedef signed long long int64_t;
 #endif
 
 // NULL, boolean types, and limits (only for nostdlib builds)
-#if !defined(WASI_LINUX_SKIP_ENTRY) && !defined(WASI_MACOS_SKIP_ENTRY) && !defined(WASI_WINDOWS_SKIP_ENTRY)
+#ifndef PLATFORM_USE_EXTERNAL_STDLIB
 
 #define NULL ((void*)0)
 

@@ -116,11 +116,17 @@ int wasi_args_get(char** argv, char* argv_buf) {
     return args_get(argv, argv_buf);
 }
 
-// Forward declaration for application entry point
-int app_main();
-
 void ensure_heap_initialized() {
 }
+
+// Public initialization function for manual use (e.g., SDL apps using external stdlib)
+void platform_init(int argc, char** argv) {
+    buddy_init();
+}
+
+#ifndef PLATFORM_USE_EXTERNAL_STDLIB
+// Forward declaration for application entry point (only for nostdlib builds)
+int app_main();
 
 // Initialize the platform and call the application
 static void platform_init_and_run() {
@@ -129,13 +135,6 @@ static void platform_init_and_run() {
     wasi_proc_exit(status);
 }
 
-#ifdef PLATFORM_USE_EXTERNAL_STDLIB
-// When using external stdlib, define main() which will be called by libc
-int main() {
-    platform_init_and_run();
-    return 0;  // Never reached
-}
-#else
 // For WASI, the entry point is `_start`
 void _start() {
     platform_init_and_run();

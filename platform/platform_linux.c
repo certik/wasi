@@ -142,8 +142,13 @@ void* wasi_heap_grow(size_t num_bytes) {
     return old_top;
 }
 
-// Forward declaration for application entry point
-int app_main();
+// Public initialization function for manual use (e.g., SDL apps using external stdlib)
+void platform_init(int argc, char** argv) {
+    stored_argc = argc;
+    stored_argv = argv;
+    ensure_heap_initialized();
+    buddy_init();
+}
 
 // Linux open() flags
 #define O_RDONLY   0x0000
@@ -269,22 +274,17 @@ int wasi_args_get(char** argv, char* argv_buf) {
     return 0;
 }
 
+#ifndef PLATFORM_USE_EXTERNAL_STDLIB
+// Forward declaration for application entry point (only for nostdlib builds)
+int app_main();
+
 // Initialize the platform and call the application
 static int platform_init_and_run(int argc, char** argv) {
-    stored_argc = argc;
-    stored_argv = argv;
-    ensure_heap_initialized();
-    buddy_init();
+    platform_init(argc, argv);
     int status = app_main();
     return status;
 }
 
-#ifdef PLATFORM_USE_EXTERNAL_STDLIB
-// When using external stdlib, define main() which will be called by libc
-int main(int argc, char** argv) {
-    return platform_init_and_run(argc, argv);
-}
-#else
 // The entry point for a -nostdlib Linux program is `_start`.
 // The kernel enters with RSP % 16 == 0, but the ABI requires RSP % 16 == 8
 // before a call instruction (so after the call pushes return address, it's aligned).

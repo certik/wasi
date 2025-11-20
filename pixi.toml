@@ -403,7 +403,7 @@ clang \
     -I$CONDA_PREFIX/include \
     -L$CONDA_PREFIX/lib \
     -Wl,-rpath,$CONDA_PREFIX/lib \
-    -DWASI_MACOS_SKIP_ENTRY \
+    -DPLATFORM_USE_EXTERNAL_STDLIB \
     -I base \
     -I platform \
     -I . \
@@ -444,7 +444,7 @@ clang \
     -I$CONDA_PREFIX/include \
     -L$CONDA_PREFIX/lib \
     -Wl,-rpath,$CONDA_PREFIX/lib \
-    -DWASI_LINUX_SKIP_ENTRY \
+    -DPLATFORM_USE_EXTERNAL_STDLIB \
     -I base \
     -I platform \
     -I . \
@@ -668,7 +668,7 @@ cl \
     /I"base" \
     /I"platform" \
     /I"." \
-    /DWASI_WINDOWS_SKIP_ENTRY \
+    /DPLATFORM_USE_EXTERNAL_STDLIB \
     /MD \
     /c \
     game.c \
