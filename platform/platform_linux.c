@@ -2,12 +2,6 @@
 #include <base_types.h>
 #include <buddy.h>
 
-// When using external stdlib, include system headers for mmap/mprotect
-#ifdef PLATFORM_USE_EXTERNAL_STDLIB
-#include <sys/mman.h>
-#include <unistd.h>
-#endif
-
 // =============================================================================
 // == Linux (x86_64) Implementation
 // =============================================================================
@@ -83,21 +77,7 @@ void wasi_proc_exit(int status) {
 // address space but don't commit any physical memory to it initially.
 static void ensure_heap_initialized() {
     if (linux_heap_base == NULL) {
-#ifdef PLATFORM_USE_EXTERNAL_STDLIB
-        // Use libc mmap when external stdlib is available
-        linux_heap_base = (uint8_t*)mmap(
-            NULL,
-            RESERVED_SIZE,
-            PROT_NONE,
-            MAP_PRIVATE | MAP_ANONYMOUS,
-            -1,
-            0
-        );
-        if (linux_heap_base == MAP_FAILED) {
-            linux_heap_base = NULL;
-        }
-#else
-        // Use raw syscall for nostdlib builds
+        // Always use raw syscall on Linux (works with and without external stdlib)
         long mmap_ret = syscall(
             SYS_MMAP,
             (long)NULL,          // address hint
@@ -112,7 +92,6 @@ static void ensure_heap_initialized() {
         } else {
             linux_heap_base = (uint8_t*)mmap_ret;
         }
-#endif
     }
 }
 
@@ -143,15 +122,7 @@ void* wasi_heap_grow(size_t num_bytes) {
     }
 
     // Use mprotect to make the pages readable and writable, which commits them.
-#ifdef PLATFORM_USE_EXTERNAL_STDLIB
-    // Use libc mprotect when external stdlib is available
-    int ret = mprotect(
-        (void*)(linux_heap_base + (committed_pages * WASM_PAGE_SIZE)),
-        num_pages * WASM_PAGE_SIZE,
-        PROT_READ | PROT_WRITE
-    );
-#else
-    // Use raw syscall for nostdlib builds
+    // Always use raw syscall on Linux (works with and without external stdlib)
     long ret = syscall(
         SYS_MPROTECT,
         (long)(linux_heap_base + (committed_pages * WASM_PAGE_SIZE)),
@@ -159,7 +130,6 @@ void* wasi_heap_grow(size_t num_bytes) {
         (long)(PROT_READ | PROT_WRITE),
         0, 0, 0
     );
-#endif
 
     if (ret != 0) {
         return NULL; // mprotect failed
