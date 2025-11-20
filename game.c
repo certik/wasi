@@ -36,8 +36,10 @@ typedef __builtin_va_list __gnuc_va_list;
 #include <platform/platform.h>
 #include <base/base_io.h>
 
+#ifndef __wasi__
 #include "scene_builder.h"
 #include "engine.h"
+#endif
 #include "gm_font_data.h"
 
 // Don't define CGLTF_IMPLEMENTATION here - scene_builder.c provides it
@@ -200,8 +202,35 @@ typedef struct {
 
     SceneUniforms scene_uniforms;
 
+#ifndef __wasi__
     Scene *scene;
     Engine *engine;
+#else
+    SDL_GPUBuffer *scene_vertex_buffer;
+    SDL_GPUBuffer *scene_index_buffer;
+    SDL_GPUTransferBuffer *scene_vertex_transfer_buffer;
+    SDL_GPUTransferBuffer *scene_index_transfer_buffer;
+
+    SDL_GPUTexture *floor_texture;
+    SDL_GPUTexture *wall_texture;
+    SDL_GPUTexture *ceiling_texture;
+    SDL_GPUTexture *sphere_texture;
+    SDL_GPUTexture *book_texture;
+    SDL_GPUTexture *chair_texture;
+    SDL_GPUSampler *floor_sampler;
+    SDL_GPUSampler *wall_sampler;
+    SDL_GPUSampler *ceiling_sampler;
+    SDL_GPUSampler *sphere_sampler;
+    SDL_GPUSampler *book_sampler;
+    SDL_GPUSampler *chair_sampler;
+
+    uint32_t scene_vertex_count;
+    uint32_t scene_index_count;
+
+    uint32_t static_light_count;
+    float static_light_positions[MAX_STATIC_LIGHTS][3];
+    float static_light_colors[MAX_STATIC_LIGHTS][3];
+#endif
 
     int window_width;
     int window_height;
@@ -692,8 +721,7 @@ static uint16_t g_index_storage[MAX_GENERATED_INDICES];
 static MeshData g_mesh_data_storage;
 static MapVertex g_temp_vertices[MAX_SCENE_VERTICES];
 
-// COMMENTED OUT - replaced by scene_builder
-/*
+#ifdef __wasi__
 static MeshData* generate_mesh(GameApp *app, int *map, int width, int height,
                                float spawn_x, float spawn_z) {
     MeshGenContext ctx = {0};
@@ -912,15 +940,8 @@ static MeshData* generate_mesh(GameApp *app, int *map, int width, int height,
         add_mesh_instance(&ctx, chair_mesh, chair_scale, chair_x, chair_y, chair_z, 6.0f);
     }
 
-    MeshData *ceiling_mesh = load_ceiling_light_mesh();
-    if (ceiling_mesh && app) {
-        const float light_scale = CEILING_LIGHT_MODEL_SCALE;
-        for (uint32_t i = 0; i < app->static_light_count; i++) {
-            float *pos = app->static_light_positions[i];
-            add_mesh_instance(&ctx, ceiling_mesh, light_scale, pos[0], pos[1], pos[2],
-                              CEILING_LIGHT_SURFACE_TYPE);
-        }
-    }
+    // Note: Ceiling lights not supported in WASM (requires cgltf)
+    // Native builds use scene_builder which handles ceiling lights
 
     g_mesh_data_storage.positions = g_positions_storage;
     g_mesh_data_storage.uvs = g_uvs_storage;
@@ -936,7 +957,7 @@ static MeshData* generate_mesh(GameApp *app, int *map, int width, int height,
 
     return &g_mesh_data_storage;
 }
-*/
+#endif
 
 // ============================================================================
 // Game state management (derived from gm.c, simplified)
@@ -1986,8 +2007,7 @@ static const float g_light_color_palette[][3] = {
     {0.96f, 0.90f, 1.00f}, // Soft magenta hue
 };
 
-// COMMENTED OUT - replaced by scene_builder
-/*
+#ifdef __wasi__
 static void load_map_with_lights(GameApp *app) {
     app->static_light_count = 0;
     base_memset(app->static_light_positions, 0, sizeof(app->static_light_positions));
@@ -2023,7 +2043,7 @@ static void load_map_with_lights(GameApp *app) {
         }
     }
 }
-*/
+#endif
 
 static int find_start_position(int *map, int width, int height,
                                float *startX, float *startZ, float *startYaw) {
@@ -3838,6 +3858,7 @@ static int complete_gpu_setup(GameApp *app) {
     float spawn_yaw = 0.0f;
     find_start_position(g_map_data, MAP_WIDTH, MAP_HEIGHT, &spawn_x, &spawn_z, &spawn_yaw);
 
+#ifndef __wasi__
     // Build scene in memory using scene_builder
     Arena *scene_arena = arena_new(8 * 1024 * 1024);
     SceneBuilder *builder = scene_builder_create(scene_arena);
@@ -3908,6 +3929,29 @@ static int complete_gpu_setup(GameApp *app) {
     }
 
     SDL_Log("Scene and engine created successfully");
+#else
+    // WASM: Use old monolithic approach
+    load_map_with_lights(app);
+
+    MeshData *mesh = generate_mesh(app, g_map_data, MAP_WIDTH, MAP_HEIGHT, spawn_x, spawn_z);
+    if (!mesh) {
+        SDL_Log("Failed to generate mesh");
+        return -1;
+    }
+
+    SDL_Log("Static lights: %u", app->static_light_count);
+    SDL_Log("Mesh data: vertices=%u uvs=%u normals=%u indices=%u",
+            mesh->vertex_count, mesh->uv_count, mesh->normal_count, mesh->index_count);
+
+    // TODO: Add WASM texture loading and GPU upload code here
+    // This would include:
+    // - Loading textures (floor, wall, ceiling, sphere, book, chair)
+    // - Creating samplers
+    // - Creating vertex/index buffers
+    // - Uploading mesh data to GPU
+    SDL_Log("WASM texture loading and GPU upload not yet implemented");
+    return -1;
+#endif
 
     // Create overlay buffers
     SDL_GPUTransferBufferCreateInfo overlay_transfer_info = {
@@ -4070,6 +4114,7 @@ static void update_game(GameApp *app) {
 
     base_memset(app->scene_uniforms.static_lights, 0, sizeof(app->scene_uniforms.static_lights));
     base_memset(app->scene_uniforms.static_light_colors, 0, sizeof(app->scene_uniforms.static_light_colors));
+#ifndef __wasi__
     uint32_t light_count;
     const SceneLight *lights = scene_get_lights(app->scene, &light_count);
     if (light_count > MAX_STATIC_LIGHTS) {
@@ -4086,6 +4131,24 @@ static void update_game(GameApp *app) {
         app->scene_uniforms.static_light_colors[i][3] = 0.0f;
     }
     app->scene_uniforms.static_light_params[0] = (float)light_count;
+#else
+    // WASM: Use old app->static_light_* arrays
+    uint32_t light_count = app->static_light_count;
+    if (light_count > MAX_STATIC_LIGHTS) {
+        light_count = MAX_STATIC_LIGHTS;
+    }
+    for (uint32_t i = 0; i < light_count; i++) {
+        app->scene_uniforms.static_lights[i][0] = app->static_light_positions[i][0];
+        app->scene_uniforms.static_lights[i][1] = app->static_light_positions[i][1];
+        app->scene_uniforms.static_lights[i][2] = app->static_light_positions[i][2];
+        app->scene_uniforms.static_lights[i][3] = 0.0f;
+        app->scene_uniforms.static_light_colors[i][0] = app->static_light_colors[i][0];
+        app->scene_uniforms.static_light_colors[i][1] = app->static_light_colors[i][1];
+        app->scene_uniforms.static_light_colors[i][2] = app->static_light_colors[i][2];
+        app->scene_uniforms.static_light_colors[i][3] = 0.0f;
+    }
+    app->scene_uniforms.static_light_params[0] = (float)light_count;
+#endif
     app->scene_uniforms.static_light_params[1] = CEILING_LIGHT_RANGE;
     app->scene_uniforms.static_light_params[2] = MIN_AMBIENT_LIGHT;
     app->scene_uniforms.static_light_params[3] = 0.0f;
@@ -4202,13 +4265,43 @@ static int render_game(GameApp *app) {
 
     SDL_GPURenderPass *render_pass = SDL_BeginGPURenderPass(cmdbuf, &color_target, 1, &depth_target);
 
-    // Render scene using engine
+    // Render scene
+#ifndef __wasi__
     SDL_BindGPUGraphicsPipeline(render_pass, app->scene_pipeline);
     if (!engine_render(app->engine, cmdbuf, render_pass, &app->scene_uniforms, sizeof(app->scene_uniforms))) {
         SDL_Log("engine_render failed");
         SDL_EndGPURenderPass(render_pass);
         return -1;
     }
+#else
+    // WASM: Use old manual rendering
+    SDL_BindGPUGraphicsPipeline(render_pass, app->scene_pipeline);
+    SDL_GPUBufferBinding vertex_binding = {
+        .buffer = app->scene_vertex_buffer,
+        .offset = 0,
+    };
+    SDL_BindGPUVertexBuffers(render_pass, 0, &vertex_binding, 1);
+
+    SDL_GPUBufferBinding index_binding = {
+        .buffer = app->scene_index_buffer,
+        .offset = 0,
+    };
+    SDL_BindGPUIndexBuffer(render_pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
+
+    // Bind textures and samplers
+    SDL_GPUTextureSamplerBinding bindings[6] = {
+        {app->floor_texture, app->floor_sampler},
+        {app->wall_texture, app->wall_sampler},
+        {app->ceiling_texture, app->ceiling_sampler},
+        {app->sphere_texture, app->sphere_sampler},
+        {app->book_texture, app->book_sampler},
+        {app->chair_texture, app->chair_sampler},
+    };
+    SDL_BindGPUFragmentSamplers(render_pass, 0, bindings, 6);
+
+    SDL_PushGPUVertexUniformData(cmdbuf, 0, &app->scene_uniforms, sizeof(app->scene_uniforms));
+    SDL_DrawGPUIndexedPrimitives(render_pass, app->scene_index_count, 1, 0, 0, 0);
+#endif
 
     if (app->overlay_vertex_count > 0) {
         SDL_Log("render_game: Binding overlay pipeline (ptr=%p)", (void*)app->overlay_pipeline);
@@ -4239,6 +4332,7 @@ static int render_game(GameApp *app) {
 }
 
 static void shutdown_game(GameApp *app) {
+#ifndef __wasi__
     if (app->engine) {
         engine_free(app->engine);
         app->engine = NULL;
@@ -4247,6 +4341,73 @@ static void shutdown_game(GameApp *app) {
         scene_free(app->scene);
         app->scene = NULL;
     }
+#else
+    // WASM cleanup
+    if (app->scene_vertex_buffer) {
+        SDL_ReleaseGPUBuffer(app->device, app->scene_vertex_buffer);
+        app->scene_vertex_buffer = NULL;
+    }
+    if (app->scene_index_buffer) {
+        SDL_ReleaseGPUBuffer(app->device, app->scene_index_buffer);
+        app->scene_index_buffer = NULL;
+    }
+    if (app->scene_vertex_transfer_buffer) {
+        SDL_ReleaseGPUTransferBuffer(app->device, app->scene_vertex_transfer_buffer);
+        app->scene_vertex_transfer_buffer = NULL;
+    }
+    if (app->scene_index_transfer_buffer) {
+        SDL_ReleaseGPUTransferBuffer(app->device, app->scene_index_transfer_buffer);
+        app->scene_index_transfer_buffer = NULL;
+    }
+    if (app->floor_texture) {
+        SDL_ReleaseGPUTexture(app->device, app->floor_texture);
+        app->floor_texture = NULL;
+    }
+    if (app->wall_texture) {
+        SDL_ReleaseGPUTexture(app->device, app->wall_texture);
+        app->wall_texture = NULL;
+    }
+    if (app->ceiling_texture) {
+        SDL_ReleaseGPUTexture(app->device, app->ceiling_texture);
+        app->ceiling_texture = NULL;
+    }
+    if (app->sphere_texture) {
+        SDL_ReleaseGPUTexture(app->device, app->sphere_texture);
+        app->sphere_texture = NULL;
+    }
+    if (app->book_texture) {
+        SDL_ReleaseGPUTexture(app->device, app->book_texture);
+        app->book_texture = NULL;
+    }
+    if (app->chair_texture) {
+        SDL_ReleaseGPUTexture(app->device, app->chair_texture);
+        app->chair_texture = NULL;
+    }
+    if (app->floor_sampler) {
+        SDL_ReleaseGPUSampler(app->device, app->floor_sampler);
+        app->floor_sampler = NULL;
+    }
+    if (app->wall_sampler) {
+        SDL_ReleaseGPUSampler(app->device, app->wall_sampler);
+        app->wall_sampler = NULL;
+    }
+    if (app->ceiling_sampler) {
+        SDL_ReleaseGPUSampler(app->device, app->ceiling_sampler);
+        app->ceiling_sampler = NULL;
+    }
+    if (app->sphere_sampler) {
+        SDL_ReleaseGPUSampler(app->device, app->sphere_sampler);
+        app->sphere_sampler = NULL;
+    }
+    if (app->book_sampler) {
+        SDL_ReleaseGPUSampler(app->device, app->book_sampler);
+        app->book_sampler = NULL;
+    }
+    if (app->chair_sampler) {
+        SDL_ReleaseGPUSampler(app->device, app->chair_sampler);
+        app->chair_sampler = NULL;
+    }
+#endif
     if (app->overlay_transfer_buffer) {
         SDL_ReleaseGPUTransferBuffer(app->device, app->overlay_transfer_buffer);
         app->overlay_transfer_buffer = NULL;
