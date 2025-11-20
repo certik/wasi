@@ -162,7 +162,41 @@ void FPS_Renderer_DrawFrame(FPS_EntityState* entities, int count, FPS_Vec3 camer
 
 -----
 
-### 4\. Tooling: The "Recorder"
+### 4\. Platform / Foundation APIs (from current code)
+
+The nostdlib build relies on a small, platform-neutral surface provided in `platform/platform.h`. Add these to the design so hosts know what the runtime guarantees:
+
+- Memory / heap: `wasi_heap_base()`, `wasi_heap_size()`, `wasi_heap_grow(size_t)`
+- Process exit: `wasi_proc_exit(int status)`
+- File descriptors and rights: types `wasi_fd_t`, `ciovec_t`, `iovec_t`; rights/oflags constants (`WASI_RIGHTS_READ/WRITE/RDWR`, `WASI_O_CREAT`, `WASI_O_TRUNC`, `WASI_SEEK_SET/CUR/END`, std fds)
+- FD ops: `wasi_fd_write/read/seek/tell/close`, `wasi_path_open`
+- Args: `wasi_args_sizes_get`, `wasi_args_get`
+- Math intrinsics: `fast_sqrt`, `fast_sqrtf`
+- Lifecycle: `platform_init(int argc, char** argv)` with `PLATFORM_SKIP_ENTRY` semantics (either platform-provided `_start` calls `platform_init`+`app_main`, or caller provides entrypoint and must call `platform_init`)
+- File mapping for zero-copy scene loads: `platform_read_file_mmap`, `platform_file_unmap`
+
+### 5\. Memory / Allocators
+
+Higher layers cannot assume malloc/free; the repo exposes these allocator APIs:
+
+- Buddy allocator (`base/buddy.h`): `buddy_init`, `buddy_alloc(size_t, size_t*)`, `buddy_free`, `buddy_print_stats`
+- Arena allocator (`base/arena.h`): `Arena* arena_new(size_t)`, `void* arena_alloc(Arena*, size_t)`, `arena_pos_t arena_get_pos`, `void arena_reset`, `void arena_free`, `arena_chunk_count`, `arena_current_chunk_index`, macro `arena_alloc_array`
+- Scratch rotation (`base/scratch.h`): `scratch_begin`, `scratch_begin_avoid_conflict(Arena *conflict)`, `scratch_begin_from_arena`, `scratch_end`
+- Minimal libc replacements (`base/mem.h`, `base/base_string.h`) for strlen/memcpy/etc.
+- FD-based I/O helpers: `base/base_io.h` (`write_all`, `writeln`, `writeln_int`, `writeln_loc`, `PRINT_ERR`) and `base/io.h` (`read_file`, `read_file_ok`, `println` macros) built on the wasi_fd API above.
+
+### 6\. Asset / Rendering Pipeline Contracts
+
+The engine and tools move scene data through a serialized format; these should live alongside the core/gameplay design:
+
+- Scene format (`scene_format.h`): `SceneHeader` + arrays (`SceneVertex`, `SceneLight`, `SceneTexture`) and string arena; constants `SCENE_MAGIC`, `SCENE_VERSION`
+- Scene builder (`scene_builder.h`): `SceneConfig` (map grid, spawn, asset/texture paths), `scene_builder_create`, `scene_builder_generate`, `scene_builder_serialize`, `scene_builder_save`, `scene_builder_free` (arena-backed, no malloc)
+- Scene runtime / engine (`engine.h`): scene lifetime (`scene_load_from_memory/file`, `scene_get_header`, `scene_free` with mmap handle), engine (`engine_create`, `engine_upload_scene`, `engine_load_textures`, `engine_render`, `engine_free`), driven by SDL GPU device; uniforms supplied by game layer
+- Host/SDL glue: SDL entrypoint calls `platform_init` (see `game.c`), and platform input must map host events into the abstract `FPS_InputFrame` the core consumes.
+
+-----
+
+### 7\. Tooling: The "Recorder"
 
 Because we architected the Core to take a generic `FPS_InputFrame` and output `FPS_EntityState`, we can build a "Black Box Recorder" trivially.
 
