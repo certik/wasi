@@ -140,6 +140,19 @@ void* wasi_heap_grow(size_t num_bytes) {
     return old_top;
 }
 
+// Math functions using x86_64 SSE instructions
+double fast_sqrt(double x) {
+    double result;
+    __asm__("sqrtsd %1, %0" : "=x"(result) : "x"(x));
+    return result;
+}
+
+float fast_sqrtf(float x) {
+    float result;
+    __asm__("sqrtss %1, %0" : "=x"(result) : "x"(x));
+    return result;
+}
+
 // Public initialization function for manual use (e.g., SDL apps using external stdlib)
 void platform_init(int argc, char** argv) {
     stored_argc = argc;

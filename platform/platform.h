@@ -187,3 +187,10 @@ int wasi_args_get(char** argv, char* argv_buf);
 //   argv: argument vector (may be NULL for platforms without argc/argv)
 //
 void platform_init(int argc, char** argv);
+
+
+// Math Functions
+//
+// Square root functions using platform-specific builtins
+double fast_sqrt(double x);
+float fast_sqrtf(float x);

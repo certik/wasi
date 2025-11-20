@@ -119,6 +119,15 @@ int wasi_args_get(char** argv, char* argv_buf) {
 void ensure_heap_initialized() {
 }
 
+// Math functions using WASM builtins
+double fast_sqrt(double x) {
+    return __builtin_sqrt(x);
+}
+
+float fast_sqrtf(float x) {
+    return __builtin_sqrtf(x);
+}
+
 // Public initialization function for manual use (e.g., SDL apps using external stdlib)
 void platform_init(int argc, char** argv) {
     buddy_init();

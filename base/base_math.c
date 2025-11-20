@@ -75,18 +75,3 @@ float fast_tan(float x) {
     }
     return s / c;
 }
-
-float fast_sqrtf(float x) {
-    if (x == 0.0f) return 0.0f;  // Handle zero for correctness
-
-    float xhalf = 0.5f * x;
-    int i = *(int*)&x;            // Reinterpret float bits as int
-    i = 0x5f3759df - (i >> 1);    // Magic number for initial inverse sqrt guess
-    float y = *(float*)&i;        // Reinterpret back to float
-    y = y * (1.5f - xhalf * y * y);  // First Newton-Raphson refinement
-
-    // Optional: Uncomment for better accuracy (~full float precision), adds ~10-20% runtime
-    y = y * (1.5f - xhalf * y * y);  // Second refinement
-
-    return x * y;  // Convert inverse sqrt to sqrt
-}
