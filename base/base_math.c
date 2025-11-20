@@ -27,7 +27,7 @@ static inline float poly_sincos(float z) {
 static inline void reduce_to_quarter(float x, float* y, float* sin_sign, float* cos_sign) {
     double xd = (double)x;
     double q = xd / DPI_D;
-    double k = round(q);
+    double k = base_round(q);
     double rd = xd - k * DPI_D;
     if (rd > PI_D) {
         rd -= DPI_D;

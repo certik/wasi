@@ -3744,7 +3744,7 @@ static int complete_gpu_setup(GameApp *app) {
     }
 
     string scene_vs_code = load_shader_source(&g_scene_vertex_shader, app->scene_vertex_path);
-    SDL_Log("Loaded scene vertex shader: %zu bytes from %s", scene_vs_code.size, app->scene_vertex_path);
+    SDL_Log("Loaded scene vertex shader: %llu bytes from %s", scene_vs_code.size, app->scene_vertex_path);
     SDL_GPUShaderCreateInfo shader_info = {
         .code = (const Uint8 *)scene_vs_code.str,
         .code_size = shader_code_size(scene_vs_code),
