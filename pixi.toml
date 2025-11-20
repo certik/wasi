@@ -414,6 +414,8 @@ clang \
     -Wno-macro-redefined \
     -o game_macos \
     game.c \
+    scene_builder.c \
+    engine.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
@@ -431,6 +433,41 @@ clang \
 """
 
 test_game = { cmd="./game_macos", depends-on=["build_game"] }
+
+build_scene_builder_tool = """
+clang \
+    -I$CONDA_PREFIX/include \
+    -L$CONDA_PREFIX/lib \
+    -Wl,-rpath,$CONDA_PREFIX/lib \
+    -DPLATFORM_SKIP_ENTRY \
+    -I base \
+    -I platform \
+    -I . \
+    -lSDL3 \
+    -lSDL3_image \
+    -lSystem \
+    -framework Metal -framework CoreGraphics -framework AppKit \
+    -Wno-macro-redefined \
+    -o scene_builder_tool \
+    scene_builder_tool.c \
+    scene_builder.c \
+    base/base_io.c \
+    base/buddy.c \
+    base/arena.c \
+    base/scratch.c \
+    base/format.c \
+    base/io.c \
+    base/base_string.c \
+    base/mem.c \
+    base/numconv.c \
+    base/assert.c \
+    base/exit.c \
+    base/mat4.c \
+    base/base_math.c \
+    platform/platform_macos.c
+"""
+
+test_scene_builder_tool = { cmd="./scene_builder_tool test_scene.scn", depends-on=["build_scene_builder_tool"] }
 
 [target.linux-64.dependencies]
 clang = ">=20.1.4,<21"
@@ -455,6 +492,8 @@ clang \
     -Wno-macro-redefined \
     -o game_linux \
     game.c \
+    scene_builder.c \
+    engine.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
@@ -472,6 +511,41 @@ clang \
 """
 
 test_game = { cmd="./game_linux", depends-on=["build_game"] }
+
+build_scene_builder_tool = """
+clang \
+    -g \
+    -I$CONDA_PREFIX/include \
+    -L$CONDA_PREFIX/lib \
+    -Wl,-rpath,$CONDA_PREFIX/lib \
+    -DPLATFORM_SKIP_ENTRY \
+    -I base \
+    -I platform \
+    -I . \
+    -lSDL3 \
+    -lSDL3_image \
+    -lm \
+    -Wno-macro-redefined \
+    -o scene_builder_tool \
+    scene_builder_tool.c \
+    scene_builder.c \
+    base/base_io.c \
+    base/buddy.c \
+    base/arena.c \
+    base/scratch.c \
+    base/format.c \
+    base/io.c \
+    base/base_string.c \
+    base/mem.c \
+    base/numconv.c \
+    base/assert.c \
+    base/exit.c \
+    base/mat4.c \
+    base/base_math.c \
+    platform/platform_linux.c
+"""
+
+test_scene_builder_tool = { cmd="./scene_builder_tool test_scene.scn", depends-on=["build_scene_builder_tool"] }
 
 [feature.macos.target.osx-arm64.dependencies]
 # Use the system Clang on macOS
@@ -673,6 +747,8 @@ cl \
     /MD \
     /c \
     game.c \
+    scene_builder.c \
+    engine.c \
     base/base_io.c \
     base/buddy.c \
     base/arena.c \
@@ -693,6 +769,8 @@ link \
     /subsystem:console \
     /LIBPATH:"$CONDA_PREFIX/Library/lib" \
     game.obj \
+    scene_builder.obj \
+    engine.obj \
     base_io.obj \
     buddy.obj \
     arena.obj \
@@ -717,6 +795,63 @@ link \
 """
 
 test_game = { cmd="./game_windows", depends-on=["build_game"] }
+
+build_scene_builder_tool = """
+cl \
+    /nologo \
+    /std:c11 \
+    /Zc:preprocessor \
+    /I"$CONDA_PREFIX/Library/include" \
+    /I"base" \
+    /I"platform" \
+    /I"." \
+    /DPLATFORM_SKIP_ENTRY \
+    /MD \
+    /c \
+    scene_builder_tool.c \
+    scene_builder.c \
+    base/base_io.c \
+    base/buddy.c \
+    base/arena.c \
+    base/scratch.c \
+    base/format.c \
+    base/io.c \
+    base/base_string.c \
+    base/mem.c \
+    base/numconv.c \
+    base/assert.c \
+    base/exit.c \
+    base/mat4.c \
+    base/base_math.c \
+    platform/platform_windows.c \
+    && \
+link \
+    /nologo \
+    /subsystem:console \
+    /LIBPATH:"$CONDA_PREFIX/Library/lib" \
+    scene_builder_tool.obj \
+    scene_builder.obj \
+    base_io.obj \
+    buddy.obj \
+    arena.obj \
+    scratch.obj \
+    format.obj \
+    io.obj \
+    base_string.obj \
+    mem.obj \
+    numconv.obj \
+    exit.obj \
+    assert.obj \
+    mat4.obj \
+    base_math.obj \
+    platform_windows.obj \
+    SDL3.lib \
+    SDL3_image.lib \
+    shell32.lib \
+    /out:scene_builder_tool.exe
+"""
+
+test_scene_builder_tool = { cmd="./scene_builder_tool.exe test_scene.scn", depends-on=["build_scene_builder_tool"] }
 
 [feature.windows.target.win-64.dependencies]
 # Note: MSVC is not available through conda-forge, so we rely on system installation
