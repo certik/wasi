@@ -1607,28 +1607,28 @@ uint64_t scene_builder_serialize(SceneBuilder *builder, uint8_t **out_blob) {
     uint64_t offset = sizeof(SceneHeader);
 
     // Write vertices
-    header->vertex_offset = offset;
+    header->vertices = (SceneVertex *)(uintptr_t)offset;
     header->vertex_size = vertex_size;
     header->vertex_count = builder->vertex_count;
     base_memcpy(blob + offset, builder->vertices, (size_t)vertex_size);
     offset += vertex_size;
 
     // Write indices
-    header->index_offset = offset;
+    header->indices = (uint16_t *)(uintptr_t)offset;
     header->index_size = index_size;
     header->index_count = builder->index_count;
     base_memcpy(blob + offset, builder->indices, (size_t)index_size);
     offset += index_size;
 
     // Write lights
-    header->light_offset = offset;
+    header->lights = (SceneLight *)(uintptr_t)offset;
     header->light_size = light_size;
     header->light_count = builder->light_count;
     base_memcpy(blob + offset, builder->lights, (size_t)light_size);
     offset += light_size;
 
     // Write textures
-    header->texture_offset = offset;
+    header->textures = (SceneTexture *)(uintptr_t)offset;
     header->texture_size = texture_size;
     header->texture_count = builder->texture_count;
 
@@ -1636,7 +1636,7 @@ uint64_t scene_builder_serialize(SceneBuilder *builder, uint8_t **out_blob) {
     offset += texture_size;
 
     // Write string arena
-    header->string_offset = offset;
+    header->strings = (char *)(uintptr_t)offset;
     header->string_size = string_size;
 
     uint64_t string_offset_cursor = 0;

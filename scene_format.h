@@ -43,40 +43,40 @@ typedef struct {
     uint64_t total_size;       // Total size of serialized blob
 
     // Vertex data
-    uint64_t vertex_offset;    // Offset to SceneVertex array
+    SceneVertex *vertices;     // Pointer to SceneVertex array (offset before fixup)
     uint64_t vertex_size;      // Size in bytes
     uint32_t vertex_count;     // Number of vertices
     uint32_t pad0;
 
     // Index data
-    uint64_t index_offset;     // Offset to uint16_t indices
+    uint16_t *indices;         // Pointer to uint16_t indices (offset before fixup)
     uint64_t index_size;       // Size in bytes
     uint32_t index_count;      // Number of indices
     uint32_t pad1;
 
     // Light data
-    uint64_t light_offset;     // Offset to SceneLight array
+    SceneLight *lights;        // Pointer to SceneLight array (offset before fixup)
     uint64_t light_size;       // Size in bytes
     uint32_t light_count;      // Number of lights
     uint32_t pad2;
 
     // Texture data
-    uint64_t texture_offset;   // Offset to SceneTexture array
+    SceneTexture *textures;    // Pointer to SceneTexture array (offset before fixup)
     uint64_t texture_size;     // Size in bytes
     uint32_t texture_count;    // Number of textures
     uint32_t pad3;
 
     // String arena (for texture paths, etc.)
-    uint64_t string_offset;    // Offset to string arena
+    char *strings;             // Pointer to string arena (offset before fixup)
     uint64_t string_size;      // Size of string arena
 } SceneHeader;
 
 // Blob layout:
 // [SceneHeader]
-// [SceneVertex array]     ← vertex_offset
-// [uint16_t indices]      ← index_offset
-// [SceneLight array]      ← light_offset
-// [SceneTexture array]    ← texture_offset
-// [String arena]          ← string_offset (null-terminated strings)
+// [SceneVertex array]     ← vertices (offset until pointer fixup)
+// [uint16_t indices]      ← indices (offset until pointer fixup)
+// [SceneLight array]      ← lights (offset until pointer fixup)
+// [SceneTexture array]    ← textures (offset until pointer fixup)
+// [String arena]          ← strings (offset until pointer fixup, null-terminated strings)
 
 #endif // SCENE_FORMAT_H

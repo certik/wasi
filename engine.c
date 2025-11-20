@@ -67,8 +67,9 @@ static bool validate_header(SceneHeader *header, uint64_t blob_size) {
     }
 
     // Validate vertex data
+    uint64_t vertex_offset = (uint64_t)(uintptr_t)header->vertices;
     if (header->vertex_count > 0) {
-        if (header->vertex_offset + header->vertex_size > blob_size) {
+        if (vertex_offset + header->vertex_size > blob_size) {
             SDL_Log("Vertex data out of bounds");
             return false;
         }
@@ -79,8 +80,9 @@ static bool validate_header(SceneHeader *header, uint64_t blob_size) {
     }
 
     // Validate index data
+    uint64_t index_offset = (uint64_t)(uintptr_t)header->indices;
     if (header->index_count > 0) {
-        if (header->index_offset + header->index_size > blob_size) {
+        if (index_offset + header->index_size > blob_size) {
             SDL_Log("Index data out of bounds");
             return false;
         }
@@ -91,8 +93,9 @@ static bool validate_header(SceneHeader *header, uint64_t blob_size) {
     }
 
     // Validate light data
+    uint64_t light_offset = (uint64_t)(uintptr_t)header->lights;
     if (header->light_count > 0) {
-        if (header->light_offset + header->light_size > blob_size) {
+        if (light_offset + header->light_size > blob_size) {
             SDL_Log("Light data out of bounds");
             return false;
         }
@@ -103,8 +106,9 @@ static bool validate_header(SceneHeader *header, uint64_t blob_size) {
     }
 
     // Validate texture data
+    uint64_t texture_offset = (uint64_t)(uintptr_t)header->textures;
     if (header->texture_count > 0) {
-        if (header->texture_offset + header->texture_size > blob_size) {
+        if (texture_offset + header->texture_size > blob_size) {
             SDL_Log("Texture data out of bounds");
             return false;
         }
@@ -115,8 +119,9 @@ static bool validate_header(SceneHeader *header, uint64_t blob_size) {
     }
 
     // Validate string arena
+    uint64_t string_offset = (uint64_t)(uintptr_t)header->strings;
     if (header->string_size > 0) {
-        if (header->string_offset + header->string_size > blob_size) {
+        if (string_offset + header->string_size > blob_size) {
             SDL_Log("String data out of bounds");
             return false;
         }
@@ -131,32 +136,42 @@ static void fixup_scene_pointers(Scene *scene) {
 
     // Fix up array pointers
     if (header->vertex_count > 0) {
-        scene->vertices = (SceneVertex *)(base + header->vertex_offset);
+        header->vertices = (SceneVertex *)(base + (uintptr_t)header->vertices);
+        scene->vertices = header->vertices;
     } else {
+        header->vertices = NULL;
         scene->vertices = NULL;
     }
 
     if (header->index_count > 0) {
-        scene->indices = (uint16_t *)(base + header->index_offset);
+        header->indices = (uint16_t *)(base + (uintptr_t)header->indices);
+        scene->indices = header->indices;
     } else {
+        header->indices = NULL;
         scene->indices = NULL;
     }
 
     if (header->light_count > 0) {
-        scene->lights = (SceneLight *)(base + header->light_offset);
+        header->lights = (SceneLight *)(base + (uintptr_t)header->lights);
+        scene->lights = header->lights;
     } else {
+        header->lights = NULL;
         scene->lights = NULL;
     }
 
     if (header->texture_count > 0) {
-        scene->textures = (SceneTexture *)(base + header->texture_offset);
+        header->textures = (SceneTexture *)(base + (uintptr_t)header->textures);
+        scene->textures = header->textures;
     } else {
+        header->textures = NULL;
         scene->textures = NULL;
     }
 
     if (header->string_size > 0) {
-        scene->strings = base + header->string_offset;
+        header->strings = base + (uintptr_t)header->strings;
+        scene->strings = header->strings;
     } else {
+        header->strings = NULL;
         scene->strings = NULL;
     }
 
