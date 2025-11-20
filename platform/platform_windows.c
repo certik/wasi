@@ -180,12 +180,23 @@ static void init_args();
 double fast_sqrt(double x) {
     if (x == 0.0) return 0.0; // Handle zero for correctness
     double xhalf = 0.5 * x;
-    std::int64_t i = *(std::int64_t*)&x; // Reinterpret double bits as int64_t
-    i = 0x5fe6eb50c7b537a9LL - (i >> 1); // Magic number for initial inverse sqrt guess (double precision)
-    double y = *(double*)&i; // Reinterpret back to double
+
+    // Use union for standard-compliant type punning (avoids strict-aliasing issues)
+    union {
+        double d;
+        uint64_t ui;
+    } u;
+    u.d = x;
+    uint64_t i = u.ui;
+
+    i = 0x5fe6eb50c7b537a9ULL - (i >> 1); // Magic number for initial inverse sqrt guess (double precision)
+    u.ui = i;
+    double y = u.d;
+
     y = y * (1.5 - xhalf * y * y); // First Newton-Raphson refinement
     // Optional: Uncomment for better accuracy (~full double precision with two iterations), adds ~10-20% runtime
     y = y * (1.5 - xhalf * y * y); // Second refinement
+
     return x * y; // Convert inverse sqrt to sqrt
 }
 
