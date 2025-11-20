@@ -2565,7 +2565,7 @@ static int complete_gpu_setup(GameApp *app) {
     shader_info.code_size = shader_code_size(scene_fs_code);
     shader_info.entrypoint = shader_entrypoint;
     shader_info.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
-    shader_info.num_samplers = 7;  // 6 textures + 1 sampler in set 2 = 7 bindings
+    shader_info.num_samplers = 8;  // 7 textures + 1 sampler in set 2 = 8 bindings
     shader_info.num_uniform_buffers = 1;
     shader_info.num_storage_buffers = 0;
     shader_info.num_storage_textures = 0;
