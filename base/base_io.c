@@ -1,7 +1,7 @@
 #include <base/base_io.h>
 #include <base/base_types.h>
 #include <base/mem.h>
-#include <base/wasi.h>
+#include <platform/platform.h>
 #include <base/numconv.h>
 
 uint32_t write_all(int fd, ciovec_t* iovs, size_t iovs_len) {

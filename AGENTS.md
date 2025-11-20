@@ -57,16 +57,16 @@ pixi run all_platforms          # All four platforms
 
 ### Three-Layer Design
 
-1. **WASI API Layer** (`base/wasi.h`): Platform-independent interface
+1. **Platform API Layer** (`platform/platform.h`): Platform-independent interface
    - Memory management: `wasi_heap_base()`, `wasi_heap_size()`, `wasi_heap_grow()`
    - I/O: `wasi_fd_write()`, `wasi_proc_exit()`
    - Single point of system interaction
 
-2. **Platform Implementations** (`native/`):
-   - `wasi_wasm.c`: WASM/WASI using Clang intrinsics
-   - `wasi_linux.c`: Linux x86_64 syscalls
-   - `wasi_macos.c`: macOS libSystem wrappers
-   - `wasi_windows.c`: Windows kernel32 API
+2. **Platform Implementations** (`platform/`):
+   - `platform_wasm.c`: WASM/WASI using Clang intrinsics
+   - `platform_linux.c`: Linux x86_64 syscalls
+   - `platform_macos.c`: macOS libSystem wrappers
+   - `platform_windows.c`: Windows kernel32 API
 
 3. **Application Layer** (`stdlib/`, `base/`):
    - Custom minimal C standard library (`string.c`, `stdio.c`, `stdlib.c`)
@@ -85,7 +85,7 @@ pixi run all_platforms          # All four platforms
 
 ### Single-Source Compilation
 
-`tests.c` is the main entry point that compiles for all platforms using conditional compilation (`#ifdef __wasi__`, etc.). The build system includes the appropriate `native/wasi_*.c` file for each platform. Tests are organized into:
+`tests.c` is the main entry point that compiles for all platforms using conditional compilation (`#ifdef __wasi__`, etc.). The build system includes the appropriate `platform/platform_*.c` file for each platform. Tests are organized into:
 - `test_stdlib()`: Tests for standard library functions
 - `test_base()`: Tests for WASI heap operations, buddy allocator, and arena allocator
 
@@ -98,8 +98,8 @@ pixi run all_platforms          # All four platforms
 
 ## Directory Structure
 
-- `base/`: Core platform-independent abstractions (arena, buddy, WASI API)
-- `native/`: Platform-specific WASI implementations
+- `base/`: Core platform-independent abstractions (arena, buddy)
+- `platform/`: Platform-specific implementations (WASM, Linux, macOS, Windows)
 - `stdlib/`: Minimal C standard library implementations
 - `old/`: Legacy code (not part of current build)
 - `tests.c`: Main test program

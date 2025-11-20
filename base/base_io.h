@@ -1,6 +1,6 @@
 #pragma once
 
-#include <base/wasi.h>
+#include <platform/platform.h>
 
 // None of these functions allocate memory (no arenas), so they are safe to use
 // anywhere, including in arena / buddy allocator code, or in asserts.

@@ -1,5 +1,5 @@
 #include <base/buddy.h>
-#include <base/wasi.h>
+#include <platform/platform.h>
 #include <base/base_types.h>
 #include <base/assert.h>
 #include <base/base_io.h>

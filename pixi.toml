@@ -19,7 +19,7 @@ clang \
     -fno-builtin \
     -I base \
     -I stdlib \
-    -I native \
+    -I platform \
     -I . \
     -Wl,--no-entry \
     -Wl,--export=__heap_base \
@@ -44,7 +44,7 @@ clang \
     base/numconv.c \
     base/assert.c \
     base/exit.c \
-    native/wasi_wasm.c
+    platform/platform_wasm.c
 """
 
 test_wasm = { cmd="wasmtime --dir . arena.wasm", depends-on=["build_wasm"] }
@@ -57,7 +57,7 @@ clang \
     -nostdinc \
     -fno-builtin \
     -I base \
-    -I native \
+    -I platform \
     -I . \
     -Wl,--no-entry \
     -Wl,--export=__heap_base \
@@ -77,7 +77,7 @@ clang \
     base/numconv.c \
     base/assert.c \
     base/exit.c \
-    native/wasi_wasm.c
+    platform/platform_wasm.c
 """
 
 test_base_wasm = { cmd="wasmtime --dir . arena_base.wasm", depends-on=["build_base_wasm"] }
@@ -91,7 +91,7 @@ clang \
     -fno-builtin \
     -I base \
     -I stdlib \
-    -I native \
+    -I platform \
     -I . \
     -Wl,--no-entry \
     -Wl,--export=__heap_base \
@@ -110,7 +110,7 @@ clang \
     base/numconv.c \
     base/assert.c \
     base/exit.c \
-    native/wasi_wasm.c
+    platform/platform_wasm.c
 """
 
 test_wordfreq_wasm = { cmd="wasmtime --dir . wordfreq.wasm test_wordfreq.txt", depends-on=["build_wordfreq_wasm"] }
@@ -124,7 +124,7 @@ clang \
     -fno-builtin \
     -I base \
     -I stdlib \
-    -I native \
+    -I platform \
     -I . \
     -Wl,--no-entry \
     -Wl,--export=__heap_base \
@@ -143,7 +143,7 @@ clang \
     base/numconv.c \
     base/assert.c \
     base/exit.c \
-    native/wasi_wasm.c
+    platform/platform_wasm.c
 """
 
 test_hotel2gltf_wasm = { cmd="wasmtime --dir . hotel2gltf.wasm", depends-on=["build_hotel2gltf_wasm"] }
@@ -157,7 +157,7 @@ clang \
     -fno-builtin \
     -I base \
     -I stdlib \
-    -I native \
+    -I platform \
     -I sdl/wasm \
     -I . \
     -Wl,--no-entry \
@@ -185,7 +185,7 @@ clang \
     stdlib/string.c \
     stdlib/stdlib.c \
     stdlib/stdio.c \
-    native/wasi_wasm.c
+    platform/platform_wasm.c
 """
 
 test_game_wasm = { cmd="echo 'WASM build successful: game.wasm'", depends-on=["build_game_wasm"] }
@@ -209,7 +209,7 @@ clang \
     -fno-builtin \
     -I base \
     -I stdlib \
-    -I native \
+    -I platform \
     -I . \
     -o arena_linux \
     tests.c \
@@ -230,7 +230,7 @@ clang \
     base/numconv.c \
     base/assert.c \
     base/exit.c \
-    native/wasi_linux.c
+    platform/platform_linux.c
 """
 
 test_linux = { cmd="./arena_linux", depends-on=["build_linux"] }
@@ -242,7 +242,7 @@ clang \
     -fno-builtin \
     -I base \
     -I stdlib \
-    -I native \
+    -I platform \
     -I . \
     -o wordfreq_linux \
     wordfreq.c \
@@ -257,7 +257,7 @@ clang \
     base/numconv.c \
     base/assert.c \
     base/exit.c \
-    native/wasi_linux.c
+    platform/platform_linux.c
 """
 
 test_wordfreq_linux = { cmd="./wordfreq_linux test_wordfreq.txt", depends-on=["build_wordfreq_linux"] }
@@ -269,7 +269,7 @@ clang \
     -fno-builtin \
     -I base \
     -I stdlib \
-    -I native \
+    -I platform \
     -I . \
     -o hotel2gltf_linux \
     hotel2gltf.c \
@@ -284,7 +284,7 @@ clang \
     base/numconv.c \
     base/assert.c \
     base/exit.c \
-    native/wasi_linux.c
+    platform/platform_linux.c
 """
 
 test_hotel2gltf_linux = { cmd="./hotel2gltf_linux", depends-on=["build_hotel2gltf_linux"] }
@@ -305,7 +305,7 @@ clang \
     -fno-builtin \
     -I base \
     -I stdlib \
-    -I native \
+    -I platform \
     -I . \
     -o arena_macos \
     tests.c \
@@ -325,7 +325,7 @@ clang \
     base/numconv.c \
     base/assert.c \
     base/exit.c \
-    native/wasi_macos.c \
+    platform/platform_macos.c \
     -lSystem \
     -Wl,-e,__start
 """
@@ -340,7 +340,7 @@ clang \
     -fno-builtin \
     -I base \
     -I stdlib \
-    -I native \
+    -I platform \
     -I . \
     -o wordfreq_macos \
     wordfreq.c \
@@ -355,7 +355,7 @@ clang \
     base/numconv.c \
     base/assert.c \
     base/exit.c \
-    native/wasi_macos.c \
+    platform/platform_macos.c \
     -lSystem \
     -Wl,-e,__start
 """
@@ -370,7 +370,7 @@ clang \
     -fno-builtin \
     -I base \
     -I stdlib \
-    -I native \
+    -I platform \
     -I . \
     -o hotel2gltf_macos \
     hotel2gltf.c \
@@ -385,7 +385,7 @@ clang \
     base/numconv.c \
     base/assert.c \
     base/exit.c \
-    native/wasi_macos.c \
+    platform/platform_macos.c \
     -lSystem \
     -Wl,-e,__start
 """
@@ -405,7 +405,7 @@ clang \
     -Wl,-rpath,$CONDA_PREFIX/lib \
     -DWASI_MACOS_SKIP_ENTRY \
     -I base \
-    -I native \
+    -I platform \
     -I . \
     -lSDL3 \
     -lSDL3_image \
@@ -427,7 +427,7 @@ clang \
     base/exit.c \
     base/mat4.c \
     base/base_math.c \
-    native/wasi_macos.c
+    platform/platform_macos.c
 """
 
 test_game = { cmd="./game_macos", depends-on=["build_game"] }
@@ -446,7 +446,7 @@ clang \
     -Wl,-rpath,$CONDA_PREFIX/lib \
     -DWASI_LINUX_SKIP_ENTRY \
     -I base \
-    -I native \
+    -I platform \
     -I . \
     -lSDL3 \
     -lSDL3_image \
@@ -467,7 +467,7 @@ clang \
     base/exit.c \
     base/mat4.c \
     base/base_math.c \
-    native/wasi_linux.c
+    platform/platform_linux.c
 """
 
 test_game = { cmd="./game_linux", depends-on=["build_game"] }
@@ -488,7 +488,7 @@ cl \
     /Zc:preprocessor \
     /I"base" \
     /I"stdlib" \
-    /I"native" \
+    /I"platform" \
     /I"." \
     /GS- \
     /Gs0 \
@@ -512,7 +512,7 @@ cl \
     base/numconv.c \
     base/assert.c \
     base/exit.c \
-    native/wasi_windows.c \
+    platform/platform_windows.c \
     && \
 link \
     /nologo \
@@ -553,7 +553,7 @@ cl \
     /Zc:preprocessor \
     /I"base" \
     /I"stdlib" \
-    /I"native" \
+    /I"platform" \
     /I"." \
     /GS- \
     /Gs0 \
@@ -571,7 +571,7 @@ cl \
     base/numconv.c \
     base/assert.c \
     base/exit.c \
-    native/wasi_windows.c \
+    platform/platform_windows.c \
     && \
 link \
     /nologo \
@@ -606,7 +606,7 @@ cl \
     /Zc:preprocessor \
     /I"base" \
     /I"stdlib" \
-    /I"native" \
+    /I"platform" \
     /I"." \
     /GS- \
     /Gs0 \
@@ -624,7 +624,7 @@ cl \
     base/numconv.c \
     base/assert.c \
     base/exit.c \
-    native/wasi_windows.c \
+    platform/platform_windows.c \
     && \
 link \
     /nologo \
@@ -666,7 +666,7 @@ cl \
     /Zc:preprocessor \
     /I"$CONDA_PREFIX/Library/include" \
     /I"base" \
-    /I"native" \
+    /I"platform" \
     /I"." \
     /DWASI_WINDOWS_SKIP_ENTRY \
     /MD \
@@ -685,7 +685,7 @@ cl \
     base/exit.c \
     base/mat4.c \
     base/base_math.c \
-    native/wasi_windows.c \
+    platform/platform_windows.c \
     && \
 link \
     /nologo \

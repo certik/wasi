@@ -4,7 +4,7 @@
 #include <base/base_io.h>
 #include <base/mem.h>
 #include <base/scratch.h>
-#include <base/wasi.h>
+#include <platform/platform.h>
 
 // Returns the file contents as a null-terminated string in `text`.
 // Returns `true` on success, otherwise `false`.

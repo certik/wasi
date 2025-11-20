@@ -33,7 +33,7 @@ typedef __builtin_va_list __gnuc_va_list;
 #include <base/base_math.h>
 #include <base/base_string.h>
 #include <base/io.h>
-#include <base/wasi.h>
+#include <platform/platform.h>
 #include <base/base_io.h>
 
 #include "gm_font_data.h"

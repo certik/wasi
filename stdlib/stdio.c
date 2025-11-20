@@ -3,7 +3,7 @@
 #include <stddef.h>
 
 #include <base/base_io.h>
-#include <base/wasi.h>
+#include <platform/platform.h>
 
 // FILE structure wrapping a WASI file descriptor
 typedef struct FILE {
