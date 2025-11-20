@@ -346,6 +346,20 @@ void scene_free(Scene *scene) {
 // Engine API
 // ============================================================================
 
+// Map scene surface type IDs to shader binding slots.
+// Shader slots: 0=floor, 1=wall, 2=ceiling, 3=sphere, 4=book, 5=chair.
+static int map_surface_type_to_slot(uint32_t surface_type_id) {
+    switch (surface_type_id) {
+        case 0: return 0;
+        case 1: return 1;
+        case 2: return 2;
+        case 4: return 3;
+        case 5: return 4;
+        case 6: return 5;
+        default: return -1; // Unsupported or no dedicated texture slot
+    }
+}
+
 Engine* engine_create(SDL_GPUDevice *device) {
     if (!device) {
         SDL_Log("engine_create: device is NULL");
@@ -534,8 +548,9 @@ bool engine_load_textures(Engine *engine, const Scene *scene) {
     // Load each texture
     for (uint32_t i = 0; i < scene->header->texture_count; i++) {
         uint32_t surface_type_id = scene->textures[i].surface_type_id;
-        if (surface_type_id >= 8) {
-            SDL_Log("Warning: texture %u has surface_type_id %u >= 8, skipping", i, surface_type_id);
+        int binding_slot = map_surface_type_to_slot(surface_type_id);
+        if (binding_slot < 0 || binding_slot >= 8) {
+            SDL_Log("Warning: texture %u has unsupported surface_type_id %u, skipping", i, surface_type_id);
             continue;
         }
 
@@ -545,7 +560,7 @@ bool engine_load_textures(Engine *engine, const Scene *scene) {
             continue;
         }
 
-        SDL_Log("Loading texture %u (surface_type=%u) from %s", i, surface_type_id, path);
+        SDL_Log("Loading texture %u (surface_type=%u -> slot %d) from %s", i, surface_type_id, binding_slot, path);
 
         // Load texture using SDL_image
         SDL_Surface *surface = IMG_Load(path);
@@ -660,10 +675,10 @@ bool engine_load_textures(Engine *engine, const Scene *scene) {
         }
 
         // Store in engine
-        engine->textures[surface_type_id] = texture;
-        engine->samplers[surface_type_id] = sampler;
+        engine->textures[binding_slot] = texture;
+        engine->samplers[binding_slot] = sampler;
 
-        SDL_Log("Texture loaded successfully into slot %u", surface_type_id);
+        SDL_Log("Texture loaded successfully into slot %d", binding_slot);
     }
 
     SDL_Log("Texture loading complete");
@@ -697,15 +712,25 @@ bool engine_render(Engine *engine, SDL_GPUCommandBuffer *cmdbuf, SDL_GPURenderPa
     SDL_BindGPUIndexBuffer(render_pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
 
     // Bind textures and samplers (slots 0-7)
-    for (uint32_t i = 0; i < 8; i++) {
-        if (engine->textures[i] && engine->samplers[i]) {
-            SDL_GPUTextureSamplerBinding binding = {
-                .texture = engine->textures[i],
-                .sampler = engine->samplers[i],
-            };
-            SDL_BindGPUFragmentSamplers(render_pass, i, &binding, 1);
+    // Bind textures 0-5 plus shared sampler at slot 6 (matches WGSL layout).
+    // Require primary bindings to exist
+    for (int i = 0; i < 6; i++) {
+        if (!engine->textures[i] || !engine->samplers[i]) {
+            SDL_Log("engine_render: missing texture or sampler at slot %d", i);
+            return false;
         }
     }
+
+    SDL_GPUTextureSamplerBinding bindings[7] = {
+        {engine->textures[0], engine->samplers[0]},
+        {engine->textures[1], engine->samplers[1]},
+        {engine->textures[2], engine->samplers[2]},
+        {engine->textures[3], engine->samplers[3]},
+        {engine->textures[4], engine->samplers[4]},
+        {engine->textures[5], engine->samplers[5]},
+        {engine->textures[0], engine->samplers[0]}, // sampler-only binding uses slot 0 sampler
+    };
+    SDL_BindGPUFragmentSamplers(render_pass, 0, bindings, 7);
 
     // Push uniforms if provided
     if (uniforms && uniform_size > 0) {
