@@ -2340,8 +2340,6 @@ static bool write_geometry_usd(const char *filename, const char *mesh_name,
     return success;
 }
 
-// COMMENTED OUT - replaced by scene_builder
-/*
 // Export mesh and scene to USD file
 static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
                           float camera_x, float camera_y, float camera_z,
@@ -2912,7 +2910,6 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
     scratch_end(scratch);
     return success;
 }
-*/
 
 // ============================================================================
 // JSON State Save/Load functions
@@ -4386,6 +4383,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         }
     }
 
+    SDL_Log("SDL_AppInit: test_frames_max=%d", g_App.test_frames_max);
+
     // Handle export modes early to avoid SDL video/device initialization in headless CI
     if (g_App.export_obj_mode) {
         SDL_Log("Export mode enabled, output: %s", g_App.export_obj_path);
@@ -4515,6 +4514,17 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
         return SDL_APP_FAILURE;
     }
 
+    const int requested_max = app->test_frames_max;
+    const int safety_cap = 10;  // keep CI jobs from hanging forever
+    const int effective_max = (requested_max > 0)
+        ? (requested_max < safety_cap ? requested_max : safety_cap)
+        : 0;
+
+    if (effective_max > 0) {
+        SDL_Log("SDL_AppIterate: Frame %d starting (requested=%d, cap=%d)",
+                app->test_frames_count + 1, requested_max, effective_max);
+    }
+
     if (app->quit_requested) {
         return SDL_APP_SUCCESS;
     }
@@ -4529,10 +4539,13 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     }
 
     // Check if we've reached the frame limit for testing
-    if (app->test_frames_max > 0) {
+    if (effective_max > 0) {
         app->test_frames_count++;
-        SDL_Log("SDL_AppIterate: Frame %d/%d complete", app->test_frames_count, app->test_frames_max);
-        if (app->test_frames_count >= app->test_frames_max) {
+        SDL_Log("SDL_AppIterate: Frame %d/%d complete (requested=%d)",
+                app->test_frames_count, effective_max, requested_max);
+        if (app->test_frames_count >= effective_max) {
+            SDL_Log("SDL_AppIterate: Reached frame limit %d (requested=%d), exiting",
+                    effective_max, requested_max);
             return SDL_APP_SUCCESS;  // Exit after N frames
         }
     }
