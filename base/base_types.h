@@ -4,12 +4,24 @@
 typedef unsigned char uint8_t;
 typedef unsigned short uint16_t;
 typedef unsigned int uint32_t;
+
+// On Linux x86_64, long is 64 bits, so use unsigned long for uint64_t
+// On other platforms (especially Windows), long is 32 bits, so use unsigned long long
+#if defined(__linux__) && defined(__x86_64__)
+typedef unsigned long uint64_t;
+#else
 typedef unsigned long long uint64_t;
+#endif
 
 typedef signed char int8_t;
 typedef signed short int16_t;
 typedef signed int int32_t;
+
+#if defined(__linux__) && defined(__x86_64__)
+typedef long int64_t;
+#else
 typedef signed long long int64_t;
+#endif
 
 // Pointer-sized integer type and size types (only for nostdlib builds)
 
