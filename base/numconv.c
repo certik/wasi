@@ -69,8 +69,6 @@ size_t double_to_str(double val, char* buf, int precision) {
 }
 
 // vsnprintf/snprintf implementations (only for nostdlib builds)
-#if !defined(WASI_LINUX_SKIP_ENTRY) && !defined(WASI_MACOS_SKIP_ENTRY) && !defined(WASI_WINDOWS_SKIP_ENTRY)
-
 int vsnprintf(char *str, size_t size, const char *format, va_list args) {
     if (size == 0) return 0;
 
@@ -149,5 +147,3 @@ int snprintf(char *str, size_t size, const char *format, ...) {
     va_end(args);
     return result;
 }
-
-#endif
