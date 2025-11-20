@@ -31,9 +31,9 @@ size_t uint64_to_hex_str(uint64_t val, char* buf, int uppercase);
 // Simple vsnprintf/snprintf implementations for base/ (only for nostdlib builds)
 // Supports: %d, %i, %u, %ld, %li, %lu, %lld, %lli, %llu, %zu, %x, %X, %lx, %lX, %llx, %llX, %p, %c, %s, %f, %.Nf, %%
 // Returns number of characters written (not including null terminator)
-int vsnprintf(char *str, size_t size, const char *format, va_list args);
+int base_vsnprintf(char *str, size_t size, const char *format, va_list args);
 
 // Simple snprintf implementation for base/
 // Supports: %d, %i, %u, %ld, %li, %lu, %lld, %lli, %llu, %zu, %x, %X, %lx, %lX, %llx, %llX, %p, %c, %s, %f, %.Nf, %%
 // Returns number of characters written (not including null terminator)
-int snprintf(char *str, size_t size, const char *format, ...);
+int base_snprintf(char *str, size_t size, const char *format, ...);
