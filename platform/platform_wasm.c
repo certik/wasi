@@ -130,7 +130,7 @@ int app_main();
 
 // Initialize the platform and call the application
 static void platform_init_and_run() {
-    buddy_init();
+    platform_init(0, NULL);  // WASM doesn't receive argc/argv in _start
     int status = app_main();
     wasi_proc_exit(status);
 }

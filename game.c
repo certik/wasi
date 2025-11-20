@@ -4491,8 +4491,6 @@ static int simple_atoi(const char *str) {
 // SDL callbacks
 // ============================================================================
 
-void platform_init(int argc, char** argv);
-
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     platform_init(argc, argv);
 
