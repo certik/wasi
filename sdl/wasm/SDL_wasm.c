@@ -372,7 +372,7 @@ void SDL_Log(const char* fmt, ...) {
     char buffer[512];
     va_list args;
     va_start(args, fmt);
-    int len = vsnprintf(buffer, sizeof(buffer), fmt, args);
+    int len = base_vsnprintf(buffer, sizeof(buffer), fmt, args);
     va_end(args);
 
     if (len > 0 && len < (int)sizeof(buffer)) {
