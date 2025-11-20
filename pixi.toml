@@ -165,7 +165,7 @@ clang \
     -Wl,--export=app_iterate \
     -Wl,--export=app_quit \
     -Wl,--export=__heap_base \
-    -Wl,--initial-memory=7340032 \
+    -Wl,--initial-memory=8650752 \
     -o game.wasm \
     game.c \
     scene_builder.c \
