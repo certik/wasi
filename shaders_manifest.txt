@@ -11,3 +11,4 @@ assets/chair_02_diff_1k.jpg
 assets/equirectangular_sphere.obj
 assets/book.obj
 assets/chair.obj
+assets/ceiling_light.glb
