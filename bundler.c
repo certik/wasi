@@ -98,7 +98,7 @@ void add_entry(Entry** entries, size_t* capacity, size_t* count, const char* pat
     (*count)++;
 }
 
-int app_main(int argc, char* argv[]) {
+int main(int argc, char* argv[]) {
     if (argc != 3) {
         fprintf(stderr, "Usage: %s <manifest.txt> <bundle.bin>\n", argv[0]);
         return 1;
