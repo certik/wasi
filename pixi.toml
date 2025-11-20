@@ -441,6 +441,7 @@ spirv-tools = ">=2025.4,<2026"
 [target.linux-64.tasks]
 build_game = """
 clang \
+    -g \
     -I$CONDA_PREFIX/include \
     -L$CONDA_PREFIX/lib \
     -Wl,-rpath,$CONDA_PREFIX/lib \

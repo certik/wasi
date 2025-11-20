@@ -68,6 +68,30 @@ size_t double_to_str(double val, char* buf, int precision) {
     return pos;
 }
 
+size_t uint64_to_hex_str(uint64_t val, char* buf, int uppercase) {
+    if (val == 0) {
+        buf[0] = '0';
+        return 1;
+    }
+
+    const char* digits = uppercase ? "0123456789ABCDEF" : "0123456789abcdef";
+    size_t len = 0;
+    
+    // Convert digits in reverse order
+    while (val > 0) {
+        buf[len++] = digits[val & 0xF];
+        val >>= 4;
+    }
+    
+    // Reverse
+    for (size_t i = 0; i < len / 2; i++) {
+        char t = buf[i];
+        buf[i] = buf[len - 1 - i];
+        buf[len - 1 - i] = t;
+    }
+    return len;
+}
+
 // vsnprintf/snprintf implementations (only for nostdlib builds)
 int vsnprintf(char *str, size_t size, const char *format, va_list args) {
     if (size == 0) return 0;
@@ -79,6 +103,24 @@ int vsnprintf(char *str, size_t size, const char *format, va_list args) {
     while (*p && pos < size - 1) {
         if (*p == '%' && *(p + 1)) {
             p++;
+
+            // Check for length modifiers: l, ll, z
+            int is_long = 0;
+            int is_long_long = 0;
+            int is_size_t = 0;
+            
+            if (*p == 'l') {
+                p++;
+                is_long = 1;
+                if (*p == 'l') {
+                    p++;
+                    is_long_long = 1;
+                    is_long = 0;
+                }
+            } else if (*p == 'z') {
+                p++;
+                is_size_t = 1;
+            }
 
             // Check for precision specifier (e.g., %.2f)
             int precision = -1;
@@ -93,9 +135,89 @@ int vsnprintf(char *str, size_t size, const char *format, va_list args) {
 
             switch (*p) {
                 case 'd':
+                case 'i': {
+                    if (is_long_long) {
+                        int64_t val = va_arg(args, int64_t);
+                        size_t len = int64_to_str(val, temp_buf);
+                        size_t copy_len = (pos + len < size - 1) ? len : (size - 1 - pos);
+                        for (size_t i = 0; i < copy_len; i++) {
+                            str[pos++] = temp_buf[i];
+                        }
+                    } else if (is_long) {
+                        long val = va_arg(args, long);
+                        size_t len = int64_to_str((int64_t)val, temp_buf);
+                        size_t copy_len = (pos + len < size - 1) ? len : (size - 1 - pos);
+                        for (size_t i = 0; i < copy_len; i++) {
+                            str[pos++] = temp_buf[i];
+                        }
+                    } else {
+                        int val = va_arg(args, int);
+                        size_t len = int_to_str(val, temp_buf);
+                        size_t copy_len = (pos + len < size - 1) ? len : (size - 1 - pos);
+                        for (size_t i = 0; i < copy_len; i++) {
+                            str[pos++] = temp_buf[i];
+                        }
+                    }
+                    break;
+                }
                 case 'u': {
-                    int val = va_arg(args, int);
-                    size_t len = int_to_str(val, temp_buf);
+                    if (is_long_long) {
+                        uint64_t val = va_arg(args, uint64_t);
+                        size_t len = uint64_to_str(val, temp_buf);
+                        size_t copy_len = (pos + len < size - 1) ? len : (size - 1 - pos);
+                        for (size_t i = 0; i < copy_len; i++) {
+                            str[pos++] = temp_buf[i];
+                        }
+                    } else if (is_long || is_size_t) {
+                        unsigned long val = va_arg(args, unsigned long);
+                        size_t len = uint64_to_str((uint64_t)val, temp_buf);
+                        size_t copy_len = (pos + len < size - 1) ? len : (size - 1 - pos);
+                        for (size_t i = 0; i < copy_len; i++) {
+                            str[pos++] = temp_buf[i];
+                        }
+                    } else {
+                        unsigned int val = va_arg(args, unsigned int);
+                        size_t len = uint64_to_str((uint64_t)val, temp_buf);
+                        size_t copy_len = (pos + len < size - 1) ? len : (size - 1 - pos);
+                        for (size_t i = 0; i < copy_len; i++) {
+                            str[pos++] = temp_buf[i];
+                        }
+                    }
+                    break;
+                }
+                case 'x':
+                case 'X': {
+                    if (is_long_long) {
+                        uint64_t val = va_arg(args, uint64_t);
+                        size_t len = uint64_to_hex_str(val, temp_buf, *p == 'X');
+                        size_t copy_len = (pos + len < size - 1) ? len : (size - 1 - pos);
+                        for (size_t i = 0; i < copy_len; i++) {
+                            str[pos++] = temp_buf[i];
+                        }
+                    } else if (is_long || is_size_t) {
+                        unsigned long val = va_arg(args, unsigned long);
+                        size_t len = uint64_to_hex_str((uint64_t)val, temp_buf, *p == 'X');
+                        size_t copy_len = (pos + len < size - 1) ? len : (size - 1 - pos);
+                        for (size_t i = 0; i < copy_len; i++) {
+                            str[pos++] = temp_buf[i];
+                        }
+                    } else {
+                        unsigned int val = va_arg(args, unsigned int);
+                        size_t len = uint64_to_hex_str(val, temp_buf, *p == 'X');
+                        size_t copy_len = (pos + len < size - 1) ? len : (size - 1 - pos);
+                        for (size_t i = 0; i < copy_len; i++) {
+                            str[pos++] = temp_buf[i];
+                        }
+                    }
+                    break;
+                }
+                case 'p': {
+                    void* ptr = va_arg(args, void*);
+                    if (pos < size - 2) {
+                        str[pos++] = '0';
+                        str[pos++] = 'x';
+                    }
+                    size_t len = uint64_to_hex_str((uint64_t)(uintptr_t)ptr, temp_buf, 0);
                     size_t copy_len = (pos + len < size - 1) ? len : (size - 1 - pos);
                     for (size_t i = 0; i < copy_len; i++) {
                         str[pos++] = temp_buf[i];
@@ -117,6 +239,13 @@ int vsnprintf(char *str, size_t size, const char *format, va_list args) {
                     if (s == NULL) s = "(null)";
                     while (*s && pos < size - 1) {
                         str[pos++] = *s++;
+                    }
+                    break;
+                }
+                case 'c': {
+                    char c = (char)va_arg(args, int);
+                    if (pos < size - 1) {
+                        str[pos++] = c;
                     }
                     break;
                 }
