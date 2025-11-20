@@ -116,14 +116,28 @@ int wasi_args_get(char** argv, char* argv_buf) {
     return args_get(argv, argv_buf);
 }
 
-// For WASI, the entry point is `_start`, which we define to call our `main` function.
-int main();
+// Forward declaration for application entry point
+int app_main();
 
 void ensure_heap_initialized() {
 }
 
-void _start() {
+// Initialize the platform and call the application
+static void platform_init_and_run() {
     buddy_init();
-    int status = main();
+    int status = app_main();
     wasi_proc_exit(status);
 }
+
+#ifdef PLATFORM_USE_EXTERNAL_STDLIB
+// When using external stdlib, define main() which will be called by libc
+int main() {
+    platform_init_and_run();
+    return 0;  // Never reached
+}
+#else
+// For WASI, the entry point is `_start`
+void _start() {
+    platform_init_and_run();
+}
+#endif

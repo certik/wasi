@@ -177,8 +177,8 @@ void wasi_proc_exit(int status) {
     ExitProcess((unsigned int)status);
 }
 
-// Forward declaration for main
-int main();
+// Forward declaration for application entry point
+int app_main();
 
 // File I/O implementations
 wasi_fd_t wasi_path_open(const char* path, size_t path_len, uint64_t rights, int oflags) {
@@ -423,13 +423,24 @@ int wasi_args_get(char** argv, char* argv_buf) {
     return 0;
 }
 
-// Entry point for Windows - MSVC uses _start but we need to set it up correctly
-#ifndef WASI_WINDOWS_SKIP_ENTRY
-void _start() {
+// Initialize the platform and call the application
+static int platform_init_and_run() {
     init_args();
     ensure_heap_initialized();
     buddy_init();
-    int status = main();
+    int status = app_main();
+    return status;
+}
+
+#ifdef PLATFORM_USE_EXTERNAL_STDLIB
+// When using external stdlib, define main() which will be called by libc
+int main() {
+    return platform_init_and_run();
+}
+#else
+// Entry point for Windows - MSVC uses _start but we need to set it up correctly
+void _start() {
+    int status = platform_init_and_run();
     wasi_proc_exit(status);
 }
 #endif
