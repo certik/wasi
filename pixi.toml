@@ -539,7 +539,7 @@ link \
     numconv.obj \
     exit.obj \
     assert.obj \
-    wasi_windows.obj \
+    platform_windows.obj \
     /out:arena_windows.exe
 """
 
@@ -592,7 +592,7 @@ link \
     numconv.obj \
     exit.obj \
     assert.obj \
-    wasi_windows.obj \
+    platform_windows.obj \
     /out:wordfreq_windows.exe
 """
 
@@ -645,7 +645,7 @@ link \
     numconv.obj \
     exit.obj \
     assert.obj \
-    wasi_windows.obj \
+    platform_windows.obj \
     /out:hotel2gltf_windows.exe
 """
 
@@ -705,7 +705,7 @@ link \
     assert.obj \
     mat4.obj \
     base_math.obj \
-    wasi_windows.obj \
+    platform_windows.obj \
     SDL3.lib \
     SDL3_image.lib \
     shell32.lib \
