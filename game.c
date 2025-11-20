@@ -4357,6 +4357,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
         if (base_strcmp(argv[i], "--test-frames") == 0 && i + 1 < argc) {
             g_App.test_frames_max = simple_atoi(argv[i + 1]);
             i++;  // Skip the next argument since we consumed it
+        } else if (base_strncmp(argv[i], "--test-frames=", 14) == 0) {
+            g_App.test_frames_max = simple_atoi(argv[i] + 14);
         } else if (base_strcmp(argv[i], "--export-obj") == 0 && i + 1 < argc) {
             g_App.export_obj_mode = true;
             // Copy the filename
@@ -4389,6 +4391,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
             return SDL_APP_FAILURE;
         }
     }
+
 
     // COMMENTED OUT - export mode requires old mesh generation code
     /*
