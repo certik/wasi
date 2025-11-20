@@ -465,8 +465,8 @@ int wasi_args_get(char** argv, char* argv_buf) {
     return 0;
 }
 
-#ifndef PLATFORM_USE_EXTERNAL_STDLIB
-// Forward declaration for application entry point (only for nostdlib builds)
+#ifndef PLATFORM_SKIP_ENTRY
+// Forward declaration for application entry point (only when platform provides entry)
 int app_main();
 
 // Initialize the platform and call the application

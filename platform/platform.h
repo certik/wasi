@@ -172,15 +172,17 @@ int wasi_args_get(char** argv, char* argv_buf);
 //
 // USAGE PATTERNS:
 //
-// 1. When PLATFORM_USE_EXTERNAL_STDLIB is DEFINED (using external libc):
+// 1. When PLATFORM_SKIP_ENTRY is DEFINED (platform skips entry point):
+//    - The platform does NOT provide _start or any entry point implementation
+//    - You MUST provide your own entry point (main, SDL_main, etc.)
 //    - You MUST call platform_init(argc, argv) manually in your entry point
 //    - Do NOT implement app_main()
 //    - Example: SDL apps call this in SDL_AppInit()
 //
-// 2. When PLATFORM_USE_EXTERNAL_STDLIB is NOT defined (nostdlib builds):
+// 2. When PLATFORM_SKIP_ENTRY is NOT defined (platform provides entry point):
+//    - The platform provides _start which calls platform_init() then app_main()
 //    - You MUST implement app_main()
 //    - Do NOT call platform_init() - it's called automatically by _start
-//    - The platform provides _start which calls platform_init() then app_main()
 //
 // Parameters:
 //   argc: argument count (may be 0 for platforms without argc/argv)

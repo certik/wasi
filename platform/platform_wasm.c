@@ -133,8 +133,8 @@ void platform_init(int argc, char** argv) {
     buddy_init();
 }
 
-#ifndef PLATFORM_USE_EXTERNAL_STDLIB
-// Forward declaration for application entry point (only for nostdlib builds)
+#ifndef PLATFORM_SKIP_ENTRY
+// Forward declaration for application entry point (only when platform provides entry)
 int app_main();
 
 // Initialize the platform and call the application

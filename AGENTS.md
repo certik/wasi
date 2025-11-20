@@ -96,6 +96,15 @@ pixi run all_platforms          # All four platforms
 - **macOS**: Uses `-nostdlib -lSystem`, entry point `__start`
 - **Windows**: Uses `/kernel /nodefaultlib`, links with `kernel32.lib`, entry point `_start`
 
+### Compile-Time Options
+
+- **PLATFORM_SKIP_ENTRY**: When defined, the platform skips providing an entry point implementation
+  - You must provide your own entry point (e.g., `main()`, `SDL_main()`)
+  - You must call `platform_init(argc, argv)` manually in your entry point
+  - Do NOT implement `app_main()` - this is only for the default entry point
+  - Example use case: SDL applications that use `SDL_main()` as the entry point
+  - When NOT defined (default): Platform provides `_start` which calls `platform_init()` then `app_main()`
+
 ## Directory Structure
 
 - `base/`: Core platform-independent abstractions (arena, buddy)
