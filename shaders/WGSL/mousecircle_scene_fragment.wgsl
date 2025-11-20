@@ -40,10 +40,11 @@ struct MaterialProperties {
 @group(2) @binding(0) var floorTexture: texture_2d<f32>;
 @group(2) @binding(1) var wallTexture: texture_2d<f32>;
 @group(2) @binding(2) var ceilingTexture: texture_2d<f32>;
-@group(2) @binding(3) var sphereTexture: texture_2d<f32>;
-@group(2) @binding(4) var bookTexture: texture_2d<f32>;
-@group(2) @binding(5) var chairTexture: texture_2d<f32>;
-@group(2) @binding(6) var sharedSampler: sampler;
+@group(2) @binding(3) var windowTexture: texture_2d<f32>;
+@group(2) @binding(4) var sphereTexture: texture_2d<f32>;
+@group(2) @binding(5) var bookTexture: texture_2d<f32>;
+@group(2) @binding(6) var chairTexture: texture_2d<f32>;
+@group(2) @binding(7) var sharedSampler: sampler;
 @group(3) @binding(0) var<uniform> uniforms: SceneUniforms;
 
 fn checker(uv: vec2f) -> f32 {
@@ -172,6 +173,7 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
     let floorColor = textureSample(floorTexture, sharedSampler, input.uv);
     let wallColor = textureSample(wallTexture, sharedSampler, input.uv);
     let ceilingColor = textureSample(ceilingTexture, sharedSampler, input.uv);
+    let windowColor = textureSample(windowTexture, sharedSampler, input.uv);
     let sphereColor = textureSample(sphereTexture, sharedSampler, input.uv);
     let bookColor = textureSample(bookTexture, sharedSampler, input.uv);
     let chairColor = textureSample(chairTexture, sharedSampler, input.uv);
@@ -185,7 +187,7 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
     } else if (input.surfaceType < 2.5) {
         baseColor = ceilingColor.rgb;
     } else if (input.surfaceType < 3.5) {
-        baseColor = vec3f(0.7, 0.5, 0.3) * checker(input.uv);
+        baseColor = windowColor.rgb;
     } else if (input.surfaceType < 4.5) {
         // Sphere: use sphere texture
         baseColor = sphereColor.rgb;

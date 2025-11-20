@@ -229,7 +229,11 @@ Scene* scene_load_from_file(const char *path) {
             return NULL;
         }
         SDL_Log("Loaded scene file %s via mmap (%zu bytes)", path, size);
-        return scene_load_from_memory(data, (uint64_t)size, true, mmap_handle);
+        Scene *scene = scene_load_from_memory(data, (uint64_t)size, true, mmap_handle);
+        if (!scene) {
+            platform_file_unmap(mmap_handle);
+        }
+        return scene;
     }
 
     SDL_Log("scene_load_from_file: mmap unavailable, falling back to buffered read");
@@ -263,7 +267,11 @@ Scene* scene_load_from_file(const char *path) {
     }
 
     SDL_Log("Loaded scene file %s via buffered read (%lld bytes)", path, (long long)file_size);
-    return scene_load_from_memory(blob, (uint64_t)file_size, false, 0);
+    Scene *scene = scene_load_from_memory(blob, (uint64_t)file_size, false, 0);
+    if (!scene) {
+        free(blob);
+    }
+    return scene;
 }
 
 const SceneHeader* scene_get_header(const Scene *scene) {
@@ -287,15 +295,16 @@ void scene_free(Scene *scene) {
 // ============================================================================
 
 // Map scene surface type IDs to shader binding slots.
-// Shader slots: 0=floor, 1=wall, 2=ceiling, 3=sphere, 4=book, 5=chair.
+// Shader slots: 0=floor, 1=wall, 2=ceiling, 3=window, 4=sphere, 5=book, 6=chair.
 static int map_surface_type_to_slot(uint32_t surface_type_id) {
     switch (surface_type_id) {
         case 0: return 0;
         case 1: return 1;
         case 2: return 2;
-        case 4: return 3;
-        case 5: return 4;
-        case 6: return 5;
+        case 3: return 3;
+        case 4: return 4;
+        case 5: return 5;
+        case 6: return 6;
         default: return -1; // Unsupported or no dedicated texture slot
     }
 }
@@ -655,25 +664,26 @@ bool engine_render(Engine *engine, SDL_GPUCommandBuffer *cmdbuf, SDL_GPURenderPa
     SDL_BindGPUIndexBuffer(render_pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
 
     // Bind textures and samplers (slots 0-7)
-    // Bind textures 0-5 plus shared sampler at slot 6 (matches WGSL layout).
+    // Bind textures 0-6 plus shared sampler at slot 7 (matches WGSL layout).
     // Require primary bindings to exist
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 7; i++) {
         if (!engine->textures[i] || !engine->samplers[i]) {
             SDL_Log("engine_render: missing texture or sampler at slot %d", i);
             return false;
         }
     }
 
-    SDL_GPUTextureSamplerBinding bindings[7] = {
+    SDL_GPUTextureSamplerBinding bindings[8] = {
         {engine->textures[0], engine->samplers[0]},
         {engine->textures[1], engine->samplers[1]},
         {engine->textures[2], engine->samplers[2]},
         {engine->textures[3], engine->samplers[3]},
         {engine->textures[4], engine->samplers[4]},
         {engine->textures[5], engine->samplers[5]},
+        {engine->textures[6], engine->samplers[6]},
         {engine->textures[0], engine->samplers[0]}, // sampler-only binding uses slot 0 sampler
     };
-    SDL_BindGPUFragmentSamplers(render_pass, 0, bindings, 7);
+    SDL_BindGPUFragmentSamplers(render_pass, 0, bindings, 8);
 
     // Push uniforms if provided
     if (uniforms && uniform_size > 0) {
