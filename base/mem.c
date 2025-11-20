@@ -88,3 +88,97 @@ void* base_memchr(const void* s, int c, size_t n) {
     }
     return (void*)0;
 }
+
+char* base_strchr(const char* s, int c) {
+    while (*s) {
+        if (*s == (char)c) {
+            return (char*)s;
+        }
+        s++;
+    }
+    // Check for null terminator match
+    if ((char)c == '\0') {
+        return (char*)s;
+    }
+    return (void*)0;
+}
+
+char* base_strrchr(const char* s, int c) {
+    const char* last = (void*)0;
+    while (*s) {
+        if (*s == (char)c) {
+            last = s;
+        }
+        s++;
+    }
+    // Check for null terminator match
+    if ((char)c == '\0') {
+        return (char*)s;
+    }
+    return (char*)last;
+}
+
+char* base_strncpy(char* dest, const char* src, size_t n) {
+    size_t i;
+    for (i = 0; i < n && src[i] != '\0'; i++) {
+        dest[i] = src[i];
+    }
+    // Pad with null bytes if src is shorter than n
+    for (; i < n; i++) {
+        dest[i] = '\0';
+    }
+    return dest;
+}
+
+size_t base_strcspn(const char* s, const char* reject) {
+    const char* p;
+    const char* r;
+    size_t count = 0;
+
+    for (p = s; *p != '\0'; p++) {
+        for (r = reject; *r != '\0'; r++) {
+            if (*p == *r) {
+                return count;
+            }
+        }
+        count++;
+    }
+    return count;
+}
+
+int base_strncmp(const char* s1, const char* s2, size_t n) {
+    if (n == 0) {
+        return 0;
+    }
+    for (size_t i = 0; i < n; i++) {
+        if (s1[i] != s2[i]) {
+            return (unsigned char)s1[i] - (unsigned char)s2[i];
+        }
+        if (s1[i] == '\0') {
+            return 0;
+        }
+    }
+    return 0;
+}
+
+char* base_strstr(const char* haystack, const char* needle) {
+    if (*needle == '\0') {
+        return (char*)haystack;
+    }
+
+    for (; *haystack != '\0'; haystack++) {
+        const char* h = haystack;
+        const char* n = needle;
+
+        while (*h != '\0' && *n != '\0' && *h == *n) {
+            h++;
+            n++;
+        }
+
+        if (*n == '\0') {
+            return (char*)haystack;
+        }
+    }
+
+    return (void*)0;
+}
