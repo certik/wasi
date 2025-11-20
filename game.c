@@ -250,6 +250,7 @@ typedef struct {
 static GameApp g_App;
 static bool g_buddy_initialized = false;
 static Arena *g_shader_arena = NULL;
+static Arena *g_mesh_arena = NULL;
 
 #define FLOOR_TEXTURE_PATH "assets/WoodFloor007_1K-JPG_Color.jpg"
 #define WALL_TEXTURE_PATH "assets/Concrete046_1K-JPG_Color.jpg"
@@ -281,6 +282,9 @@ static void ensure_runtime_heap(void) {
     }
     if (g_shader_arena == NULL) {
         g_shader_arena = arena_new(64 * 1024);
+    }
+    if (g_mesh_arena == NULL) {
+        g_mesh_arena = arena_new(512 * 1024);
     }
 }
 
@@ -1413,6 +1417,8 @@ static MeshData* load_ceiling_light_mesh(void) {
         return NULL;
     }
 
+    ensure_runtime_heap();
+
     cgltf_options options = {0};
     cgltf_data *data = NULL;
     float *positions = NULL;
@@ -1492,10 +1498,10 @@ static MeshData* load_ceiling_light_mesh(void) {
         return NULL;
     }
 
-    positions = (float *)SDL_malloc(sizeof(float) * total_vertex_count * 3);
-    normals = (float *)SDL_malloc(sizeof(float) * total_vertex_count * 3);
-    uvs = (float *)SDL_malloc(sizeof(float) * total_vertex_count * 2);
-    indices = (uint16_t *)SDL_malloc(sizeof(uint16_t) * total_index_count);
+    positions = (float *)arena_alloc(g_mesh_arena, sizeof(float) * total_vertex_count * 3);
+    normals = (float *)arena_alloc(g_mesh_arena, sizeof(float) * total_vertex_count * 3);
+    uvs = (float *)arena_alloc(g_mesh_arena, sizeof(float) * total_vertex_count * 2);
+    indices = (uint16_t *)arena_alloc(g_mesh_arena, sizeof(uint16_t) * total_index_count);
     if (!positions || !normals || !uvs || !indices) {
         SDL_Log("Out of memory loading ceiling light mesh");
         goto fail;
@@ -1665,10 +1671,6 @@ static MeshData* load_ceiling_light_mesh(void) {
     return &g_ceiling_light_mesh_data;
 
 fail:
-    if (positions) SDL_free(positions);
-    if (normals) SDL_free(normals);
-    if (uvs) SDL_free(uvs);
-    if (indices) SDL_free(indices);
     if (data) cgltf_free(data);
     g_ceiling_light_mesh_status = -1;
     return NULL;
