@@ -122,6 +122,15 @@ static bool validate_header(SceneHeader *header, uint64_t blob_size) {
     return true;
 }
 
+static void release_scene_blob(void *blob, bool use_mmap, uint64_t mmap_handle) {
+    if (!blob) return;
+    if (use_mmap) {
+        platform_file_unmap(mmap_handle);
+    } else {
+        free(blob);
+    }
+}
+
 static void fixup_scene_pointers(Scene *scene) {
     SceneHeader *header = scene->header;
     char *base = (char *)scene->blob;
@@ -184,18 +193,21 @@ Scene* scene_load_from_memory(void *blob, uint64_t blob_size, bool use_mmap, uin
 
     if (blob_size < sizeof(SceneHeader)) {
         SDL_Log("scene_load_from_memory: blob too small (%llu bytes)", blob_size);
+        release_scene_blob(blob, use_mmap, mmap_handle);
         return NULL;
     }
 
     SceneHeader *header = (SceneHeader *)blob;
     if (!validate_header(header, blob_size)) {
         SDL_Log("scene_load_from_memory: header validation failed");
+        release_scene_blob(blob, use_mmap, mmap_handle);
         return NULL;
     }
 
     Scene *scene = (Scene *)malloc(sizeof(Scene));
     if (!scene) {
         SDL_Log("scene_load_from_memory: failed to allocate Scene");
+        release_scene_blob(blob, use_mmap, mmap_handle);
         return NULL;
     }
 
@@ -229,11 +241,7 @@ Scene* scene_load_from_file(const char *path) {
             return NULL;
         }
         SDL_Log("Loaded scene file %s via mmap (%zu bytes)", path, size);
-        Scene *scene = scene_load_from_memory(data, (uint64_t)size, true, mmap_handle);
-        if (!scene) {
-            platform_file_unmap(mmap_handle);
-        }
-        return scene;
+        return scene_load_from_memory(data, (uint64_t)size, true, mmap_handle);
     }
 
     SDL_Log("scene_load_from_file: mmap unavailable, falling back to buffered read");
@@ -267,11 +275,7 @@ Scene* scene_load_from_file(const char *path) {
     }
 
     SDL_Log("Loaded scene file %s via buffered read (%lld bytes)", path, (long long)file_size);
-    Scene *scene = scene_load_from_memory(blob, (uint64_t)file_size, false, 0);
-    if (!scene) {
-        free(blob);
-    }
-    return scene;
+    return scene_load_from_memory(blob, (uint64_t)file_size, false, 0);
 }
 
 const SceneHeader* scene_get_header(const Scene *scene) {
@@ -537,7 +541,8 @@ bool engine_load_textures(Engine *engine, const Scene *scene) {
 
         int tex_width = surface->w;
         int tex_height = surface->h;
-        uint32_t tex_data_size = (uint32_t)(tex_width * tex_height * 4);
+        size_t tex_row_size = (size_t)tex_width * 4; // RGBA8 after conversion
+        size_t tex_data_size = tex_row_size * (size_t)tex_height;
 
         // Create GPU texture
         SDL_GPUTextureCreateInfo tex_info = {
@@ -577,7 +582,14 @@ bool engine_load_textures(Engine *engine, const Scene *scene) {
             SDL_DestroySurface(surface);
             continue;
         }
-        SDL_memcpy(mapped, surface->pixels, tex_data_size);
+        unsigned char *dst = mapped;
+        const unsigned char *src = (const unsigned char *)surface->pixels;
+        size_t src_pitch = (size_t)surface->pitch;
+        for (int row = 0; row < tex_height; row++) {
+            SDL_memcpy(dst + tex_row_size * (size_t)row,
+                       src + src_pitch * (size_t)row,
+                       tex_row_size);
+        }
         SDL_UnmapGPUTransferBuffer(engine->device, transfer_buffer);
 
         SDL_DestroySurface(surface);

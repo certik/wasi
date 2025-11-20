@@ -2683,6 +2683,10 @@ static int complete_gpu_setup(GameApp *app) {
     app->overlay_transfer_buffer = SDL_CreateGPUTransferBuffer(app->device, &overlay_transfer_info);
     if (!app->overlay_transfer_buffer) {
         SDL_Log("Failed to create overlay transfer buffer: %s", SDL_GetError());
+        engine_free(app->engine);
+        scene_free(app->scene);
+        app->engine = NULL;
+        app->scene = NULL;
         return -1;
     }
 
@@ -2693,6 +2697,12 @@ static int complete_gpu_setup(GameApp *app) {
     app->overlay_vertex_buffer = SDL_CreateGPUBuffer(app->device, &overlay_buffer_info);
     if (!app->overlay_vertex_buffer) {
         SDL_Log("Failed to create overlay vertex buffer: %s", SDL_GetError());
+        SDL_ReleaseGPUTransferBuffer(app->device, app->overlay_transfer_buffer);
+        app->overlay_transfer_buffer = NULL;
+        engine_free(app->engine);
+        scene_free(app->scene);
+        app->engine = NULL;
+        app->scene = NULL;
         return -1;
     }
 

@@ -1592,8 +1592,14 @@ uint64_t scene_builder_serialize(SceneBuilder *builder, uint8_t **out_blob) {
     uint64_t total_size = sizeof(SceneHeader) + vertex_size + index_size +
                           light_size + texture_size + string_size;
 
+    if (total_size > (uint64_t)SIZE_MAX) {
+        SDL_Log("Serialized scene too large for platform address space (%llu bytes)", (unsigned long long)total_size);
+        return 0;
+    }
+    size_t total_size_size_t = (size_t)total_size;
+
     // Allocate blob
-    uint8_t *blob = (uint8_t *)arena_alloc(builder->arena, (size_t)total_size);
+    uint8_t *blob = (uint8_t *)arena_alloc(builder->arena, total_size_size_t);
     if (!blob) {
         SDL_Log("Failed to allocate serialization blob");
         return 0;
