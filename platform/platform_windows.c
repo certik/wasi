@@ -176,6 +176,15 @@ void wasi_proc_exit(int status) {
 // Forward declaration for command line argument initialization
 static void init_args();
 
+// Math functions using compiler builtins
+double fast_sqrt(double x) {
+    return __builtin_sqrt(x);
+}
+
+float fast_sqrtf(float x) {
+    return __builtin_sqrtf(x);
+}
+
 // Public initialization function for manual use (e.g., SDL apps using external stdlib)
 void platform_init(int argc, char** argv) {
     init_args();
