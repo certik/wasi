@@ -8,11 +8,6 @@
 #include "scene_format.h"
 #include <SDL3/SDL.h>
 #include <SDL3_image/SDL_image.h>
-#if !defined(__wasi__)
-#include <sys/mman.h>
-#include <fcntl.h>
-#include <unistd.h>
-#endif
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
