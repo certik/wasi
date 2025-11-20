@@ -3943,14 +3943,158 @@ static int complete_gpu_setup(GameApp *app) {
     SDL_Log("Mesh data: vertices=%u uvs=%u normals=%u indices=%u",
             mesh->vertex_count, mesh->uv_count, mesh->normal_count, mesh->index_count);
 
-    // TODO: Add WASM texture loading and GPU upload code here
-    // This would include:
-    // - Loading textures (floor, wall, ceiling, sphere, book, chair)
-    // - Creating samplers
-    // - Creating vertex/index buffers
-    // - Uploading mesh data to GPU
-    SDL_Log("WASM texture loading and GPU upload not yet implemented");
-    return -1;
+    // Convert mesh to GPU format and upload
+    MapVertex *cpu_vertices = g_temp_vertices;
+    for (uint32_t i = 0; i < mesh->vertex_count; i++) {
+        cpu_vertices[i].position[0] = mesh->positions[i * 3 + 0];
+        cpu_vertices[i].position[1] = mesh->positions[i * 3 + 1];
+        cpu_vertices[i].position[2] = mesh->positions[i * 3 + 2];
+        cpu_vertices[i].surface_type = mesh->surface_types[i];
+        cpu_vertices[i].uv[0] = mesh->uvs[i * 2 + 0];
+        cpu_vertices[i].uv[1] = mesh->uvs[i * 2 + 1];
+        cpu_vertices[i].normal[0] = mesh->normals[i * 3 + 0];
+        cpu_vertices[i].normal[1] = mesh->normals[i * 3 + 1];
+        cpu_vertices[i].normal[2] = mesh->normals[i * 3 + 2];
+    }
+
+    SDL_GPUBufferCreateInfo vertex_buffer_info = {
+        .usage = SDL_GPU_BUFFERUSAGE_VERTEX,
+        .size = sizeof(MapVertex) * mesh->vertex_count,
+    };
+    app->scene_vertex_buffer = SDL_CreateGPUBuffer(app->device, &vertex_buffer_info);
+    if (!app->scene_vertex_buffer) {
+        SDL_Log("Failed to create scene vertex buffer: %s", SDL_GetError());
+        return -1;
+    }
+
+    SDL_GPUBufferCreateInfo index_buffer_info = {
+        .usage = SDL_GPU_BUFFERUSAGE_INDEX,
+        .size = sizeof(uint16_t) * mesh->index_count,
+    };
+    app->scene_index_buffer = SDL_CreateGPUBuffer(app->device, &index_buffer_info);
+    if (!app->scene_index_buffer) {
+        SDL_Log("Failed to create scene index buffer: %s", SDL_GetError());
+        return -1;
+    }
+
+    SDL_GPUTransferBufferCreateInfo transfer_info = {
+        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+        .size = vertex_buffer_info.size,
+    };
+    app->scene_vertex_transfer_buffer = SDL_CreateGPUTransferBuffer(app->device, &transfer_info);
+    transfer_info.size = index_buffer_info.size;
+    app->scene_index_transfer_buffer = SDL_CreateGPUTransferBuffer(app->device, &transfer_info);
+
+    if (!app->scene_vertex_transfer_buffer || !app->scene_index_transfer_buffer) {
+        SDL_Log("Failed to create transfer buffers: %s", SDL_GetError());
+        return -1;
+    }
+
+    float *mapped_vertices = (float *)SDL_MapGPUTransferBuffer(app->device, app->scene_vertex_transfer_buffer, false);
+    if (!mapped_vertices) {
+        SDL_Log("Failed to map vertex transfer buffer: %s", SDL_GetError());
+        return -1;
+    }
+    base_memcpy(mapped_vertices, cpu_vertices, vertex_buffer_info.size);
+    SDL_UnmapGPUTransferBuffer(app->device, app->scene_vertex_transfer_buffer);
+
+    uint16_t *mapped_indices = (uint16_t *)SDL_MapGPUTransferBuffer(app->device, app->scene_index_transfer_buffer, false);
+    if (!mapped_indices) {
+        SDL_Log("Failed to map index transfer buffer: %s", SDL_GetError());
+        return -1;
+    }
+    base_memcpy(mapped_indices, mesh->indices, index_buffer_info.size);
+    SDL_UnmapGPUTransferBuffer(app->device, app->scene_index_transfer_buffer);
+
+    SDL_GPUCommandBuffer *upload_cmdbuf = SDL_AcquireGPUCommandBuffer(app->device);
+    SDL_GPUCopyPass *copy_pass = SDL_BeginGPUCopyPass(upload_cmdbuf);
+
+    SDL_GPUTransferBufferLocation src = {
+        .transfer_buffer = app->scene_vertex_transfer_buffer,
+        .offset = 0,
+    };
+    SDL_GPUBufferRegion dst = {
+        .buffer = app->scene_vertex_buffer,
+        .offset = 0,
+        .size = vertex_buffer_info.size,
+    };
+    SDL_UploadToGPUBuffer(copy_pass, &src, &dst, false);
+
+    src.transfer_buffer = app->scene_index_transfer_buffer;
+    dst.buffer = app->scene_index_buffer;
+    dst.size = index_buffer_info.size;
+    SDL_UploadToGPUBuffer(copy_pass, &src, &dst, false);
+    SDL_EndGPUCopyPass(copy_pass);
+    SDL_SubmitGPUCommandBuffer(upload_cmdbuf);
+
+    app->scene_vertex_count = mesh->vertex_count;
+    app->scene_index_count = mesh->index_count;
+
+    // Load textures
+    typedef struct {
+        const char *path;
+        const char *label;
+        SDL_GPUTexture **slot;
+    } TextureRequest;
+
+    TextureRequest texture_requests[] = {
+        {FLOOR_TEXTURE_PATH, "floor", &app->floor_texture},
+        {WALL_TEXTURE_PATH, "wall", &app->wall_texture},
+        {CEILING_TEXTURE_PATH, "ceiling", &app->ceiling_texture},
+        {SPHERE_TEXTURE_PATH, "sphere", &app->sphere_texture},
+        {BOOK_TEXTURE_PATH, "book", &app->book_texture},
+        {CHAIR_TEXTURE_PATH, "chair", &app->chair_texture},
+    };
+
+    for (size_t i = 0; i < SDL_arraysize(texture_requests); i++) {
+        SDL_GPUTexture *texture = load_texture_from_path(app, texture_requests[i].path, texture_requests[i].label);
+        if (!texture) {
+            for (size_t j = 0; j < i; j++) {
+                SDL_ReleaseGPUTexture(app->device, *texture_requests[j].slot);
+                *texture_requests[j].slot = NULL;
+            }
+            return -1;
+        }
+        *texture_requests[i].slot = texture;
+    }
+
+    // Create 6 separate samplers (one for each texture slot)
+    SDL_GPUSamplerCreateInfo sampler_info = {
+        .min_filter = SDL_GPU_FILTER_LINEAR,
+        .mag_filter = SDL_GPU_FILTER_LINEAR,
+        .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR,
+        .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
+        .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
+        .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
+    };
+    SDL_GPUSampler **samplers[] = {
+        &app->floor_sampler,
+        &app->wall_sampler,
+        &app->ceiling_sampler,
+        &app->sphere_sampler,
+        &app->book_sampler,
+        &app->chair_sampler,
+    };
+    for (size_t i = 0; i < SDL_arraysize(samplers); i++) {
+        *samplers[i] = SDL_CreateGPUSampler(app->device, &sampler_info);
+        if (!*samplers[i]) {
+            SDL_Log("Failed to create texture samplers: %s", SDL_GetError());
+            for (size_t j = 0; j <= i; j++) {
+                if (*samplers[j]) {
+                    SDL_ReleaseGPUSampler(app->device, *samplers[j]);
+                    *samplers[j] = NULL;
+                }
+            }
+            for (size_t j = 0; j < SDL_arraysize(texture_requests); j++) {
+                if (*texture_requests[j].slot) {
+                    SDL_ReleaseGPUTexture(app->device, *texture_requests[j].slot);
+                    *texture_requests[j].slot = NULL;
+                }
+            }
+            return -1;
+        }
+    }
+    SDL_Log("Scene textures and samplers created successfully");
 #endif
 
     // Create overlay buffers
