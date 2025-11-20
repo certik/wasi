@@ -56,10 +56,10 @@ typedef __builtin_va_list __gnuc_va_list;
 #define CEILING_LIGHT_HEIGHT (WALL_HEIGHT - 0.1f)
 #define CEILING_LIGHT_RANGE 4.5f
 #define CEILING_LIGHT_INTENSITY 1.4f
-#define CEILING_LIGHT_DIFFUSER_SURFACE_TYPE 7.0f
-#define CEILING_LIGHT_EMITTER_SURFACE_TYPE 8.0f
-#define CEILING_LIGHT_SURFACE_TYPE CEILING_LIGHT_DIFFUSER_SURFACE_TYPE
-#define CEILING_LIGHT_EMISSIVE_SCALE 0.02f
+#define CEILING_LIGHT_RADIUS 0.05f
+#define CEILING_LIGHT_POWER 280.0f
+#define CEILING_LIGHT_USD_INTENSITY 90.0f
+#define CEILING_LIGHT_USD_TEMPERATURE 2700.0f
 #define MIN_AMBIENT_LIGHT 0.03f
 #define FLASHLIGHT_RANGE 9.0f
 #define FLASHLIGHT_INTENSITY 2.5f
@@ -179,8 +179,6 @@ typedef struct {
     float flashlight_direction[4];
     float flashlight_params[4];
     float screen_params[4];
-    float ceiling_light_emissive[4];
-    float ceiling_light_diffuser[4];
 } SceneUniforms;
 
 typedef struct {
@@ -987,20 +985,6 @@ static MeshData g_obj_mesh_data;
 static MeshData g_ceiling_light_mesh_data;
 static int g_ceiling_light_mesh_status = 0;
 
-typedef struct {
-    bool valid;
-    bool has_diffuser;
-    float diffuser_color[3];
-    float diffuser_transmission;
-    bool has_emitter;
-    float emitter_color[3];
-    float emitter_intensity;
-    float radius;
-    float height;
-} CeilingLightMaterialInfo;
-
-static CeilingLightMaterialInfo g_ceiling_light_info = {0};
-
 // Temporary storage for OBJ parsing (static to avoid stack overflow)
 static float g_temp_obj_positions[OBJ_MAX_TEMP_VERTICES * 3];
 static float g_temp_obj_uvs[OBJ_MAX_TEMP_VERTICES * 2];
@@ -1418,80 +1402,6 @@ static void compute_normals_from_triangles(float *positions, uint16_t *indices,
     }
 }
 
-typedef enum {
-    CEILING_LIGHT_PART_NONE = 0,
-    CEILING_LIGHT_PART_DIFFUSER,
-    CEILING_LIGHT_PART_EMITTER,
-} CeilingLightPart;
-
-static CeilingLightPart ceiling_light_classify_material(const cgltf_material *material,
-                                                        CeilingLightMaterialInfo *info,
-                                                        float *out_surface_type) {
-    if (!material) {
-        return CEILING_LIGHT_PART_NONE;
-    }
-
-    bool is_emitter = false;
-    bool is_diffuser = false;
-    float emissive_strength = 0.0f;
-    float emissive_color[3] = {
-        material->emissive_factor[0],
-        material->emissive_factor[1],
-        material->emissive_factor[2],
-    };
-
-    float emissive_mag = SDL_fabsf(emissive_color[0]) + SDL_fabsf(emissive_color[1]) + SDL_fabsf(emissive_color[2]);
-    if (emissive_mag > 0.0f) {
-        emissive_strength = material->has_emissive_strength ? material->emissive_strength.emissive_strength : 1.0f;
-        if (emissive_strength > 0.0f) {
-            is_emitter = true;
-        }
-    }
-
-    float transmission_factor = 0.0f;
-    if (material->has_transmission) {
-        transmission_factor = material->transmission.transmission_factor;
-        if (transmission_factor > 0.001f) {
-            is_diffuser = true;
-        }
-    } else if (material->has_diffuse_transmission) {
-        transmission_factor = material->diffuse_transmission.diffuse_transmission_factor;
-        if (transmission_factor > 0.001f) {
-            is_diffuser = true;
-        }
-    }
-
-    if (is_emitter) {
-        if (!info->has_emitter) {
-            info->has_emitter = true;
-            info->emitter_color[0] = emissive_color[0];
-            info->emitter_color[1] = emissive_color[1];
-            info->emitter_color[2] = emissive_color[2];
-            info->emitter_intensity = emissive_strength;
-        }
-        if (out_surface_type) {
-            *out_surface_type = CEILING_LIGHT_EMITTER_SURFACE_TYPE;
-        }
-        return CEILING_LIGHT_PART_EMITTER;
-    }
-
-    if (is_diffuser) {
-        if (!info->has_diffuser) {
-            info->has_diffuser = true;
-            info->diffuser_color[0] = material->pbr_metallic_roughness.base_color_factor[0];
-            info->diffuser_color[1] = material->pbr_metallic_roughness.base_color_factor[1];
-            info->diffuser_color[2] = material->pbr_metallic_roughness.base_color_factor[2];
-            info->diffuser_transmission = transmission_factor;
-        }
-        if (out_surface_type) {
-            *out_surface_type = CEILING_LIGHT_DIFFUSER_SURFACE_TYPE;
-        }
-        return CEILING_LIGHT_PART_DIFFUSER;
-    }
-
-    return CEILING_LIGHT_PART_NONE;
-}
-
 static MeshData* load_ceiling_light_mesh(void) {
     if (g_ceiling_light_mesh_status == 1) {
         if (g_ceiling_light_mesh_data.vertex_count > 0) {
@@ -1525,36 +1435,47 @@ static MeshData* load_ceiling_light_mesh(void) {
         return NULL;
     }
 
+    if (data->meshes_count == 0) {
+        SDL_Log("Ceiling light glb contains no meshes");
+        g_ceiling_light_mesh_status = -1;
+        cgltf_free(data);
+        return NULL;
+    }
+
     cgltf_size total_vertex_count = 0;
     cgltf_size total_index_count = 0;
     cgltf_size node_mesh_count = 0;
     for (cgltf_size node_index = 0; node_index < data->nodes_count; node_index++) {
         const cgltf_node *node = &data->nodes[node_index];
-        if (!node->mesh || node->mesh->primitives_count == 0) {
+        if (!node->mesh) {
             continue;
         }
         const cgltf_mesh *mesh = node->mesh;
+        if (mesh->primitives_count == 0) {
+            continue;
+        }
+        node_mesh_count++;
         for (cgltf_size prim_index = 0; prim_index < mesh->primitives_count; prim_index++) {
             const cgltf_primitive *primitive = &mesh->primitives[prim_index];
-            float surface_type = 0.0f;
-            CeilingLightPart part = ceiling_light_classify_material(primitive->material, &g_ceiling_light_info, &surface_type);
-            if (part == CEILING_LIGHT_PART_NONE) {
-                continue;
-            }
             if (primitive->type != cgltf_primitive_type_triangles) {
                 SDL_Log("Ceiling light primitive node %u meshPrim %u must use triangle topology", (unsigned)node_index, (unsigned)prim_index);
-                goto fail;
+                g_ceiling_light_mesh_status = -1;
+                cgltf_free(data);
+                return NULL;
             }
             const cgltf_accessor *position_accessor = find_attribute_accessor(primitive, cgltf_attribute_type_position, 0);
             if (!position_accessor || position_accessor->count == 0) {
                 SDL_Log("Ceiling light primitive node %u meshPrim %u missing POSITION data", (unsigned)node_index, (unsigned)prim_index);
-                goto fail;
+                g_ceiling_light_mesh_status = -1;
+                cgltf_free(data);
+                return NULL;
             }
             if (position_accessor->count >= UINT16_MAX) {
                 SDL_Log("Ceiling light primitive node %u meshPrim %u vertex count unsupported: %u", (unsigned)node_index, (unsigned)prim_index, (unsigned)position_accessor->count);
-                goto fail;
+                g_ceiling_light_mesh_status = -1;
+                cgltf_free(data);
+                return NULL;
             }
-            node_mesh_count++;
             total_vertex_count += position_accessor->count;
             if (primitive->indices) {
                 total_index_count += primitive->indices->count;
@@ -1565,16 +1486,17 @@ static MeshData* load_ceiling_light_mesh(void) {
     }
 
     if (node_mesh_count == 0 || total_vertex_count == 0 || total_index_count == 0) {
-        SDL_Log("Ceiling light glb has no classified mesh nodes");
-        goto fail;
+        SDL_Log("Ceiling light glb has no mesh nodes");
+        g_ceiling_light_mesh_status = -1;
+        cgltf_free(data);
+        return NULL;
     }
 
     positions = (float *)SDL_malloc(sizeof(float) * total_vertex_count * 3);
     normals = (float *)SDL_malloc(sizeof(float) * total_vertex_count * 3);
     uvs = (float *)SDL_malloc(sizeof(float) * total_vertex_count * 2);
-    float *surface_types = (float *)SDL_malloc(sizeof(float) * total_vertex_count);
     indices = (uint16_t *)SDL_malloc(sizeof(uint16_t) * total_index_count);
-    if (!positions || !normals || !uvs || !indices || !surface_types) {
+    if (!positions || !normals || !uvs || !indices) {
         SDL_Log("Out of memory loading ceiling light mesh");
         goto fail;
     }
@@ -1583,9 +1505,6 @@ static MeshData* load_ceiling_light_mesh(void) {
     cgltf_size index_offset = 0;
     bool have_normals = true;
     bool have_uvs = true;
-    bool bounds_initialized = false;
-    float min_x = 0.0f, min_y = 0.0f, min_z = 0.0f;
-    float max_x = 0.0f, max_y = 0.0f, max_z = 0.0f;
 
     for (cgltf_size node_index = 0; node_index < data->nodes_count; node_index++) {
         const cgltf_node *node = &data->nodes[node_index];
@@ -1597,12 +1516,6 @@ static MeshData* load_ceiling_light_mesh(void) {
         const cgltf_mesh *mesh = node->mesh;
         for (cgltf_size prim_index = 0; prim_index < mesh->primitives_count; prim_index++) {
             const cgltf_primitive *primitive = &mesh->primitives[prim_index];
-            float current_surface_type = 0.0f;
-            CeilingLightPart part = ceiling_light_classify_material(primitive->material, &g_ceiling_light_info, &current_surface_type);
-            if (part == CEILING_LIGHT_PART_NONE) {
-                continue;
-            }
-
             const cgltf_accessor *position_accessor = find_attribute_accessor(primitive, cgltf_attribute_type_position, 0);
             const cgltf_accessor *uv_accessor = find_attribute_accessor(primitive, cgltf_attribute_type_texcoord, 0);
             const cgltf_accessor *normal_accessor = find_attribute_accessor(primitive, cgltf_attribute_type_normal, 0);
@@ -1623,20 +1536,6 @@ static MeshData* load_ceiling_light_mesh(void) {
                 positions[(vertex_offset + i) * 3 + 0] = tx;
                 positions[(vertex_offset + i) * 3 + 1] = ty;
                 positions[(vertex_offset + i) * 3 + 2] = tz;
-                surface_types[vertex_offset + i] = current_surface_type;
-                if (!bounds_initialized) {
-                    min_x = max_x = tx;
-                    min_y = max_y = ty;
-                    min_z = max_z = tz;
-                    bounds_initialized = true;
-                } else {
-                    if (tx < min_x) min_x = tx;
-                    if (ty < min_y) min_y = ty;
-                    if (tz < min_z) min_z = tz;
-                    if (tx > max_x) max_x = tx;
-                    if (ty > max_y) max_y = ty;
-                    if (tz > max_z) max_z = tz;
-                }
             }
 
             if (uv_accessor && uv_accessor->count == prim_vertex_count) {
@@ -1716,6 +1615,24 @@ static MeshData* load_ceiling_light_mesh(void) {
     cgltf_size vertex_count = total_vertex_count;
     cgltf_size index_count = total_index_count;
 
+    float min_x = positions[0];
+    float min_y = positions[1];
+    float min_z = positions[2];
+    float max_x = positions[0];
+    float max_y = positions[1];
+    float max_z = positions[2];
+    for (cgltf_size i = 1; i < vertex_count; i++) {
+        float x = positions[i * 3 + 0];
+        float y = positions[i * 3 + 1];
+        float z = positions[i * 3 + 2];
+        if (x < min_x) min_x = x;
+        if (y < min_y) min_y = y;
+        if (z < min_z) min_z = z;
+        if (x > max_x) max_x = x;
+        if (y > max_y) max_y = y;
+        if (z > max_z) max_z = z;
+    }
+
     if (!have_normals) {
         compute_normals_from_triangles(positions, indices, vertex_count, index_count, normals);
     }
@@ -1724,15 +1641,10 @@ static MeshData* load_ceiling_light_mesh(void) {
             min_x, min_y, min_z, max_x, max_y, max_z,
             max_x - min_x, max_y - min_y, max_z - min_z);
 
-    float radius_extent = SDL_max(SDL_fabsf(min_x), SDL_fabsf(max_x));
-    g_ceiling_light_info.radius = radius_extent * CEILING_LIGHT_MODEL_SCALE;
-    g_ceiling_light_info.height = (max_y - min_y) * CEILING_LIGHT_MODEL_SCALE;
-    g_ceiling_light_info.valid = true;
-
     g_ceiling_light_mesh_data.positions = positions;
     g_ceiling_light_mesh_data.uvs = uvs;
     g_ceiling_light_mesh_data.normals = normals;
-    g_ceiling_light_mesh_data.surface_types = surface_types;
+    g_ceiling_light_mesh_data.surface_types = NULL;
     g_ceiling_light_mesh_data.triangle_ids = NULL;
     g_ceiling_light_mesh_data.indices = indices;
     g_ceiling_light_mesh_data.position_count = (uint32_t)vertex_count;
@@ -1744,7 +1656,6 @@ static MeshData* load_ceiling_light_mesh(void) {
     positions = NULL;
     normals = NULL;
     uvs = NULL;
-    surface_types = NULL;
     indices = NULL;
 
     cgltf_free(data);
@@ -1757,20 +1668,9 @@ fail:
     if (positions) SDL_free(positions);
     if (normals) SDL_free(normals);
     if (uvs) SDL_free(uvs);
-    if (surface_types) SDL_free(surface_types);
     if (indices) SDL_free(indices);
     if (data) cgltf_free(data);
     g_ceiling_light_mesh_status = -1;
-    return NULL;
-}
-
-static const CeilingLightMaterialInfo* ceiling_light_get_info(void) {
-    if (!g_ceiling_light_info.valid) {
-        load_ceiling_light_mesh();
-    }
-    if (g_ceiling_light_info.valid) {
-        return &g_ceiling_light_info;
-    }
     return NULL;
 }
 
@@ -1798,10 +1698,6 @@ static void add_mesh_instance(MeshGenContext *ctx, const MeshData *mesh,
     uint16_t base_vertex = (uint16_t)ctx->surface_idx;
     for (uint32_t i = 0; i < mesh->vertex_count; i++) {
         const float *pos = &mesh->positions[i * 3];
-        float vertex_surface_type = surface_type;
-        if (mesh->surface_types) {
-            vertex_surface_type = mesh->surface_types[i];
-        }
         push_position(ctx,
             pos[0] * scale + tx,
             pos[1] * scale + ty,
@@ -1813,7 +1709,7 @@ static void add_mesh_instance(MeshGenContext *ctx, const MeshData *mesh,
             mesh->normals[i * 3 + 0],
             mesh->normals[i * 3 + 1],
             mesh->normals[i * 3 + 2]);
-        push_surface_type(ctx, vertex_surface_type);
+        push_surface_type(ctx, surface_type);
         push_triangle_id(ctx, 0.0f);
     }
 
@@ -2113,15 +2009,6 @@ static void load_map_with_lights(GameApp *app) {
     base_memset(app->static_light_positions, 0, sizeof(app->static_light_positions));
     base_memset(app->static_light_colors, 0, sizeof(app->static_light_colors));
     const size_t palette_count = SDL_arraysize(g_light_color_palette);
-    const CeilingLightMaterialInfo *light_info = ceiling_light_get_info();
-    float emissive_color[3] = {1.0f, 0.95f, 0.85f};
-    float emissive_intensity = CEILING_LIGHT_INTENSITY;
-    if (light_info && light_info->has_emitter) {
-        emissive_color[0] = light_info->emitter_color[0];
-        emissive_color[1] = light_info->emitter_color[1];
-        emissive_color[2] = light_info->emitter_color[2];
-        emissive_intensity = light_info->emitter_intensity * CEILING_LIGHT_EMISSIVE_SCALE;
-    }
     for (int z = 0; z < MAP_HEIGHT; z++) {
         for (int x = 0; x < MAP_WIDTH; x++) {
             int cell = g_default_map[z][x];
@@ -2132,11 +2019,7 @@ static void load_map_with_lights(GameApp *app) {
                     pos[1] = CEILING_LIGHT_HEIGHT;
                     pos[2] = (float)z + 0.5f;
                     float *color = app->static_light_colors[app->static_light_count];
-                    if (light_info && light_info->has_emitter) {
-                        color[0] = emissive_color[0] * emissive_intensity;
-                        color[1] = emissive_color[1] * emissive_intensity;
-                        color[2] = emissive_color[2] * emissive_intensity;
-                    } else if (palette_count > 0) {
+                    if (palette_count > 0) {
                         const float *palette = g_light_color_palette[app->static_light_count % palette_count];
                         color[0] = palette[0] * CEILING_LIGHT_INTENSITY;
                         color[1] = palette[1] * CEILING_LIGHT_INTENSITY;
@@ -2487,32 +2370,6 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
     Scratch scratch = scratch_begin();
     ensure_runtime_heap();
 
-    const CeilingLightMaterialInfo *light_info = ceiling_light_get_info();
-    float usd_diffuser_color[3] = {0.8f, 0.8f, 0.8f};
-    float usd_diffuser_transmission = 0.3f;
-    float usd_emitter_color[3] = {1.0f, 0.95f, 0.85f};
-    float usd_emitter_intensity = 50.0f;
-    if (light_info) {
-        if (light_info->has_diffuser) {
-            usd_diffuser_color[0] = light_info->diffuser_color[0];
-            usd_diffuser_color[1] = light_info->diffuser_color[1];
-            usd_diffuser_color[2] = light_info->diffuser_color[2];
-            usd_diffuser_transmission = light_info->diffuser_transmission;
-        }
-        if (light_info->has_emitter) {
-            usd_emitter_color[0] = light_info->emitter_color[0];
-            usd_emitter_color[1] = light_info->emitter_color[1];
-            usd_emitter_color[2] = light_info->emitter_color[2];
-            usd_emitter_intensity = light_info->emitter_intensity;
-        }
-    }
-    float usd_diffuser_opacity = 1.0f - (usd_diffuser_transmission * 0.85f);
-    if (usd_diffuser_opacity < 0.05f) usd_diffuser_opacity = 0.05f;
-    if (usd_diffuser_opacity > 1.0f) usd_diffuser_opacity = 1.0f;
-    if (usd_emitter_intensity < 1.0f) {
-        usd_emitter_intensity = 1.0f;
-    }
-
     // Allocate buffer for USD content (estimate generously)
     size_t estimated_size = mesh->vertex_count * 150 + mesh->index_count * 20 + 100000;
     if (estimated_size < 256 * 1024) estimated_size = 256 * 1024;
@@ -2712,33 +2569,6 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
     APPEND("                float2 outputs:result\n");
     APPEND("            }\n");
     APPEND("        }\n");
-        APPEND("        def Material \"CeilingLightDiffuserMaterial\"\n");
-        APPEND("        {\n");
-        APPEND("            token outputs:surface.connect = </root/Materials/CeilingLightDiffuserMaterial/PreviewSurface.outputs:surface>\n");
-        APPEND("            def Shader \"PreviewSurface\"\n");
-        APPEND("            {\n");
-        APPEND("                uniform token info:id = \"UsdPreviewSurface\"\n");
-        APPENDF("                color3f inputs:diffuseColor = (%.3f, %.3f, %.3f)\n",
-                usd_diffuser_color[0], usd_diffuser_color[1], usd_diffuser_color[2]);
-        APPENDF("                float inputs:opacity = %.3f\n", usd_diffuser_opacity);
-        APPEND("                float inputs:roughness = 0.3\n");
-        APPEND("                token outputs:surface\n");
-        APPEND("            }\n");
-        APPEND("        }\n");
-        APPEND("        def Material \"CeilingLightEmitterMaterial\"\n");
-        APPEND("        {\n");
-        APPEND("            token outputs:surface.connect = </root/Materials/CeilingLightEmitterMaterial/PreviewSurface.outputs:surface>\n");
-        APPEND("            def Shader \"PreviewSurface\"\n");
-        APPEND("            {\n");
-        APPEND("                uniform token info:id = \"UsdPreviewSurface\"\n");
-        APPEND("                color3f inputs:diffuseColor = (0, 0, 0)\n");
-        APPENDF("                color3f inputs:emissiveColor = (%.3f, %.3f, %.3f)\n",
-                usd_emitter_color[0], usd_emitter_color[1], usd_emitter_color[2]);
-        APPENDF("                float inputs:emissiveIntensity = %.2f\n", usd_emitter_intensity);
-        APPEND("                float inputs:roughness = 0.6\n");
-        APPEND("                token outputs:surface\n");
-        APPEND("            }\n");
-        APPEND("        }\n");
     APPEND("    }\n\n");
 
     // === Scene Geometry ===
@@ -2782,10 +2612,6 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
     uint32_t chair_count = 0;
     uint32_t *props_indices = (uint32_t *)arena_alloc(scratch.arena, mesh->index_count * sizeof(uint32_t));
     uint32_t props_count = 0;
-    uint32_t *light_diffuser_indices = (uint32_t *)arena_alloc(scratch.arena, mesh->index_count * sizeof(uint32_t));
-    uint32_t light_diffuser_count = 0;
-    uint32_t *light_emitter_indices = (uint32_t *)arena_alloc(scratch.arena, mesh->index_count * sizeof(uint32_t));
-    uint32_t light_emitter_count = 0;
 
     for (uint32_t i = 0; i < mesh->index_count; i += 3) {
         uint32_t idx0 = mesh->indices[i];
@@ -2820,14 +2646,6 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
             chair_indices[chair_count++] = mesh->indices[i];
             chair_indices[chair_count++] = mesh->indices[i + 1];
             chair_indices[chair_count++] = mesh->indices[i + 2];
-        } else if (surf_type < CEILING_LIGHT_DIFFUSER_SURFACE_TYPE + 0.5f) {
-            light_diffuser_indices[light_diffuser_count++] = mesh->indices[i];
-            light_diffuser_indices[light_diffuser_count++] = mesh->indices[i + 1];
-            light_diffuser_indices[light_diffuser_count++] = mesh->indices[i + 2];
-        } else if (surf_type < CEILING_LIGHT_EMITTER_SURFACE_TYPE + 0.5f) {
-            light_emitter_indices[light_emitter_count++] = mesh->indices[i];
-            light_emitter_indices[light_emitter_count++] = mesh->indices[i + 1];
-            light_emitter_indices[light_emitter_count++] = mesh->indices[i + 2];
         } else {
             props_indices[props_count++] = mesh->indices[i];
             props_indices[props_count++] = mesh->indices[i + 1];
@@ -2869,8 +2687,6 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
     bool has_book = false;
     bool has_chair = false;
     bool has_props = false;
-    bool has_light_diffusers = false;
-    bool has_light_emitters = false;
 
     if (window_count > 0) {
         char window_path[512];
@@ -2931,30 +2747,6 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
         has_props = true;
     }
 
-    char diffuser_path[512];
-    if (light_diffuser_count > 0) {
-        SDL_snprintf(diffuser_path, sizeof(diffuser_path), "%s%s_CeilingLightDiffusers.usda", dir_path, base_name);
-        if (!write_geometry_usd(diffuser_path, "CeilingLightDiffusers", mesh, light_diffuser_indices, light_diffuser_count, NULL)) {
-            SDL_Log("Failed to write ceiling diffuser geometry");
-            scratch_end(scratch);
-            return false;
-        }
-        SDL_Log("Wrote geometry file: %s", diffuser_path);
-        has_light_diffusers = true;
-    }
-
-    char emitter_path[512];
-    if (light_emitter_count > 0) {
-        SDL_snprintf(emitter_path, sizeof(emitter_path), "%s%s_CeilingLightEmitters.usda", dir_path, base_name);
-        if (!write_geometry_usd(emitter_path, "CeilingLightEmitters", mesh, light_emitter_indices, light_emitter_count, NULL)) {
-            SDL_Log("Failed to write ceiling emitter geometry");
-            scratch_end(scratch);
-            return false;
-        }
-        SDL_Log("Wrote geometry file: %s", emitter_path);
-        has_light_emitters = true;
-    }
-
     // Reference geometry files in main scene with material bindings
     char floor_ref[256];
     SDL_snprintf(floor_ref, sizeof(floor_ref), "%s_Floor.usda", base_name);
@@ -2981,14 +2773,6 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
     char props_ref[256];
     if (has_props) {
         SDL_snprintf(props_ref, sizeof(props_ref), "%s_Props.usda", base_name);
-    }
-    char diffuser_ref[256];
-    if (has_light_diffusers) {
-        SDL_snprintf(diffuser_ref, sizeof(diffuser_ref), "%s_CeilingLightDiffusers.usda", base_name);
-    }
-    char emitter_ref[256];
-    if (has_light_emitters) {
-        SDL_snprintf(emitter_ref, sizeof(emitter_ref), "%s_CeilingLightEmitters.usda", base_name);
     }
 
     APPENDF("    def \"Floor\" (references = @./%s@</Floor>)\n", floor_ref);
@@ -3040,17 +2824,19 @@ static bool export_to_usd(GameApp *app, MeshData *mesh, const char *filename,
         APPEND("    }\n\n");
     }
 
-    if (has_light_diffusers) {
-        APPENDF("    def \"CeilingLightDiffusers\" (references = @./%s@</CeilingLightDiffusers>)\n", diffuser_ref);
-        APPEND("    {\n");
-        APPEND("        rel material:binding = </root/Materials/CeilingLightDiffuserMaterial>\n");
-        APPEND("    }\n\n");
-    }
+    // === Static lights ===
+    for (uint32_t i = 0; i < app->static_light_count; i++) {
+        float *light_pos = app->static_light_positions[i];
+        float *light_color = app->static_light_colors[i];
 
-    if (has_light_emitters) {
-        APPENDF("    def \"CeilingLightEmitters\" (references = @./%s@</CeilingLightEmitters>)\n", emitter_ref);
+        APPENDF("    def SphereLight \"ceiling_light_%u\"\n", i);
         APPEND("    {\n");
-        APPEND("        rel material:binding = </root/Materials/CeilingLightEmitterMaterial>\n");
+        APPENDF("        float inputs:intensity = %.1f\n", CEILING_LIGHT_USD_INTENSITY);
+        APPENDF("        float inputs:radius = %.2f\n", CEILING_LIGHT_RADIUS);
+        APPENDF("        float inputs:colorTemperature = %.1f\n", CEILING_LIGHT_USD_TEMPERATURE);
+        APPEND("        bool inputs:enableColorTemperature = 1\n");
+        APPENDF("        double3 xformOp:translate = (%.6f, %.6f, %.6f)\n", light_pos[0], light_pos[1], light_pos[2]);
+        APPEND("        uniform token[] xformOpOrder = [\"xformOp:translate\"]\n");
         APPEND("    }\n\n");
     }
 
@@ -4433,34 +4219,6 @@ static void update_game(GameApp *app) {
     float min_dim = (float)((app->window_width < app->window_height) ? app->window_width : app->window_height);
     app->scene_uniforms.screen_params[2] = min_dim;
     app->scene_uniforms.screen_params[3] = state->normal_debug ? 1.0f : 0.0f;
-
-    const CeilingLightMaterialInfo *light_info = ceiling_light_get_info();
-    float emitter_color[3] = {1.0f, 0.95f, 0.85f};
-    float emitter_intensity = 1.0f;
-    float diffuser_color[3] = {0.8f, 0.8f, 0.8f};
-    float diffuser_transmission = 0.2f;
-    if (light_info) {
-        if (light_info->has_emitter) {
-            emitter_color[0] = light_info->emitter_color[0];
-            emitter_color[1] = light_info->emitter_color[1];
-            emitter_color[2] = light_info->emitter_color[2];
-            emitter_intensity = light_info->emitter_intensity;
-        }
-        if (light_info->has_diffuser) {
-            diffuser_color[0] = light_info->diffuser_color[0];
-            diffuser_color[1] = light_info->diffuser_color[1];
-            diffuser_color[2] = light_info->diffuser_color[2];
-            diffuser_transmission = light_info->diffuser_transmission;
-        }
-    }
-    app->scene_uniforms.ceiling_light_emissive[0] = emitter_color[0];
-    app->scene_uniforms.ceiling_light_emissive[1] = emitter_color[1];
-    app->scene_uniforms.ceiling_light_emissive[2] = emitter_color[2];
-    app->scene_uniforms.ceiling_light_emissive[3] = emitter_intensity;
-    app->scene_uniforms.ceiling_light_diffuser[0] = diffuser_color[0];
-    app->scene_uniforms.ceiling_light_diffuser[1] = diffuser_color[1];
-    app->scene_uniforms.ceiling_light_diffuser[2] = diffuser_color[2];
-    app->scene_uniforms.ceiling_light_diffuser[3] = diffuser_transmission;
 
     build_overlay(app);
 

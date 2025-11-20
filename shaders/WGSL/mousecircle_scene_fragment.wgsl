@@ -11,8 +11,6 @@ struct SceneUniforms {
     flashlightDir: vec4f,
     flashlightParams: vec4f,
     screenParams: vec4f,
-    ceilingLightEmissive: vec4f,
-    ceilingLightDiffuser: vec4f,
 };
 
 struct FragmentInput {
@@ -69,12 +67,8 @@ fn get_material_properties(surface_type: f32) -> MaterialProperties {
         return MaterialProperties(36.0, 0.4); // Book
     } else if (surface_type < 6.5) {
         return MaterialProperties(30.0, 0.5); // Chair
-    } else if (surface_type < 7.5) {
-        return MaterialProperties(10.0, 0.15); // Diffuser
-    } else if (surface_type < 8.5) {
-        return MaterialProperties(26.0, 0.6); // Emissive disk
     }
-    return MaterialProperties(30.0, 0.5);
+    return MaterialProperties(22.0, 0.35); // Ceiling light housing
 }
 
 fn compute_static_lighting(normal: vec3f, world_pos: vec3f, view_dir: vec3f, material: MaterialProperties) -> StaticLightContribution {
@@ -201,13 +195,9 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
     } else if (input.surfaceType < 6.5) {
         // Chair mesh
         baseColor = chairColor.rgb;
-    } else if (input.surfaceType < 7.5) {
-        let trans = clamp(uniforms.ceilingLightDiffuser.w, 0.0, 1.0);
-        baseColor = mix(uniforms.ceilingLightDiffuser.xyz, vec3f(1.0, 1.0, 1.0), trans * 0.4);
-    } else if (input.surfaceType < 8.5) {
-        baseColor = uniforms.ceilingLightEmissive.xyz;
     } else {
-        baseColor = chairColor.rgb;
+        // Ceiling light fixture baked color
+        baseColor = vec3f(0.95, 0.94, 0.88);
     }
 
     let n = normalize(input.normal);
@@ -231,11 +221,6 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
     color += baseColor * staticLight.diffuse;
     color += staticLight.specular;
     color += flashlight.specular * vec3f(1.0, 0.95, 0.85);
-    var emission = vec3f(0.0);
-    if (input.surfaceType >= 7.5 && input.surfaceType < 8.5) {
-        emission = uniforms.ceilingLightEmissive.xyz * uniforms.ceilingLightEmissive.w;
-    }
-    color += emission;
     color = mix(uniforms.fogColor.xyz, color, fogFactor);
     return vec4f(color, 1.0);
 }

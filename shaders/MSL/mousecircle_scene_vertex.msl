@@ -22,8 +22,6 @@ struct SceneUniforms {
     metal::float4 flashlightDir;
     metal::float4 flashlightParams;
     metal::float4 screenParams;
-    metal::float4 ceilingLightEmissive;
-    metal::float4 ceilingLightDiffuser;
 };
 struct VertexInput {
     metal::packed_float3 position;
