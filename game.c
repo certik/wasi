@@ -3891,12 +3891,31 @@ static int complete_gpu_setup(GameApp *app) {
     // Serialize to blob
     uint8_t *blob = NULL;
     uint64_t blob_size = scene_builder_serialize(builder, &blob);
-    scene_builder_free(builder);
+    if (!blob || blob_size == 0) {
+        SDL_Log("Failed to serialize scene");
+        scene_builder_free(builder);
+        arena_free(scene_arena);
+        return -1;
+    }
 
-    // Load scene from blob
-    app->scene = scene_load_from_memory(blob, blob_size, false);
+    // Copy blob to heap-owned memory so scene_free can free it safely
+    uint8_t *owned_blob = (uint8_t *)malloc((size_t)blob_size);
+    if (!owned_blob) {
+        SDL_Log("Out of memory allocating scene blob");
+        scene_builder_free(builder);
+        arena_free(scene_arena);
+        return -1;
+    }
+    base_memcpy(owned_blob, blob, (size_t)blob_size);
+
+    scene_builder_free(builder);
+    arena_free(scene_arena);
+
+    // Load scene from blob (engine will free owned_blob on shutdown)
+    app->scene = scene_load_from_memory(owned_blob, blob_size, false);
     if (!app->scene) {
         SDL_Log("Failed to load scene");
+        free(owned_blob);
         return -1;
     }
 
