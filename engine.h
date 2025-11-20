@@ -9,6 +9,7 @@
 #define ENGINE_H
 
 #include "scene_format.h"
+#include "sdl_compat.h"
 #include <SDL3/SDL.h>
 #include <stdbool.h>
 #include <stdint.h>

@@ -8,13 +8,7 @@
  *   pixi r test_mousecircle_sdl
  */
 
-// Define __gnuc_va_list before SDL headers (needed for wchar.h on Linux with Clang)
-#if defined(__clang__) || defined(__GNUC__)
-#ifndef __GNUC_VA_LIST
-#define __GNUC_VA_LIST
-typedef __builtin_va_list __gnuc_va_list;
-#endif
-#endif
+#include "sdl_compat.h"
 
 #define SDL_MAIN_USE_CALLBACKS 1
 #include <SDL3/SDL.h>

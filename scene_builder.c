@@ -6,6 +6,7 @@
  */
 
 // Don't use SDL_MAIN_USE_CALLBACKS when used as a library
+#include "sdl_compat.h"
 #include <SDL3/SDL.h>
 #include <stdbool.h>
 #include <stdint.h>
