@@ -133,5 +133,36 @@ double atof(const char* str) {
     }
 
     result += fraction / divisor;
+
+    // Handle scientific notation (e or E)
+    if (*str == 'e' || *str == 'E') {
+        str++;
+        int exp_sign = 1;
+        int exponent = 0;
+
+        if (*str == '-') {
+            exp_sign = -1;
+            str++;
+        } else if (*str == '+') {
+            str++;
+        }
+
+        while (*str >= '0' && *str <= '9') {
+            exponent = exponent * 10 + (*str - '0');
+            str++;
+        }
+
+        // Apply exponent
+        double exp_mult = 1.0;
+        for (int i = 0; i < exponent; i++) {
+            exp_mult *= 10.0;
+        }
+        if (exp_sign < 0) {
+            result /= exp_mult;
+        } else {
+            result *= exp_mult;
+        }
+    }
+
     return sign * result;
 }
