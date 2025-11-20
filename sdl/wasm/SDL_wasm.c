@@ -8,7 +8,7 @@
 #include <base/stdarg.h>
 #include <base/numconv.h>
 #include <base/mem.h>
-#include <base/wasi.h>  // For iovec_t
+#include <platform/platform.h>  // For iovec_t
 
 #define WASM_IMPORT(module, name) __attribute__((import_module(module), import_name(name)))
 

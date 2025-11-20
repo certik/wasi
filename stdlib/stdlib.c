@@ -3,7 +3,7 @@
 
 #include <base/mem.h>
 #include <base/exit.h>
-#include <wasi.h>
+#include <platform.h>
 #include <buddy.h>
 #include <stdlib.h>
 #include <string.h>

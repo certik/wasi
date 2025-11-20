@@ -1,5 +1,5 @@
 #include <base/base_io.h>
-#include <base/wasi.h>
+#include <platform/platform.h>
 #include <base/arena.h>
 #include <base/scratch.h>
 #include <base/buddy.h>

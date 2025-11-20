@@ -1,5 +1,5 @@
 #include <base/exit.h>
-#include <base/wasi.h>
+#include <platform/platform.h>
 
 void base_exit(int status) {
     wasi_proc_exit(status);

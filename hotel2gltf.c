@@ -2,7 +2,7 @@
 #include <base/arena.h>
 #include <base/buddy.h>
 #include <base/base_string.h>
-#include <base/wasi.h>
+#include <platform/platform.h>
 #include <base/mem.h>
 #include <base/numconv.h>
 #include <base/format.h>

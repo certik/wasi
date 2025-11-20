@@ -1,4 +1,4 @@
-#include <wasi.h>
+#include <platform.h>
 #include <base_types.h>
 #include <buddy.h>
 

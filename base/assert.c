@@ -1,7 +1,7 @@
 #include <base/assert.h>
 #include <base/base_io.h>
 #include <base/mem.h>
-#include <base/wasi.h>
+#include <platform/platform.h>
 #include <base/numconv.h>
 
 /* After proper strings and formatting, this should just be:
