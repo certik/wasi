@@ -177,6 +177,9 @@ void wasi_proc_exit(int status) {
     ExitProcess((unsigned int)status);
 }
 
+// Forward declaration for command line argument initialization
+static void init_args();
+
 // Public initialization function for manual use (e.g., SDL apps using external stdlib)
 void platform_init(int argc, char** argv) {
     init_args();

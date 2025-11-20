@@ -248,7 +248,6 @@ typedef struct {
 } GameApp;
 
 static GameApp g_App;
-static bool g_buddy_initialized = false;
 static Arena *g_shader_arena = NULL;
 static Arena *g_mesh_arena = NULL;
 
@@ -274,12 +273,8 @@ static string g_overlay_fragment_shader = {0};
 static const char *shader_entrypoint = "main_";
 
 static void ensure_runtime_heap(void) {
-    if (!g_buddy_initialized) {
-        extern void ensure_heap_initialized(void);
-        ensure_heap_initialized();
-        buddy_init();
-        g_buddy_initialized = true;
-    }
+    // Heap is initialized by platform_init() in SDL_AppInit
+    // This just ensures arenas are created
     if (g_shader_arena == NULL) {
         g_shader_arena = arena_new(64 * 1024);
     }
