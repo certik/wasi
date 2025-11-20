@@ -1483,10 +1483,15 @@ bool scene_builder_generate(SceneBuilder *builder, const SceneConfig *config) {
                                                     sizeof(SceneVertex) * builder->vertex_count);
     builder->indices = (uint16_t *)arena_alloc(builder->arena,
                                                sizeof(uint16_t) * builder->index_count);
-    builder->lights = (SceneLight *)arena_alloc(builder->arena,
-                                                sizeof(SceneLight) * builder->light_count);
+    // Only allocate lights if there are any
+    if (builder->light_count > 0) {
+        builder->lights = (SceneLight *)arena_alloc(builder->arena,
+                                                    sizeof(SceneLight) * builder->light_count);
+    } else {
+        builder->lights = NULL;
+    }
 
-    if (!builder->vertices || !builder->indices || !builder->lights) {
+    if (!builder->vertices || !builder->indices || (builder->light_count > 0 && !builder->lights)) {
         SDL_Log("Failed to allocate scene buffers");
         return false;
     }

@@ -3826,13 +3826,10 @@ static int complete_gpu_setup(GameApp *app) {
     SDL_ReleaseGPUShader(app->device, overlay_fs);
 
     // Initialize map data from default map
+    // Keep lights (value 9) in the map so scene_builder can extract them
     for (int z = 0; z < MAP_HEIGHT; z++) {
         for (int x = 0; x < MAP_WIDTH; x++) {
-            int cell = g_default_map[z][x];
-            if (cell == LIGHT_FLOOR_CELL) {
-                cell = 0;  // Convert light markers to floor
-            }
-            g_map_data[z * MAP_WIDTH + x] = cell;
+            g_map_data[z * MAP_WIDTH + x] = g_default_map[z][x];
         }
     }
 
