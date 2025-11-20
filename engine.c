@@ -7,11 +7,12 @@
 #include "engine.h"
 #include "scene_format.h"
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_gpu.h>
 #include <SDL3_image/SDL_image.h>
+#if !defined(__wasi__)
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <unistd.h>
+#endif
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -231,6 +232,11 @@ Scene* scene_load_from_memory(void *blob, uint64_t blob_size, bool use_mmap) {
 }
 
 Scene* scene_load_from_file(const char *path) {
+#if defined(__wasi__)
+    (void)path;
+    SDL_Log("scene_load_from_file is not supported on WASI; use scene_load_from_memory instead");
+    return NULL;
+#else
     if (!path) {
         SDL_Log("scene_load_from_file: path is NULL");
         return NULL;
@@ -276,6 +282,7 @@ Scene* scene_load_from_file(const char *path) {
     }
 
     return scene;
+#endif
 }
 
 const SceneVertex* scene_get_vertices(const Scene *scene, uint32_t *out_count) {
@@ -334,7 +341,11 @@ void scene_free(Scene *scene) {
     if (!scene) return;
 
     if (scene->use_mmap) {
+#if !defined(__wasi__)
         munmap(scene->blob, (size_t)scene->blob_size);
+#else
+        free(scene->blob);
+#endif
     } else {
         free(scene->blob);
     }

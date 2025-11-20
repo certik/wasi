@@ -1660,6 +1660,12 @@ uint64_t scene_builder_serialize(SceneBuilder *builder, uint8_t **out_blob) {
 }
 
 bool scene_builder_save(SceneBuilder *builder, const char *path) {
+#if defined(__wasi__)
+    (void)builder;
+    (void)path;
+    SDL_Log("scene_builder_save is not supported on WASI");
+    return false;
+#else
     if (!builder || !path) {
         SDL_Log("Invalid arguments to scene_builder_save");
         return false;
@@ -1688,6 +1694,7 @@ bool scene_builder_save(SceneBuilder *builder, const char *path) {
 
     SDL_Log("Saved scene to: %s (%llu bytes)", path, (unsigned long long)size);
     return true;
+#endif
 }
 
 void scene_builder_free(SceneBuilder *builder) {

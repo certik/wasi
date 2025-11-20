@@ -36,10 +36,8 @@ typedef __builtin_va_list __gnuc_va_list;
 #include <platform/platform.h>
 #include <base/base_io.h>
 
-#ifndef __wasi__
 #include "scene_builder.h"
 #include "engine.h"
-#endif
 #include "gm_font_data.h"
 
 // Don't define CGLTF_IMPLEMENTATION here - scene_builder.c provides it
@@ -196,16 +194,6 @@ typedef struct {
 
     SDL_GPUTexture *depth_texture;
 
-    OverlayVertex overlay_cpu_vertices[MAX_OVERLAY_VERTICES];
-    uint32_t overlay_vertex_count;
-    bool overlay_dirty;
-
-    SceneUniforms scene_uniforms;
-
-#ifndef __wasi__
-    Scene *scene;
-    Engine *engine;
-#else
     SDL_GPUBuffer *scene_vertex_buffer;
     SDL_GPUBuffer *scene_index_buffer;
     SDL_GPUTransferBuffer *scene_vertex_transfer_buffer;
@@ -217,20 +205,27 @@ typedef struct {
     SDL_GPUTexture *sphere_texture;
     SDL_GPUTexture *book_texture;
     SDL_GPUTexture *chair_texture;
-    SDL_GPUSampler *floor_sampler;
-    SDL_GPUSampler *wall_sampler;
-    SDL_GPUSampler *ceiling_sampler;
-    SDL_GPUSampler *sphere_sampler;
-    SDL_GPUSampler *book_sampler;
-    SDL_GPUSampler *chair_sampler;
+    SDL_GPUSampler *floor_sampler;   // slot 0
+    SDL_GPUSampler *wall_sampler;    // slot 1
+    SDL_GPUSampler *ceiling_sampler; // slot 2
+    SDL_GPUSampler *sphere_sampler;  // slot 3
+    SDL_GPUSampler *book_sampler;    // slot 4
+    SDL_GPUSampler *chair_sampler;   // slot 5
 
     uint32_t scene_vertex_count;
     uint32_t scene_index_count;
 
+    OverlayVertex overlay_cpu_vertices[MAX_OVERLAY_VERTICES];
+    uint32_t overlay_vertex_count;
+    bool overlay_dirty;
+
+    SceneUniforms scene_uniforms;
     uint32_t static_light_count;
     float static_light_positions[MAX_STATIC_LIGHTS][3];
     float static_light_colors[MAX_STATIC_LIGHTS][3];
-#endif
+
+    Scene *scene;
+    Engine *engine;
 
     int window_width;
     int window_height;
@@ -721,7 +716,6 @@ static uint16_t g_index_storage[MAX_GENERATED_INDICES];
 static MeshData g_mesh_data_storage;
 static MapVertex g_temp_vertices[MAX_SCENE_VERTICES];
 
-#ifdef __wasi__
 static MeshData* generate_mesh(GameApp *app, int *map, int width, int height,
                                float spawn_x, float spawn_z) {
     MeshGenContext ctx = {0};
@@ -957,7 +951,6 @@ static MeshData* generate_mesh(GameApp *app, int *map, int width, int height,
 
     return &g_mesh_data_storage;
 }
-#endif
 
 // ============================================================================
 // Game state management (derived from gm.c, simplified)
@@ -2007,7 +2000,6 @@ static const float g_light_color_palette[][3] = {
     {0.96f, 0.90f, 1.00f}, // Soft magenta hue
 };
 
-#ifdef __wasi__
 static void load_map_with_lights(GameApp *app) {
     app->static_light_count = 0;
     base_memset(app->static_light_positions, 0, sizeof(app->static_light_positions));
@@ -2043,7 +2035,6 @@ static void load_map_with_lights(GameApp *app) {
         }
     }
 }
-#endif
 
 static int find_start_position(int *map, int width, int height,
                                float *startX, float *startZ, float *startYaw) {
@@ -3858,7 +3849,6 @@ static int complete_gpu_setup(GameApp *app) {
     float spawn_yaw = 0.0f;
     find_start_position(g_map_data, MAP_WIDTH, MAP_HEIGHT, &spawn_x, &spawn_z, &spawn_yaw);
 
-#ifndef __wasi__
     // Build scene in memory using scene_builder
     Arena *scene_arena = arena_new(8 * 1024 * 1024);
     SceneBuilder *builder = scene_builder_create(scene_arena);
@@ -3948,173 +3938,6 @@ static int complete_gpu_setup(GameApp *app) {
     }
 
     SDL_Log("Scene and engine created successfully");
-#else
-    // WASM: Use old monolithic approach
-    load_map_with_lights(app);
-
-    MeshData *mesh = generate_mesh(app, g_map_data, MAP_WIDTH, MAP_HEIGHT, spawn_x, spawn_z);
-    if (!mesh) {
-        SDL_Log("Failed to generate mesh");
-        return -1;
-    }
-
-    SDL_Log("Static lights: %u", app->static_light_count);
-    SDL_Log("Mesh data: vertices=%u uvs=%u normals=%u indices=%u",
-            mesh->vertex_count, mesh->uv_count, mesh->normal_count, mesh->index_count);
-
-    // Convert mesh to GPU format and upload
-    MapVertex *cpu_vertices = g_temp_vertices;
-    for (uint32_t i = 0; i < mesh->vertex_count; i++) {
-        cpu_vertices[i].position[0] = mesh->positions[i * 3 + 0];
-        cpu_vertices[i].position[1] = mesh->positions[i * 3 + 1];
-        cpu_vertices[i].position[2] = mesh->positions[i * 3 + 2];
-        cpu_vertices[i].surface_type = mesh->surface_types[i];
-        cpu_vertices[i].uv[0] = mesh->uvs[i * 2 + 0];
-        cpu_vertices[i].uv[1] = mesh->uvs[i * 2 + 1];
-        cpu_vertices[i].normal[0] = mesh->normals[i * 3 + 0];
-        cpu_vertices[i].normal[1] = mesh->normals[i * 3 + 1];
-        cpu_vertices[i].normal[2] = mesh->normals[i * 3 + 2];
-    }
-
-    SDL_GPUBufferCreateInfo vertex_buffer_info = {
-        .usage = SDL_GPU_BUFFERUSAGE_VERTEX,
-        .size = sizeof(MapVertex) * mesh->vertex_count,
-    };
-    app->scene_vertex_buffer = SDL_CreateGPUBuffer(app->device, &vertex_buffer_info);
-    if (!app->scene_vertex_buffer) {
-        SDL_Log("Failed to create scene vertex buffer: %s", SDL_GetError());
-        return -1;
-    }
-
-    SDL_GPUBufferCreateInfo index_buffer_info = {
-        .usage = SDL_GPU_BUFFERUSAGE_INDEX,
-        .size = sizeof(uint16_t) * mesh->index_count,
-    };
-    app->scene_index_buffer = SDL_CreateGPUBuffer(app->device, &index_buffer_info);
-    if (!app->scene_index_buffer) {
-        SDL_Log("Failed to create scene index buffer: %s", SDL_GetError());
-        return -1;
-    }
-
-    SDL_GPUTransferBufferCreateInfo transfer_info = {
-        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-        .size = vertex_buffer_info.size,
-    };
-    app->scene_vertex_transfer_buffer = SDL_CreateGPUTransferBuffer(app->device, &transfer_info);
-    transfer_info.size = index_buffer_info.size;
-    app->scene_index_transfer_buffer = SDL_CreateGPUTransferBuffer(app->device, &transfer_info);
-
-    if (!app->scene_vertex_transfer_buffer || !app->scene_index_transfer_buffer) {
-        SDL_Log("Failed to create transfer buffers: %s", SDL_GetError());
-        return -1;
-    }
-
-    float *mapped_vertices = (float *)SDL_MapGPUTransferBuffer(app->device, app->scene_vertex_transfer_buffer, false);
-    if (!mapped_vertices) {
-        SDL_Log("Failed to map vertex transfer buffer: %s", SDL_GetError());
-        return -1;
-    }
-    base_memcpy(mapped_vertices, cpu_vertices, vertex_buffer_info.size);
-    SDL_UnmapGPUTransferBuffer(app->device, app->scene_vertex_transfer_buffer);
-
-    uint16_t *mapped_indices = (uint16_t *)SDL_MapGPUTransferBuffer(app->device, app->scene_index_transfer_buffer, false);
-    if (!mapped_indices) {
-        SDL_Log("Failed to map index transfer buffer: %s", SDL_GetError());
-        return -1;
-    }
-    base_memcpy(mapped_indices, mesh->indices, index_buffer_info.size);
-    SDL_UnmapGPUTransferBuffer(app->device, app->scene_index_transfer_buffer);
-
-    SDL_GPUCommandBuffer *upload_cmdbuf = SDL_AcquireGPUCommandBuffer(app->device);
-    SDL_GPUCopyPass *copy_pass = SDL_BeginGPUCopyPass(upload_cmdbuf);
-
-    SDL_GPUTransferBufferLocation src = {
-        .transfer_buffer = app->scene_vertex_transfer_buffer,
-        .offset = 0,
-    };
-    SDL_GPUBufferRegion dst = {
-        .buffer = app->scene_vertex_buffer,
-        .offset = 0,
-        .size = vertex_buffer_info.size,
-    };
-    SDL_UploadToGPUBuffer(copy_pass, &src, &dst, false);
-
-    src.transfer_buffer = app->scene_index_transfer_buffer;
-    dst.buffer = app->scene_index_buffer;
-    dst.size = index_buffer_info.size;
-    SDL_UploadToGPUBuffer(copy_pass, &src, &dst, false);
-    SDL_EndGPUCopyPass(copy_pass);
-    SDL_SubmitGPUCommandBuffer(upload_cmdbuf);
-
-    app->scene_vertex_count = mesh->vertex_count;
-    app->scene_index_count = mesh->index_count;
-
-    // Load textures
-    typedef struct {
-        const char *path;
-        const char *label;
-        SDL_GPUTexture **slot;
-    } TextureRequest;
-
-    TextureRequest texture_requests[] = {
-        {FLOOR_TEXTURE_PATH, "floor", &app->floor_texture},
-        {WALL_TEXTURE_PATH, "wall", &app->wall_texture},
-        {CEILING_TEXTURE_PATH, "ceiling", &app->ceiling_texture},
-        {SPHERE_TEXTURE_PATH, "sphere", &app->sphere_texture},
-        {BOOK_TEXTURE_PATH, "book", &app->book_texture},
-        {CHAIR_TEXTURE_PATH, "chair", &app->chair_texture},
-    };
-
-    for (size_t i = 0; i < SDL_arraysize(texture_requests); i++) {
-        SDL_GPUTexture *texture = load_texture_from_path(app, texture_requests[i].path, texture_requests[i].label);
-        if (!texture) {
-            for (size_t j = 0; j < i; j++) {
-                SDL_ReleaseGPUTexture(app->device, *texture_requests[j].slot);
-                *texture_requests[j].slot = NULL;
-            }
-            return -1;
-        }
-        *texture_requests[i].slot = texture;
-    }
-
-    // Create 6 separate samplers (one for each texture slot)
-    SDL_GPUSamplerCreateInfo sampler_info = {
-        .min_filter = SDL_GPU_FILTER_LINEAR,
-        .mag_filter = SDL_GPU_FILTER_LINEAR,
-        .mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR,
-        .address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
-        .address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
-        .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
-    };
-    SDL_GPUSampler **samplers[] = {
-        &app->floor_sampler,
-        &app->wall_sampler,
-        &app->ceiling_sampler,
-        &app->sphere_sampler,
-        &app->book_sampler,
-        &app->chair_sampler,
-    };
-    for (size_t i = 0; i < SDL_arraysize(samplers); i++) {
-        *samplers[i] = SDL_CreateGPUSampler(app->device, &sampler_info);
-        if (!*samplers[i]) {
-            SDL_Log("Failed to create texture samplers: %s", SDL_GetError());
-            for (size_t j = 0; j <= i; j++) {
-                if (*samplers[j]) {
-                    SDL_ReleaseGPUSampler(app->device, *samplers[j]);
-                    *samplers[j] = NULL;
-                }
-            }
-            for (size_t j = 0; j < SDL_arraysize(texture_requests); j++) {
-                if (*texture_requests[j].slot) {
-                    SDL_ReleaseGPUTexture(app->device, *texture_requests[j].slot);
-                    *texture_requests[j].slot = NULL;
-                }
-            }
-            return -1;
-        }
-    }
-    SDL_Log("Scene textures and samplers created successfully");
-#endif
 
     // Create overlay buffers
     SDL_GPUTransferBufferCreateInfo overlay_transfer_info = {
@@ -4277,41 +4100,27 @@ static void update_game(GameApp *app) {
 
     base_memset(app->scene_uniforms.static_lights, 0, sizeof(app->scene_uniforms.static_lights));
     base_memset(app->scene_uniforms.static_light_colors, 0, sizeof(app->scene_uniforms.static_light_colors));
-#ifndef __wasi__
-    uint32_t light_count;
-    const SceneLight *lights = scene_get_lights(app->scene, &light_count);
+    uint32_t light_count = 0;
+    const SceneLight *lights = NULL;
+    if (app->scene) {
+        lights = scene_get_lights(app->scene, &light_count);
+    }
     if (light_count > MAX_STATIC_LIGHTS) {
         light_count = MAX_STATIC_LIGHTS;
     }
-    for (uint32_t i = 0; i < light_count; i++) {
-        app->scene_uniforms.static_lights[i][0] = lights[i].position[0];
-        app->scene_uniforms.static_lights[i][1] = lights[i].position[1];
-        app->scene_uniforms.static_lights[i][2] = lights[i].position[2];
-        app->scene_uniforms.static_lights[i][3] = 0.0f;
-        app->scene_uniforms.static_light_colors[i][0] = lights[i].color[0];
-        app->scene_uniforms.static_light_colors[i][1] = lights[i].color[1];
-        app->scene_uniforms.static_light_colors[i][2] = lights[i].color[2];
-        app->scene_uniforms.static_light_colors[i][3] = 0.0f;
+    if (lights) {
+        for (uint32_t i = 0; i < light_count; i++) {
+            app->scene_uniforms.static_lights[i][0] = lights[i].position[0];
+            app->scene_uniforms.static_lights[i][1] = lights[i].position[1];
+            app->scene_uniforms.static_lights[i][2] = lights[i].position[2];
+            app->scene_uniforms.static_lights[i][3] = 0.0f;
+            app->scene_uniforms.static_light_colors[i][0] = lights[i].color[0];
+            app->scene_uniforms.static_light_colors[i][1] = lights[i].color[1];
+            app->scene_uniforms.static_light_colors[i][2] = lights[i].color[2];
+            app->scene_uniforms.static_light_colors[i][3] = 0.0f;
+        }
     }
     app->scene_uniforms.static_light_params[0] = (float)light_count;
-#else
-    // WASM: Use old app->static_light_* arrays
-    uint32_t light_count = app->static_light_count;
-    if (light_count > MAX_STATIC_LIGHTS) {
-        light_count = MAX_STATIC_LIGHTS;
-    }
-    for (uint32_t i = 0; i < light_count; i++) {
-        app->scene_uniforms.static_lights[i][0] = app->static_light_positions[i][0];
-        app->scene_uniforms.static_lights[i][1] = app->static_light_positions[i][1];
-        app->scene_uniforms.static_lights[i][2] = app->static_light_positions[i][2];
-        app->scene_uniforms.static_lights[i][3] = 0.0f;
-        app->scene_uniforms.static_light_colors[i][0] = app->static_light_colors[i][0];
-        app->scene_uniforms.static_light_colors[i][1] = app->static_light_colors[i][1];
-        app->scene_uniforms.static_light_colors[i][2] = app->static_light_colors[i][2];
-        app->scene_uniforms.static_light_colors[i][3] = 0.0f;
-    }
-    app->scene_uniforms.static_light_params[0] = (float)light_count;
-#endif
     app->scene_uniforms.static_light_params[1] = CEILING_LIGHT_RANGE;
     app->scene_uniforms.static_light_params[2] = MIN_AMBIENT_LIGHT;
     app->scene_uniforms.static_light_params[3] = 0.0f;
@@ -4429,42 +4238,12 @@ static int render_game(GameApp *app) {
     SDL_GPURenderPass *render_pass = SDL_BeginGPURenderPass(cmdbuf, &color_target, 1, &depth_target);
 
     // Render scene
-#ifndef __wasi__
     SDL_BindGPUGraphicsPipeline(render_pass, app->scene_pipeline);
     if (!engine_render(app->engine, cmdbuf, render_pass, &app->scene_uniforms, sizeof(app->scene_uniforms))) {
         SDL_Log("engine_render failed");
         SDL_EndGPURenderPass(render_pass);
         return -1;
     }
-#else
-    // WASM: Use old manual rendering
-    SDL_BindGPUGraphicsPipeline(render_pass, app->scene_pipeline);
-    SDL_GPUBufferBinding vertex_binding = {
-        .buffer = app->scene_vertex_buffer,
-        .offset = 0,
-    };
-    SDL_BindGPUVertexBuffers(render_pass, 0, &vertex_binding, 1);
-
-    SDL_GPUBufferBinding index_binding = {
-        .buffer = app->scene_index_buffer,
-        .offset = 0,
-    };
-    SDL_BindGPUIndexBuffer(render_pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
-
-    // Bind textures and samplers
-    SDL_GPUTextureSamplerBinding bindings[6] = {
-        {app->floor_texture, app->floor_sampler},
-        {app->wall_texture, app->wall_sampler},
-        {app->ceiling_texture, app->ceiling_sampler},
-        {app->sphere_texture, app->sphere_sampler},
-        {app->book_texture, app->book_sampler},
-        {app->chair_texture, app->chair_sampler},
-    };
-    SDL_BindGPUFragmentSamplers(render_pass, 0, bindings, 6);
-
-    SDL_PushGPUVertexUniformData(cmdbuf, 0, &app->scene_uniforms, sizeof(app->scene_uniforms));
-    SDL_DrawGPUIndexedPrimitives(render_pass, app->scene_index_count, 1, 0, 0, 0);
-#endif
 
     if (app->overlay_vertex_count > 0) {
         SDL_Log("render_game: Binding overlay pipeline (ptr=%p)", (void*)app->overlay_pipeline);
@@ -4495,7 +4274,6 @@ static int render_game(GameApp *app) {
 }
 
 static void shutdown_game(GameApp *app) {
-#ifndef __wasi__
     if (app->engine) {
         engine_free(app->engine);
         app->engine = NULL;
@@ -4504,73 +4282,6 @@ static void shutdown_game(GameApp *app) {
         scene_free(app->scene);
         app->scene = NULL;
     }
-#else
-    // WASM cleanup
-    if (app->scene_vertex_buffer) {
-        SDL_ReleaseGPUBuffer(app->device, app->scene_vertex_buffer);
-        app->scene_vertex_buffer = NULL;
-    }
-    if (app->scene_index_buffer) {
-        SDL_ReleaseGPUBuffer(app->device, app->scene_index_buffer);
-        app->scene_index_buffer = NULL;
-    }
-    if (app->scene_vertex_transfer_buffer) {
-        SDL_ReleaseGPUTransferBuffer(app->device, app->scene_vertex_transfer_buffer);
-        app->scene_vertex_transfer_buffer = NULL;
-    }
-    if (app->scene_index_transfer_buffer) {
-        SDL_ReleaseGPUTransferBuffer(app->device, app->scene_index_transfer_buffer);
-        app->scene_index_transfer_buffer = NULL;
-    }
-    if (app->floor_texture) {
-        SDL_ReleaseGPUTexture(app->device, app->floor_texture);
-        app->floor_texture = NULL;
-    }
-    if (app->wall_texture) {
-        SDL_ReleaseGPUTexture(app->device, app->wall_texture);
-        app->wall_texture = NULL;
-    }
-    if (app->ceiling_texture) {
-        SDL_ReleaseGPUTexture(app->device, app->ceiling_texture);
-        app->ceiling_texture = NULL;
-    }
-    if (app->sphere_texture) {
-        SDL_ReleaseGPUTexture(app->device, app->sphere_texture);
-        app->sphere_texture = NULL;
-    }
-    if (app->book_texture) {
-        SDL_ReleaseGPUTexture(app->device, app->book_texture);
-        app->book_texture = NULL;
-    }
-    if (app->chair_texture) {
-        SDL_ReleaseGPUTexture(app->device, app->chair_texture);
-        app->chair_texture = NULL;
-    }
-    if (app->floor_sampler) {
-        SDL_ReleaseGPUSampler(app->device, app->floor_sampler);
-        app->floor_sampler = NULL;
-    }
-    if (app->wall_sampler) {
-        SDL_ReleaseGPUSampler(app->device, app->wall_sampler);
-        app->wall_sampler = NULL;
-    }
-    if (app->ceiling_sampler) {
-        SDL_ReleaseGPUSampler(app->device, app->ceiling_sampler);
-        app->ceiling_sampler = NULL;
-    }
-    if (app->sphere_sampler) {
-        SDL_ReleaseGPUSampler(app->device, app->sphere_sampler);
-        app->sphere_sampler = NULL;
-    }
-    if (app->book_sampler) {
-        SDL_ReleaseGPUSampler(app->device, app->book_sampler);
-        app->book_sampler = NULL;
-    }
-    if (app->chair_sampler) {
-        SDL_ReleaseGPUSampler(app->device, app->chair_sampler);
-        app->chair_sampler = NULL;
-    }
-#endif
     if (app->overlay_transfer_buffer) {
         SDL_ReleaseGPUTransferBuffer(app->device, app->overlay_transfer_buffer);
         app->overlay_transfer_buffer = NULL;

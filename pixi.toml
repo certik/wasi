@@ -168,6 +168,8 @@ clang \
     -Wl,--initial-memory=7340032 \
     -o game.wasm \
     game.c \
+    scene_builder.c \
+    engine.c \
     sdl/wasm/SDL_wasm.c \
     base/buddy.c \
     base/arena.c \
