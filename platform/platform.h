@@ -162,3 +162,28 @@ int wasi_args_sizes_get(size_t* argc, size_t* argv_buf_size);
 //   - argv_buf buffer of at least argv_buf_size bytes
 // Returns 0 on success, or errno on error.
 int wasi_args_get(char** argv, char* argv_buf);
+
+
+//=============================================================================
+// Platform Initialization
+//=============================================================================
+//
+// Initialize the platform runtime (heap, buddy allocator, command line args).
+//
+// USAGE PATTERNS:
+//
+// 1. When PLATFORM_USE_EXTERNAL_STDLIB is DEFINED (using external libc):
+//    - You MUST call platform_init(argc, argv) manually in your entry point
+//    - Do NOT implement app_main()
+//    - Example: SDL apps call this in SDL_AppInit()
+//
+// 2. When PLATFORM_USE_EXTERNAL_STDLIB is NOT defined (nostdlib builds):
+//    - You MUST implement app_main()
+//    - Do NOT call platform_init() - it's called automatically by _start
+//    - The platform provides _start which calls platform_init() then app_main()
+//
+// Parameters:
+//   argc: argument count (may be 0 for platforms without argc/argv)
+//   argv: argument vector (may be NULL for platforms without argc/argv)
+//
+void platform_init(int argc, char** argv);

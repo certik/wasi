@@ -102,11 +102,7 @@ uint32_t wasi_fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nw
 }
 
 // Initialize the heap by reserving and committing initial memory
-#ifdef WASI_WINDOWS_SKIP_ENTRY
-void ensure_heap_initialized() {
-#else
 static void ensure_heap_initialized() {
-#endif
     if (windows_heap_base == NULL) {
         // Reserve a large virtual address space
         windows_heap_base = (uint8_t*)VirtualAlloc(NULL, RESERVED_SIZE, MEM_RESERVE, PAGE_READWRITE);
@@ -177,8 +173,15 @@ void wasi_proc_exit(int status) {
     ExitProcess((unsigned int)status);
 }
 
-// Forward declaration for main
-int main();
+// Forward declaration for command line argument initialization
+static void init_args();
+
+// Public initialization function for manual use (e.g., SDL apps using external stdlib)
+void platform_init(int argc, char** argv) {
+    init_args();
+    ensure_heap_initialized();
+    buddy_init();
+}
 
 // File I/O implementations
 wasi_fd_t wasi_path_open(const char* path, size_t path_len, uint64_t rights, int oflags) {
@@ -423,13 +426,20 @@ int wasi_args_get(char** argv, char* argv_buf) {
     return 0;
 }
 
+#ifndef PLATFORM_USE_EXTERNAL_STDLIB
+// Forward declaration for application entry point (only for nostdlib builds)
+int app_main();
+
+// Initialize the platform and call the application
+static int platform_init_and_run() {
+    platform_init(0, NULL);
+    int status = app_main();
+    return status;
+}
+
 // Entry point for Windows - MSVC uses _start but we need to set it up correctly
-#ifndef WASI_WINDOWS_SKIP_ENTRY
 void _start() {
-    init_args();
-    ensure_heap_initialized();
-    buddy_init();
-    int status = main();
+    int status = platform_init_and_run();
     wasi_proc_exit(status);
 }
 #endif

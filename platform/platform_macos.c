@@ -120,8 +120,13 @@ void* wasi_heap_grow(size_t num_bytes) {
     return old_top;
 }
 
-// Forward declaration for main
-int main();
+// Public initialization function for manual use (e.g., SDL apps using external stdlib)
+void platform_init(int argc, char** argv) {
+    stored_argc = argc;
+    stored_argv = argv;
+    ensure_heap_initialized();
+    buddy_init();
+}
 
 // macOS open() flags
 #define O_RDONLY   0x0000
@@ -246,15 +251,21 @@ int wasi_args_get(char** argv, char* argv_buf) {
     return 0;
 }
 
+#ifndef PLATFORM_USE_EXTERNAL_STDLIB
+// Forward declaration for application entry point (only for nostdlib builds)
+int app_main();
+
+// Initialize the platform and call the application
+static int platform_init_and_run(int argc, char** argv) {
+    platform_init(argc, argv);
+    int status = app_main();
+    return status;
+}
+
 // Entry point for macOS.
 // macOS passes argc and argv to the entry point (unlike raw Linux)
-#ifndef WASI_MACOS_SKIP_ENTRY
 void _start(int argc, char** argv) {
-    stored_argc = argc;
-    stored_argv = argv;
-    ensure_heap_initialized();
-    buddy_init();
-    int status = main();
+    int status = platform_init_and_run(argc, argv);
     wasi_proc_exit(status);
 }
 #endif

@@ -23,17 +23,17 @@ size_t int_to_str(int val, char* buf);
 // precision: number of decimal places (-1 for default of 6)
 size_t double_to_str(double val, char* buf, int precision);
 
+// Convert unsigned 64-bit integer to hexadecimal string
+// Returns length of string written (not including null terminator)
+// uppercase: 0 for lowercase (a-f), non-zero for uppercase (A-F)
+size_t uint64_to_hex_str(uint64_t val, char* buf, int uppercase);
+
 // Simple vsnprintf/snprintf implementations for base/ (only for nostdlib builds)
-#if !defined(WASI_LINUX_SKIP_ENTRY) && !defined(WASI_MACOS_SKIP_ENTRY) && !defined(WASI_WINDOWS_SKIP_ENTRY)
-// Supports: %d, %u, %f, %.Nf, %s
+// Supports: %d, %i, %u, %ld, %li, %lu, %lld, %lli, %llu, %zu, %x, %X, %lx, %lX, %llx, %llX, %p, %c, %s, %f, %.Nf, %%
 // Returns number of characters written (not including null terminator)
 int vsnprintf(char *str, size_t size, const char *format, va_list args);
 
 // Simple snprintf implementation for base/
-// Supports: %d, %u, %f, %.Nf, %s
+// Supports: %d, %i, %u, %ld, %li, %lu, %lld, %lli, %llu, %zu, %x, %X, %lx, %lX, %llx, %llX, %p, %c, %s, %f, %.Nf, %%
 // Returns number of characters written (not including null terminator)
 int snprintf(char *str, size_t size, const char *format, ...);
-#else
-// Use standard library snprintf/vsnprintf when building with SDL
-#include <stdio.h>
-#endif

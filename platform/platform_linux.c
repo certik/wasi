@@ -75,12 +75,9 @@ void wasi_proc_exit(int status) {
 
 // Initializes the heap using mmap. We reserve large chunk of virtual
 // address space but don't commit any physical memory to it initially.
-#ifdef WASI_LINUX_SKIP_ENTRY
-void ensure_heap_initialized() {
-#else
 static void ensure_heap_initialized() {
-#endif
     if (linux_heap_base == NULL) {
+        // Always use raw syscall on Linux (works with and without external stdlib)
         long mmap_ret = syscall(
             SYS_MMAP,
             (long)NULL,          // address hint
@@ -125,6 +122,7 @@ void* wasi_heap_grow(size_t num_bytes) {
     }
 
     // Use mprotect to make the pages readable and writable, which commits them.
+    // Always use raw syscall on Linux (works with and without external stdlib)
     long ret = syscall(
         SYS_MPROTECT,
         (long)(linux_heap_base + (committed_pages * WASM_PAGE_SIZE)),
@@ -142,8 +140,13 @@ void* wasi_heap_grow(size_t num_bytes) {
     return old_top;
 }
 
-// Forward declaration for main
-int main();
+// Public initialization function for manual use (e.g., SDL apps using external stdlib)
+void platform_init(int argc, char** argv) {
+    stored_argc = argc;
+    stored_argv = argv;
+    ensure_heap_initialized();
+    buddy_init();
+}
 
 // Linux open() flags
 #define O_RDONLY   0x0000
@@ -269,6 +272,17 @@ int wasi_args_get(char** argv, char* argv_buf) {
     return 0;
 }
 
+#ifndef PLATFORM_USE_EXTERNAL_STDLIB
+// Forward declaration for application entry point (only for nostdlib builds)
+int app_main();
+
+// Initialize the platform and call the application
+static int platform_init_and_run(int argc, char** argv) {
+    platform_init(argc, argv);
+    int status = app_main();
+    return status;
+}
+
 // The entry point for a -nostdlib Linux program is `_start`.
 // The kernel enters with RSP % 16 == 0, but the ABI requires RSP % 16 == 8
 // before a call instruction (so after the call pushes return address, it's aligned).
@@ -278,7 +292,6 @@ int wasi_args_get(char** argv, char* argv_buf) {
 //   rsp+8: argv[0]
 //   rsp+16: argv[1]
 //   ...
-#ifndef WASI_LINUX_SKIP_ENTRY
 __attribute__((naked))
 void _start() {
     __asm__ volatile (
@@ -296,11 +309,6 @@ void _start() {
 
 // The actual C entry point
 int _start_c(int argc, char** argv) {
-    stored_argc = argc;
-    stored_argv = argv;
-    ensure_heap_initialized();
-    buddy_init();
-    int status = main();
-    return status;
+    return platform_init_and_run(argc, argv);
 }
 #endif

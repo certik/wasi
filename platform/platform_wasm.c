@@ -116,14 +116,27 @@ int wasi_args_get(char** argv, char* argv_buf) {
     return args_get(argv, argv_buf);
 }
 
-// For WASI, the entry point is `_start`, which we define to call our `main` function.
-int main();
-
 void ensure_heap_initialized() {
 }
 
-void _start() {
+// Public initialization function for manual use (e.g., SDL apps using external stdlib)
+void platform_init(int argc, char** argv) {
     buddy_init();
-    int status = main();
+}
+
+#ifndef PLATFORM_USE_EXTERNAL_STDLIB
+// Forward declaration for application entry point (only for nostdlib builds)
+int app_main();
+
+// Initialize the platform and call the application
+static void platform_init_and_run() {
+    platform_init(0, NULL);  // WASM doesn't receive argc/argv in _start
+    int status = app_main();
     wasi_proc_exit(status);
 }
+
+// For WASI, the entry point is `_start`
+void _start() {
+    platform_init_and_run();
+}
+#endif

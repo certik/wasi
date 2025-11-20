@@ -248,7 +248,6 @@ typedef struct {
 } GameApp;
 
 static GameApp g_App;
-static bool g_buddy_initialized = false;
 static Arena *g_shader_arena = NULL;
 static Arena *g_mesh_arena = NULL;
 
@@ -274,12 +273,8 @@ static string g_overlay_fragment_shader = {0};
 static const char *shader_entrypoint = "main_";
 
 static void ensure_runtime_heap(void) {
-    if (!g_buddy_initialized) {
-        extern void ensure_heap_initialized(void);
-        ensure_heap_initialized();
-        buddy_init();
-        g_buddy_initialized = true;
-    }
+    // Heap is initialized by platform_init() in SDL_AppInit
+    // This just ensures arenas are created
     if (g_shader_arena == NULL) {
         g_shader_arena = arena_new(64 * 1024);
     }
@@ -3749,7 +3744,7 @@ static int complete_gpu_setup(GameApp *app) {
     }
 
     string scene_vs_code = load_shader_source(&g_scene_vertex_shader, app->scene_vertex_path);
-    SDL_Log("Loaded scene vertex shader: %zu bytes from %s", scene_vs_code.size, app->scene_vertex_path);
+    SDL_Log("Loaded scene vertex shader: %llu bytes from %s", scene_vs_code.size, app->scene_vertex_path);
     SDL_GPUShaderCreateInfo shader_info = {
         .code = (const Uint8 *)scene_vs_code.str,
         .code_size = shader_code_size(scene_vs_code),
@@ -4496,12 +4491,8 @@ static int simple_atoi(const char *str) {
 // SDL callbacks
 // ============================================================================
 
-void ensure_heap_initialized();
-void buddy_init();
-
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
-    ensure_heap_initialized();
-    buddy_init();
+    platform_init(argc, argv);
 
     // Parse command-line arguments
     g_App.test_frames_max = 0;    // 0 = unlimited

@@ -279,7 +279,7 @@ static void generate_gltf(MeshBuilder *mb, const char *bin_filename, const char 
     buddy_free(buffer);
 }
 
-int main(void) {
+int app_main(void) {
     buddy_init();
     Arena *arena = arena_new(4 * 1024 * 1024);  // 4 MB initial size
 

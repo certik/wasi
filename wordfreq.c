@@ -151,7 +151,7 @@ static bool parse_int(string s, int64_t *result) {
     return true;
 }
 
-int main(void) {
+int app_main(void) {
     // Get command line arguments
     Scratch scratch = scratch_begin();
 
