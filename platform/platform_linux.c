@@ -283,11 +283,6 @@ int wasi_args_sizes_get(size_t* argc, size_t* argv_buf_size) {
     return 0;
 }
 
-typedef struct {
-    void* addr;
-    size_t size;
-} MmapHandle;
-
 bool platform_read_file_mmap(const char *filename, uint64_t *out_handle, void **out_data, size_t *out_size) {
     if (!filename || !out_handle || !out_data || !out_size) return false;
     *out_handle = 0;
