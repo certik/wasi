@@ -43,6 +43,13 @@ typedef union {
 #define FILE_BEGIN 0
 #define FILE_CURRENT 1
 #define FILE_END 2
+#define FILE_ATTRIBUTE_NORMAL 0x00000080
+#define FILE_FLAG_SEQUENTIAL_SCAN 0x08000000
+#define FILE_MAP_COPY 0x00000001
+#define FILE_MAP_WRITE 0x00000002
+#ifndef SIZE_MAX
+#define SIZE_MAX ((size_t)-1)
+#endif
 
 // Windows API function declarations
 __declspec(dllimport) HANDLE __stdcall GetStdHandle(DWORD nStdHandle);
@@ -56,6 +63,10 @@ __declspec(dllimport) int __stdcall SetFilePointerEx(HANDLE hFile, LARGE_INTEGER
 __declspec(dllimport) wchar_t* __stdcall GetCommandLineW(void);
 __declspec(dllimport) wchar_t** __stdcall CommandLineToArgvW(const wchar_t* lpCmdLine, int* pNumArgs);
 __declspec(dllimport) HANDLE __stdcall LocalFree(HANDLE hMem);
+__declspec(dllimport) HANDLE __stdcall CreateFileMappingA(HANDLE hFile, void* lpFileMappingAttributes, DWORD flProtect, DWORD dwMaximumSizeHigh, DWORD dwMaximumSizeLow, const char* lpName);
+__declspec(dllimport) LPVOID __stdcall MapViewOfFile(HANDLE hFileMappingObject, DWORD dwDesiredAccess, DWORD dwFileOffsetHigh, DWORD dwFileOffsetLow, size_t dwNumberOfBytesToMap);
+__declspec(dllimport) int __stdcall UnmapViewOfFile(LPCVOID lpBaseAddress);
+__declspec(dllimport) int __stdcall GetFileSizeEx(HANDLE hFile, LARGE_INTEGER* lpFileSize);
 
 // Our emulated heap state for Windows
 static uint8_t* windows_heap_base = NULL;
@@ -66,6 +77,17 @@ static const size_t RESERVED_SIZE = 1ULL << 32; // Reserve 4GB of virtual addres
 static int stored_argc = 0;
 static char** stored_argv = NULL;
 static char* stored_argv_buf = NULL;
+
+typedef struct {
+    void   *view;
+    HANDLE  hFile;
+    HANDLE  hMapping;
+    size_t  size;
+    bool    in_use;
+} MmapHandle;
+
+#define MMAP_HANDLE_CAP 10
+static MmapHandle g_mmap_handles[MMAP_HANDLE_CAP] = {0};
 
 // Emulation of `fd_write` using Windows WriteFile API
 uint32_t wasi_fd_write(int fd, const ciovec_t* iovs, size_t iovs_len, size_t* nwritten) {
@@ -463,6 +485,113 @@ int wasi_args_get(char** argv, char* argv_buf) {
         *buf_ptr++ = '\0';
     }
     return 0;
+}
+
+bool platform_read_file_mmap(const char *filename, uint64_t *out_handle, void **out_data, size_t *out_size) {
+    if (!filename || !out_handle || !out_data || !out_size) return false;
+    *out_handle = 0;
+    *out_data = NULL;
+    *out_size = 0;
+
+    HANDLE hFile = CreateFileA(
+        filename,
+        GENERIC_READ | GENERIC_WRITE,
+        FILE_SHARE_READ,
+        NULL,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN,
+        NULL
+    );
+    if (hFile == INVALID_HANDLE_VALUE) return false;
+
+    LARGE_INTEGER fileSize;
+    if (!GetFileSizeEx(hFile, &fileSize)) {
+        CloseHandle(hFile);
+        return false;
+    }
+    if (fileSize.QuadPart > (LONGLONG)SIZE_MAX) {
+        CloseHandle(hFile);
+        return false;
+    }
+    size_t file_size = (size_t)fileSize.QuadPart;
+    if (file_size == 0) {
+        CloseHandle(hFile);
+        *out_size = 0;
+        return true;
+    }
+
+    HANDLE hMapping = CreateFileMappingA(
+        hFile,
+        NULL,
+        PAGE_READWRITE,
+        0, 0,
+        NULL
+    );
+    if (!hMapping) {
+        CloseHandle(hFile);
+        return false;
+    }
+
+    void *view = MapViewOfFile(
+        hMapping,
+        FILE_MAP_COPY | FILE_MAP_WRITE,
+        0, 0, 0
+    );
+    if (!view) {
+        CloseHandle(hMapping);
+        CloseHandle(hFile);
+        return false;
+    }
+
+    int slot = -1;
+    for (int i = 0; i < MMAP_HANDLE_CAP; i++) {
+        if (!g_mmap_handles[i].in_use) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot == -1) {
+        UnmapViewOfFile(view);
+        CloseHandle(hMapping);
+        CloseHandle(hFile);
+        return false;
+    }
+
+    g_mmap_handles[slot].view = view;
+    g_mmap_handles[slot].hFile = hFile;
+    g_mmap_handles[slot].hMapping = hMapping;
+    g_mmap_handles[slot].size = file_size;
+    g_mmap_handles[slot].in_use = true;
+
+    *out_handle = (uint64_t)(slot + 1);
+    *out_data = view;
+    *out_size = file_size;
+    return true;
+}
+
+void platform_file_unmap(uint64_t handle) {
+    if (handle == 0) return;
+
+    uint64_t idx = handle - 1;
+    if (idx >= MMAP_HANDLE_CAP) return;
+
+    MmapHandle *internal = &g_mmap_handles[idx];
+    if (!internal->in_use) return;
+
+    if (internal->view) {
+        UnmapViewOfFile(internal->view);
+    }
+    if (internal->hMapping) {
+        CloseHandle(internal->hMapping);
+    }
+    if (internal->hFile) {
+        CloseHandle(internal->hFile);
+    }
+    internal->view = NULL;
+    internal->hFile = NULL;
+    internal->hMapping = NULL;
+    internal->size = 0;
+    internal->in_use = false;
 }
 
 #ifndef PLATFORM_SKIP_ENTRY

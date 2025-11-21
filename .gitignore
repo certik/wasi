@@ -1,3 +1,6 @@
+scripts/target
+scripts/Cargo.lock
+arena_macos.dSYM/
 
 # pixi environments
 .pixi

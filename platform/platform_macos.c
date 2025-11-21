@@ -28,6 +28,7 @@ extern int dup2(int oldfd, int newfd);
 extern int fcntl(int fd, int cmd, ...);
 extern ssize_t readv(int fd, const struct iovec *iov, int iovcnt);
 extern off_t lseek(int fd, off_t offset, int whence);
+extern int munmap(void *addr, size_t len);
 
 // Protection and mapping flags (macOS-specific values)
 #define PROT_NONE  0x00
@@ -36,6 +37,7 @@ extern off_t lseek(int fd, off_t offset, int whence);
 
 #define MAP_PRIVATE 0x0002
 #define MAP_ANONYMOUS 0x1000  // Different from Linux
+#define MAP_FAILED ((void*)-1)
 
 // fcntl commands
 #define F_DUPFD 0
@@ -48,6 +50,15 @@ static const size_t RESERVED_SIZE = 1ULL << 32; // 4GB virtual space
 // Command line arguments storage
 static int stored_argc = 0;
 static char** stored_argv = NULL;
+
+typedef struct {
+    void* addr;
+    size_t size;
+    bool in_use;
+} MmapHandle;
+
+#define MMAP_HANDLE_CAP 10
+static MmapHandle g_mmap_handles[MMAP_HANDLE_CAP] = {0};
 
 void ensure_heap_initialized() {
     if (linux_heap_base == NULL) {
@@ -258,6 +269,77 @@ int wasi_args_get(char** argv, char* argv_buf) {
         *buf_ptr++ = '\0';
     }
     return 0;
+}
+
+bool platform_read_file_mmap(const char *filename, uint64_t *out_handle, void **out_data, size_t *out_size) {
+    if (!filename || !out_handle || !out_data || !out_size) return false;
+    *out_handle = 0;
+    *out_data = NULL;
+    *out_size = 0;
+
+    int fd = open(filename, O_RDONLY, 0);
+    if (fd < 0) {
+        return false;
+    }
+
+    off_t end = lseek(fd, 0, WASI_SEEK_END);
+    if (end < 0) {
+        close(fd);
+        return false;
+    }
+
+    size_t file_size = (size_t)end;
+    if (lseek(fd, 0, WASI_SEEK_SET) < 0) {
+        close(fd);
+        return false;
+    }
+
+    if (file_size == 0) {
+        close(fd);
+        *out_size = 0;
+        return true;
+    }
+
+    void *addr = mmap(NULL, file_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+    close(fd);
+    if (addr == MAP_FAILED) {
+        return false;
+    }
+
+    int slot = -1;
+    for (int i = 0; i < MMAP_HANDLE_CAP; i++) {
+        if (!g_mmap_handles[i].in_use) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot == -1) {
+        munmap(addr, file_size);
+        return false;
+    }
+
+    g_mmap_handles[slot].addr = addr;
+    g_mmap_handles[slot].size = file_size;
+    g_mmap_handles[slot].in_use = true;
+
+    *out_handle = (uint64_t)(slot + 1);
+    *out_data = addr;
+    *out_size = file_size;
+    return true;
+}
+
+void platform_file_unmap(uint64_t handle) {
+    if (handle == 0) return;
+    uint64_t idx = handle - 1;
+    if (idx >= MMAP_HANDLE_CAP) return;
+    MmapHandle *h = &g_mmap_handles[idx];
+    if (!h->in_use) return;
+    if (h->addr && h->size > 0) {
+        munmap(h->addr, h->size);
+    }
+    h->addr = NULL;
+    h->size = 0;
+    h->in_use = false;
 }
 
 #ifndef PLATFORM_SKIP_ENTRY

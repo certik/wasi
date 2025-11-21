@@ -196,3 +196,28 @@ void platform_init(int argc, char** argv);
 // Square root functions using platform-specific builtins
 double fast_sqrt(double x);
 float fast_sqrtf(float x);
+
+//=============================================================================
+// File mapping (read-only, private)
+//=============================================================================
+//
+// Attempts to map a file into memory for read-only, private (COW) access.
+// On success:
+//   *out_handle is set to an opaque handle that must be passed to
+//     platform_file_unmap when done (may be 0 for empty files)
+//   *out_data points to the mapped bytes (or NULL for empty files)
+//   *out_size is the file size in bytes
+// Returns true on success, false on failure.
+//
+// Platform behavior:
+//   - Linux/macOS/Windows: uses mmap/MapViewOfFile. If mapping fails,
+//     returns false (no heap copy fallback here).
+//   - WASM: returns false immediately (no mmap available).
+//
+// Callers should fall back to a regular buffered read (e.g., read_file)
+// when this returns false.
+bool platform_read_file_mmap(const char *filename, uint64_t *out_handle, void **out_data, size_t *out_size);
+
+// Releases a mapping obtained from platform_read_file_mmap.
+// Safe to call with handle == 0. Resets/cleans any internal state for that handle.
+void platform_file_unmap(uint64_t handle);

@@ -128,6 +128,18 @@ float fast_sqrtf(float x) {
     return __builtin_sqrtf(x);
 }
 
+bool platform_read_file_mmap(const char *filename, uint64_t *out_handle, void **out_data, size_t *out_size) {
+    (void)filename;
+    if (out_handle) *out_handle = 0;
+    if (out_data) *out_data = NULL;
+    if (out_size) *out_size = 0;
+    return false;
+}
+
+void platform_file_unmap(uint64_t handle) {
+    (void)handle;
+}
+
 // Public initialization function for manual use (e.g., SDL apps using external stdlib)
 void platform_init(int argc, char** argv) {
     buddy_init();
