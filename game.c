@@ -62,6 +62,8 @@
 #define FLASHLIGHT_COS_CUTOFF 0.9f
 #define FLASHLIGHT_SCREEN_RADIUS 0.18f
 #define FLASHLIGHT_RING_THICKNESS 0.01f
+#define RADIANCE_CASCADE_COUNT 3
+#define RADIANCE_CASCADE_DIM 32.0f
 
 // Overlay layout constants
 #define GLYPH_PIXEL_SIZE 1.0f
@@ -162,6 +164,9 @@ typedef struct {
     float flashlight_direction[4];
     float flashlight_params[4];
     float screen_params[4];
+    float radiance_cascade_origins[RADIANCE_CASCADE_COUNT][4];
+    float radiance_cascade_spacing[4];
+    float gi_params[4];
 } SceneUniforms;
 
 typedef struct {
@@ -2565,7 +2570,7 @@ static int complete_gpu_setup(GameApp *app) {
     shader_info.code_size = shader_code_size(scene_fs_code);
     shader_info.entrypoint = shader_entrypoint;
     shader_info.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
-    shader_info.num_samplers = 8;  // 7 textures + 1 sampler in set 2 = 8 bindings
+    shader_info.num_samplers = 11;  // 7 textures + 1 sampler + 3 radiance cascades in set 2
     shader_info.num_uniform_buffers = 1;
     shader_info.num_storage_buffers = 0;
     shader_info.num_storage_textures = 0;
@@ -2818,6 +2823,10 @@ static void update_game(GameApp *app) {
 
     GameState *state = &app->state;
     state->avg_frame_time = state->avg_frame_time * PERF_SMOOTHING + app->frame_time_ms * (1.0f - PERF_SMOOTHING);
+    const SceneHeader *scene_header = NULL;
+    if (app->scene) {
+        scene_header = scene_get_header(app->scene);
+    }
 
     state->fps_frame_count++;
     state->last_fps_update_time += delta;
@@ -2848,12 +2857,9 @@ static void update_game(GameApp *app) {
     base_memset(app->scene_uniforms.static_light_colors, 0, sizeof(app->scene_uniforms.static_light_colors));
     uint32_t light_count = 0;
     const SceneLight *lights = NULL;
-    if (app->scene) {
-        const SceneHeader *scene_header = scene_get_header(app->scene);
-        if (scene_header) {
-            light_count = scene_header->light_count;
-            lights = scene_header->lights;
-        }
+    if (scene_header) {
+        light_count = scene_header->light_count;
+        lights = scene_header->lights;
     }
     if (light_count > MAX_STATIC_LIGHTS) {
         light_count = MAX_STATIC_LIGHTS;
@@ -2914,6 +2920,50 @@ static void update_game(GameApp *app) {
     float min_dim = (float)((app->window_width < app->window_height) ? app->window_width : app->window_height);
     app->scene_uniforms.screen_params[2] = min_dim;
     app->scene_uniforms.screen_params[3] = state->normal_debug ? 1.0f : 0.0f;
+
+    float rc_center[3] = {
+        app->scene_uniforms.camera_pos[0],
+        app->scene_uniforms.camera_pos[1],
+        app->scene_uniforms.camera_pos[2],
+    };
+    float rc_extent = 8.0f;
+    if (scene_header) {
+        rc_center[0] = (scene_header->bounds.min[0] + scene_header->bounds.max[0]) * 0.5f;
+        rc_center[1] = (scene_header->bounds.min[1] + scene_header->bounds.max[1]) * 0.5f;
+        rc_center[2] = (scene_header->bounds.min[2] + scene_header->bounds.max[2]) * 0.5f;
+        float extent_x = scene_header->bounds.max[0] - scene_header->bounds.min[0];
+        float extent_y = scene_header->bounds.max[1] - scene_header->bounds.min[1];
+        float extent_z = scene_header->bounds.max[2] - scene_header->bounds.min[2];
+        rc_extent = extent_x;
+        if (extent_y > rc_extent) rc_extent = extent_y;
+        if (extent_z > rc_extent) rc_extent = extent_z;
+        if (rc_extent < 1.0f) {
+            rc_extent = 1.0f;
+        }
+    }
+
+    float rc_spacing[RADIANCE_CASCADE_COUNT] = {0};
+    float base_spacing = rc_extent / (RADIANCE_CASCADE_DIM - 1.0f);
+    if (base_spacing <= 0.0f) {
+        base_spacing = 1.0f;
+    }
+    for (int i = 0; i < RADIANCE_CASCADE_COUNT; i++) {
+        float spacing = base_spacing * (float)(1 << i);
+        rc_spacing[i] = spacing;
+        float span = spacing * (RADIANCE_CASCADE_DIM - 1.0f);
+        app->scene_uniforms.radiance_cascade_origins[i][0] = rc_center[0] - span * 0.5f;
+        app->scene_uniforms.radiance_cascade_origins[i][1] = rc_center[1] - span * 0.5f;
+        app->scene_uniforms.radiance_cascade_origins[i][2] = rc_center[2] - span * 0.5f;
+        app->scene_uniforms.radiance_cascade_origins[i][3] = spacing;
+    }
+    app->scene_uniforms.radiance_cascade_spacing[0] = rc_spacing[0];
+    app->scene_uniforms.radiance_cascade_spacing[1] = rc_spacing[1];
+    app->scene_uniforms.radiance_cascade_spacing[2] = rc_spacing[2];
+    app->scene_uniforms.radiance_cascade_spacing[3] = RADIANCE_CASCADE_DIM;
+    app->scene_uniforms.gi_params[0] = engine_has_gi(app->engine) ? 1.0f : 0.0f;
+    app->scene_uniforms.gi_params[1] = (float)RADIANCE_CASCADE_COUNT;
+    app->scene_uniforms.gi_params[2] = RADIANCE_CASCADE_DIM;
+    app->scene_uniforms.gi_params[3] = rc_extent;
 
     build_overlay(app);
 

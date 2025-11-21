@@ -11,6 +11,9 @@ struct SceneUniforms {
     flashlightDir: vec4f,
     flashlightParams: vec4f,
     screenParams: vec4f,
+    radianceCascadeOrigins: array<vec4f, 3>,
+    radianceCascadeSpacing: vec4f,
+    giParams: vec4f,
 };
 
 struct VertexInput {

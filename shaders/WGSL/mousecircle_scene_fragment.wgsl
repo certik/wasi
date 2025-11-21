@@ -1,4 +1,6 @@
 const MAX_STATIC_LIGHTS: u32 = 16u;
+const RADIANCE_CASCADE_COUNT: u32 = 3u;
+const RADIANCE_DIM: f32 = 32.0;
 
 struct SceneUniforms {
     mvp: mat4x4f,
@@ -11,6 +13,9 @@ struct SceneUniforms {
     flashlightDir: vec4f,
     flashlightParams: vec4f,
     screenParams: vec4f,
+    radianceCascadeOrigins: array<vec4f, RADIANCE_CASCADE_COUNT>,
+    radianceCascadeSpacing: vec4f,
+    giParams: vec4f,
 };
 
 struct FragmentInput {
@@ -45,6 +50,9 @@ struct MaterialProperties {
 @group(2) @binding(5) var bookTexture: texture_2d<f32>;
 @group(2) @binding(6) var chairTexture: texture_2d<f32>;
 @group(2) @binding(7) var sharedSampler: sampler;
+@group(2) @binding(8) var radianceCascade0: texture_3d<f32>;
+@group(2) @binding(9) var radianceCascade1: texture_3d<f32>;
+@group(2) @binding(10) var radianceCascade2: texture_3d<f32>;
 @group(3) @binding(0) var<uniform> uniforms: SceneUniforms;
 
 fn checker(uv: vec2f) -> f32 {
@@ -167,6 +175,83 @@ fn compute_flashlight(normal: vec3f, world_pos: vec3f, frag_coord: vec4f, view_d
     return FlashlightContribution(beam, specular);
 }
 
+fn sample_radiance_texture(index: u32, coord: vec3u) -> vec4f {
+    if (index == 0u) {
+        return textureLoad(radianceCascade0, coord, 0);
+    } else if (index == 1u) {
+        return textureLoad(radianceCascade1, coord, 0);
+    }
+    return textureLoad(radianceCascade2, coord, 0);
+}
+
+fn sample_radiance_cascade(index: u32, world_pos: vec3f) -> vec4f {
+    if (index >= RADIANCE_CASCADE_COUNT) {
+        return vec4f(0.0);
+    }
+    let origin = uniforms.radianceCascadeOrigins[index];
+    let spacing = origin.w;
+    if (spacing <= 0.0) {
+        return vec4f(0.0);
+    }
+
+    let local = (world_pos - origin.xyz) / spacing;
+    if (any(local < vec3f(0.0)) || any(local > vec3f(RADIANCE_DIM - 1.0))) {
+        return vec4f(0.0);
+    }
+
+    let p0 = vec3u(clamp(local, vec3f(0.0), vec3f(RADIANCE_DIM - 1.0)));
+    let p1 = vec3u(clamp(vec3f(p0) + vec3f(1.0), vec3f(0.0), vec3f(RADIANCE_DIM - 1.0)));
+    let t = fract(local);
+
+    let c000 = sample_radiance_texture(index, vec3u(p0.x, p0.y, p0.z));
+    let c100 = sample_radiance_texture(index, vec3u(p1.x, p0.y, p0.z));
+    let c010 = sample_radiance_texture(index, vec3u(p0.x, p1.y, p0.z));
+    let c110 = sample_radiance_texture(index, vec3u(p1.x, p1.y, p0.z));
+    let c001 = sample_radiance_texture(index, vec3u(p0.x, p0.y, p1.z));
+    let c101 = sample_radiance_texture(index, vec3u(p1.x, p0.y, p1.z));
+    let c011 = sample_radiance_texture(index, vec3u(p0.x, p1.y, p1.z));
+    let c111 = sample_radiance_texture(index, vec3u(p1.x, p1.y, p1.z));
+
+    let c00 = mix(c000, c100, t.x);
+    let c10 = mix(c010, c110, t.x);
+    let c01 = mix(c001, c101, t.x);
+    let c11 = mix(c011, c111, t.x);
+
+    let c0 = mix(c00, c10, t.y);
+    let c1 = mix(c01, c11, t.y);
+
+    return mix(c0, c1, t.z);
+}
+
+fn sample_radiance(world_pos: vec3f) -> vec3f {
+    if (uniforms.giParams.x < 0.5) {
+        return vec3f(0.0);
+    }
+    var accum = vec3f(0.0);
+    var weight = 0.0;
+
+    let rc0 = sample_radiance_cascade(0u, world_pos);
+    if (rc0.a > 0.0) {
+        accum += rc0.rgb * rc0.a;
+        weight += rc0.a;
+    }
+    let rc1 = sample_radiance_cascade(1u, world_pos);
+    if (rc1.a > 0.0) {
+        accum += rc1.rgb * rc1.a;
+        weight += rc1.a;
+    }
+    let rc2 = sample_radiance_cascade(2u, world_pos);
+    if (rc2.a > 0.0) {
+        accum += rc2.rgb * rc2.a;
+        weight += rc2.a;
+    }
+
+    if (weight > 0.0) {
+        return accum / weight;
+    }
+    return accum;
+}
+
 @fragment
 fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @location(0) vec4f {
     // Sample textures unconditionally (required for uniform control flow)
@@ -221,6 +306,7 @@ fn main_(input: FragmentInput, @builtin(position) frag_coord: vec4f) -> @locatio
     let fogFactor = exp(-distance(input.worldPos, uniforms.cameraPos.xyz) * 0.08);
     var color = baseColor * (ambient + flashlight.diffuse);
     color += baseColor * staticLight.diffuse;
+    color += baseColor * sample_radiance(input.worldPos);
     color += staticLight.specular;
     color += flashlight.specular * vec3f(1.0, 0.95, 0.85);
     color = mix(uniforms.fogColor.xyz, color, fogFactor);

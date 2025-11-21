@@ -13,6 +13,9 @@ struct SceneUniforms {
     float4 flashlightDir;
     float4 flashlightParams;
     float4 screenParams;
+    float4 radianceCascadeOrigins[3];
+    float4 radianceCascadeSpacing;
+    float4 giParams;
 };
 
 struct VertexInput {
@@ -43,6 +46,9 @@ cbuffer SceneUniforms : register(b0, space1) {
     float4 flashlightDir;
     float4 flashlightParams;
     float4 screenParams;
+    float4 radianceCascadeOrigins[3];
+    float4 radianceCascadeSpacing;
+    float4 giParams;
 }
 
 struct VertexOutput_main {

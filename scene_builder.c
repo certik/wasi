@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <float.h>
 
 #include "scene_builder.h"
 #include "scene_format.h"
@@ -44,6 +45,9 @@
 #define OBJ_MAX_VERTICES 20000
 #define OBJ_MAX_INDICES 20000
 #define OBJ_MAX_TEMP_VERTICES 8000
+#define RC_SDF_DIM 64
+#define RC_SDF_MARGIN 0.5f
+#define RC_SDF_DILATION 0.05f
 
 // ============================================================================
 // Internal data structures
@@ -107,6 +111,17 @@ struct SceneBuilder {
     const char **texture_paths;  // Array of texture path pointers
     uint32_t *surface_type_ids;  // Corresponding surface type IDs
     uint32_t texture_count;
+
+    // Map metadata for SDF baking
+    int *map_data;
+    int map_width;
+    int map_height;
+
+    // Baked bounds + SDF
+    SceneAABB bounds;
+    SceneSDFInfo sdf_info;
+    float *sdf;
+    uint64_t sdf_size;
 };
 
 // Light color palette (from game.c)
@@ -315,6 +330,151 @@ static inline void push_triangle_id(MeshGenContext *ctx, float id) {
 
 static inline void push_index(MeshGenContext *ctx, uint16_t idx) {
     ctx->indices[ctx->index_idx++] = idx;
+}
+
+static SceneAABB compute_bounds_from_vertices(const SceneVertex *verts, uint32_t count) {
+    SceneAABB bounds = {{{0}}};
+    if (!verts || count == 0) {
+        bounds.min[0] = bounds.min[1] = bounds.min[2] = 0.0f;
+        bounds.max[0] = bounds.max[1] = bounds.max[2] = 0.0f;
+        return bounds;
+    }
+
+    bounds.min[0] = bounds.min[1] = bounds.min[2] = FLT_MAX;
+    bounds.max[0] = bounds.max[1] = bounds.max[2] = -FLT_MAX;
+
+    for (uint32_t i = 0; i < count; i++) {
+        const SceneVertex *v = &verts[i];
+        if (v->position[0] < bounds.min[0]) bounds.min[0] = v->position[0];
+        if (v->position[1] < bounds.min[1]) bounds.min[1] = v->position[1];
+        if (v->position[2] < bounds.min[2]) bounds.min[2] = v->position[2];
+        if (v->position[0] > bounds.max[0]) bounds.max[0] = v->position[0];
+        if (v->position[1] > bounds.max[1]) bounds.max[1] = v->position[1];
+        if (v->position[2] > bounds.max[2]) bounds.max[2] = v->position[2];
+    }
+    return bounds;
+}
+
+static inline float signed_distance_aabb(const float p[3], const float bmin[3], const float bmax[3]) {
+    float cx = (bmin[0] + bmax[0]) * 0.5f;
+    float cy = (bmin[1] + bmax[1]) * 0.5f;
+    float cz = (bmin[2] + bmax[2]) * 0.5f;
+    float hx = (bmax[0] - bmin[0]) * 0.5f;
+    float hy = (bmax[1] - bmin[1]) * 0.5f;
+    float hz = (bmax[2] - bmin[2]) * 0.5f;
+
+    float dx = SDL_fabsf(p[0] - cx) - hx;
+    float dy = SDL_fabsf(p[1] - cy) - hy;
+    float dz = SDL_fabsf(p[2] - cz) - hz;
+
+    float ax = dx > 0.0f ? dx : 0.0f;
+    float ay = dy > 0.0f ? dy : 0.0f;
+    float az = dz > 0.0f ? dz : 0.0f;
+    float outside = fast_sqrtf(ax * ax + ay * ay + az * az);
+    float inside = dx;
+    if (dy > inside) inside = dy;
+    if (dz > inside) inside = dz;
+    if (inside < 0.0f) {
+        return inside;
+    }
+    return outside;
+}
+
+static float scene_distance_field(const SceneBuilder *builder, const float p[3]) {
+    float best = FLT_MAX;
+
+    // Floor and ceiling planes
+    float d_floor = p[1];                 // y=0 plane
+    float d_ceiling = WALL_HEIGHT - p[1]; // y=WALL_HEIGHT plane
+    if (d_floor < best) best = d_floor;
+    if (d_ceiling < best) best = d_ceiling;
+
+    // Map solids (axis-aligned unit cells extruded to WALL_HEIGHT)
+    for (int z = 0; z < builder->map_height; z++) {
+        for (int x = 0; x < builder->map_width; x++) {
+            int cell = builder->map_data[z * builder->map_width + x];
+            if (!is_solid_cell(cell)) {
+                continue;
+            }
+            float bmin[3] = {(float)x, 0.0f, (float)z};
+            float bmax[3] = {(float)x + 1.0f, WALL_HEIGHT, (float)z + 1.0f};
+            float d = signed_distance_aabb(p, bmin, bmax);
+            if (d < best) {
+                best = d;
+            }
+        }
+    }
+
+    return best;
+}
+
+static bool build_scene_sdf(SceneBuilder *builder) {
+    if (!builder->map_data || builder->map_width <= 0 || builder->map_height <= 0) {
+        SDL_Log("Cannot build SDF: missing map data");
+        return false;
+    }
+
+    SceneAABB bounds = builder->bounds;
+    // Expand to cube with margin to keep voxels isotropic
+    float extent_x = bounds.max[0] - bounds.min[0] + RC_SDF_MARGIN * 2.0f;
+    float extent_y = bounds.max[1] - bounds.min[1] + RC_SDF_MARGIN * 2.0f;
+    float extent_z = bounds.max[2] - bounds.min[2] + RC_SDF_MARGIN * 2.0f;
+
+    float max_extent = extent_x;
+    if (extent_y > max_extent) max_extent = extent_y;
+    if (extent_z > max_extent) max_extent = extent_z;
+
+    float center[3] = {
+        (bounds.min[0] + bounds.max[0]) * 0.5f,
+        (bounds.min[1] + bounds.max[1]) * 0.5f,
+        (bounds.min[2] + bounds.max[2]) * 0.5f,
+    };
+
+    builder->sdf_info.dim[0] = RC_SDF_DIM;
+    builder->sdf_info.dim[1] = RC_SDF_DIM;
+    builder->sdf_info.dim[2] = RC_SDF_DIM;
+    builder->sdf_info.voxel_size = max_extent / (float)(RC_SDF_DIM - 1);
+    builder->sdf_info.origin[0] = center[0] - max_extent * 0.5f;
+    builder->sdf_info.origin[1] = center[1] - max_extent * 0.5f;
+    builder->sdf_info.origin[2] = center[2] - max_extent * 0.5f;
+    builder->sdf_info.max_distance = max_extent * 0.5f + RC_SDF_MARGIN;
+    builder->sdf_info.pad = 0;
+
+    uint64_t voxel_count = (uint64_t)builder->sdf_info.dim[0] *
+                           (uint64_t)builder->sdf_info.dim[1] *
+                           (uint64_t)builder->sdf_info.dim[2];
+    builder->sdf_size = voxel_count * sizeof(float);
+    builder->sdf = (float *)arena_alloc(builder->arena, (size_t)builder->sdf_size);
+    if (!builder->sdf) {
+        SDL_Log("Failed to allocate SDF buffer (%llu bytes)", (unsigned long long)builder->sdf_size);
+        builder->sdf_size = 0;
+        return false;
+    }
+
+    for (uint32_t z = 0; z < builder->sdf_info.dim[2]; z++) {
+        for (uint32_t y = 0; y < builder->sdf_info.dim[1]; y++) {
+            for (uint32_t x = 0; x < builder->sdf_info.dim[0]; x++) {
+                float world_pos[3] = {
+                    builder->sdf_info.origin[0] + ((float)x + 0.5f) * builder->sdf_info.voxel_size,
+                    builder->sdf_info.origin[1] + ((float)y + 0.5f) * builder->sdf_info.voxel_size,
+                    builder->sdf_info.origin[2] + ((float)z + 0.5f) * builder->sdf_info.voxel_size,
+                };
+                float d = scene_distance_field(builder, world_pos);
+                d -= RC_SDF_DILATION;
+                if (d > builder->sdf_info.max_distance) {
+                    d = builder->sdf_info.max_distance;
+                }
+                size_t idx = (size_t)((z * builder->sdf_info.dim[1] + y) * builder->sdf_info.dim[0] + x);
+                builder->sdf[idx] = d;
+            }
+        }
+    }
+
+    SDL_Log("Built SDF grid %ux%ux%u (voxel=%.4f, origin=%.2f %.2f %.2f)",
+            builder->sdf_info.dim[0], builder->sdf_info.dim[1], builder->sdf_info.dim[2],
+            builder->sdf_info.voxel_size,
+            builder->sdf_info.origin[0], builder->sdf_info.origin[1], builder->sdf_info.origin[2]);
+    return true;
 }
 
 static void push_north_segment_range(MeshGenContext *ctx, float x0, float x1, float z,
@@ -1394,6 +1554,10 @@ bool scene_builder_generate(SceneBuilder *builder, const SceneConfig *config) {
         return false;
     }
 
+    builder->map_data = config->map_data;
+    builder->map_width = config->map_width;
+    builder->map_height = config->map_height;
+
     SDL_Log("Generating scene geometry...");
 
     // Generate procedural mesh
@@ -1527,6 +1691,12 @@ bool scene_builder_generate(SceneBuilder *builder, const SceneConfig *config) {
         l->pad1 = 0.0f;
     }
 
+    builder->bounds = compute_bounds_from_vertices(builder->vertices, builder->vertex_count);
+    if (!build_scene_sdf(builder)) {
+        SDL_Log("Failed to bake SDF");
+        return false;
+    }
+
     // Collect texture paths
     builder->texture_count = 0;
     const char *texture_paths[] = {
@@ -1580,6 +1750,7 @@ uint64_t scene_builder_serialize(SceneBuilder *builder, uint8_t **out_blob) {
     uint64_t index_size = sizeof(uint16_t) * builder->index_count;
     uint64_t light_size = sizeof(SceneLight) * builder->light_count;
     uint64_t texture_size = sizeof(SceneTexture) * builder->texture_count;
+    uint64_t sdf_size = builder->sdf_size;
 
     // Calculate string arena size (null-terminated paths)
     uint64_t string_size = 0;
@@ -1590,7 +1761,7 @@ uint64_t scene_builder_serialize(SceneBuilder *builder, uint8_t **out_blob) {
     }
 
     uint64_t total_size = sizeof(SceneHeader) + vertex_size + index_size +
-                          light_size + texture_size + string_size;
+                          light_size + texture_size + string_size + sdf_size;
 
     if (total_size > (uint64_t)SIZE_MAX) {
         SDL_Log("Serialized scene too large for platform address space (%llu bytes)", (unsigned long long)total_size);
@@ -1610,6 +1781,9 @@ uint64_t scene_builder_serialize(SceneBuilder *builder, uint8_t **out_blob) {
     header->magic = SCENE_MAGIC;
     header->version = SCENE_VERSION;
     header->total_size = total_size;
+    header->bounds = builder->bounds;
+    header->sdf_info = builder->sdf_info;
+    header->sdf_size = sdf_size;
 
     uint64_t offset = sizeof(SceneHeader);
 
@@ -1659,6 +1833,15 @@ uint64_t scene_builder_serialize(SceneBuilder *builder, uint8_t **out_blob) {
 
             string_offset_cursor += len + 1;
         }
+    }
+
+    if (sdf_size > 0 && builder->sdf) {
+        header->sdf = (float *)(uintptr_t)offset;
+        base_memcpy(blob + offset, builder->sdf, (size_t)sdf_size);
+        offset += sdf_size;
+    } else {
+        header->sdf = NULL;
+        header->sdf_size = 0;
     }
 
     *out_blob = blob;

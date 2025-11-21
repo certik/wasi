@@ -11,6 +11,9 @@ using metal::uint;
 struct type_4 {
     metal::float4 inner[16];
 };
+struct type_5 {
+    metal::float4 inner[3];
+};
 struct SceneUniforms {
     metal::float4x4 mvp;
     metal::float4 cameraPos;
@@ -22,6 +25,9 @@ struct SceneUniforms {
     metal::float4 flashlightDir;
     metal::float4 flashlightParams;
     metal::float4 screenParams;
+    type_5 radianceCascadeOrigins;
+    metal::float4 radianceCascadeSpacing;
+    metal::float4 giParams;
 };
 struct VertexInput {
     metal::packed_float3 position;

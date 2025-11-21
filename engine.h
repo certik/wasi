@@ -49,6 +49,9 @@ bool engine_load_textures(Engine *engine, const Scene *scene);
 bool engine_render(Engine *engine, SDL_GPUCommandBuffer *cmdbuf, SDL_GPURenderPass *render_pass,
                   const void *uniforms, uint32_t uniform_size);
 
+// Query if radiance cascades are ready for sampling
+bool engine_has_gi(const Engine *engine);
+
 // Free engine resources
 void engine_free(Engine *engine);
 

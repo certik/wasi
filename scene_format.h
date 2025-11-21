@@ -11,7 +11,20 @@
 #include <stdint.h>
 
 #define SCENE_MAGIC 0x53434E45  // "SCNE"
-#define SCENE_VERSION 1
+#define SCENE_VERSION 2
+
+typedef struct {
+    float min[3];
+    float max[3];
+} SceneAABB;
+
+typedef struct {
+    float origin[3];      // World-space origin of the SDF grid (voxel center at index 0)
+    float voxel_size;     // World-space size of one voxel edge
+    uint32_t dim[3];      // Grid resolution (x, y, z)
+    float max_distance;   // Clamp distance for empty space (helps bound ray steps)
+    uint32_t pad;         // Alignment
+} SceneSDFInfo;
 
 // GPU-ready vertex format (matches game.c MapVertex)
 typedef struct {
@@ -69,6 +82,14 @@ typedef struct {
     // String arena (for texture paths, etc.)
     char *strings;             // Pointer to string arena (offset before fixup)
     uint64_t string_size;      // Size of string arena
+
+    // Scene bounds
+    SceneAABB bounds;          // World-space AABB for cascade placement
+
+    // Signed distance field (for probe ray marching)
+    float *sdf;                // Pointer to SDF float data (offset before fixup)
+    uint64_t sdf_size;         // Size of sdf buffer in bytes
+    SceneSDFInfo sdf_info;     // Grid metadata
 } SceneHeader;
 
 // Blob layout:
@@ -78,5 +99,6 @@ typedef struct {
 // [SceneLight array]      ← lights (offset until pointer fixup)
 // [SceneTexture array]    ← textures (offset until pointer fixup)
 // [String arena]          ← strings (offset until pointer fixup, null-terminated strings)
+// [SDF float array]       ← sdf (offset until pointer fixup, dim.x * dim.y * dim.z floats)
 
 #endif // SCENE_FORMAT_H

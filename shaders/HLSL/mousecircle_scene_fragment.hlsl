@@ -13,6 +13,9 @@ struct SceneUniforms {
     float4 flashlightDir;
     float4 flashlightParams;
     float4 screenParams;
+    float4 radianceCascadeOrigins[3];
+    float4 radianceCascadeSpacing;
+    float4 giParams;
 };
 
 struct FragmentInput {
@@ -40,6 +43,8 @@ struct MaterialProperties {
 };
 
 static const uint MAX_STATIC_LIGHTS = 16u;
+static const uint RADIANCE_CASCADE_COUNT = 3u;
+static const float RADIANCE_DIM = 32.0;
 
 Texture2D<float4> floorTexture : register(t0, space2);
 Texture2D<float4> wallTexture : register(t1, space2);
@@ -49,6 +54,9 @@ Texture2D<float4> sphereTexture : register(t4, space2);
 Texture2D<float4> bookTexture : register(t5, space2);
 Texture2D<float4> chairTexture : register(t6, space2);
 SamplerState sharedSampler : register(s0, space2);
+Texture3D<float4> radianceCascade0_ : register(t7, space2);
+Texture3D<float4> radianceCascade1_ : register(t8, space2);
+Texture3D<float4> radianceCascade2_ : register(t9, space2);
 cbuffer SceneUniforms : register(b0, space3) {
     row_major float4x4 mvp;
     float4 cameraPos;
@@ -60,6 +68,9 @@ cbuffer SceneUniforms : register(b0, space3) {
     float4 flashlightDir;
     float4 flashlightParams;
     float4 screenParams;
+    float4 radianceCascadeOrigins[3];
+    float4 radianceCascadeSpacing;
+    float4 giParams;
 }
 
 struct FragmentInput_main {
@@ -287,6 +298,99 @@ FlashlightContribution compute_flashlight(float3 normal_1, float3 world_pos_1, f
     return flashlightcontribution_7;
 }
 
+float4 sample_radiance_texture(uint index, uint3 coord)
+{
+    if ((index == 0u)) {
+        float4 _e6 = radianceCascade0_.Load(int4(coord, int(0)));
+        return _e6;
+    } else {
+        if ((index == 1u)) {
+            float4 _e11 = radianceCascade1_.Load(int4(coord, int(0)));
+            return _e11;
+        }
+    }
+    float4 _e14 = radianceCascade2_.Load(int4(coord, int(0)));
+    return _e14;
+}
+
+uint3 naga_f2u32(float3 value) {
+    return uint3(clamp(value, 0.0, 4294967000.0));
+}
+
+float4 sample_radiance_cascade(uint index_1, float3 world_pos_2)
+{
+    if ((index_1 >= RADIANCE_CASCADE_COUNT)) {
+        return (0.0).xxxx;
+    }
+    float4 origin = radianceCascadeOrigins[min(uint(index_1), 2u)];
+    float spacing = origin.w;
+    if ((spacing <= 0.0)) {
+        return (0.0).xxxx;
+    }
+    float3 local = ((world_pos_2 - origin.xyz) / (spacing).xxx);
+    if ((any((local < (0.0).xxx)) || any((local > (31.0).xxx)))) {
+        return (0.0).xxxx;
+    }
+    uint3 p0_ = naga_f2u32(clamp(local, (0.0).xxx, (31.0).xxx));
+    uint3 p1_ = naga_f2u32(clamp((float3(p0_) + (1.0).xxx), (0.0).xxx, (31.0).xxx));
+    float3 t = frac(local);
+    const float4 _e51 = sample_radiance_texture(index_1, uint3(p0_.x, p0_.y, p0_.z));
+    const float4 _e56 = sample_radiance_texture(index_1, uint3(p1_.x, p0_.y, p0_.z));
+    const float4 _e61 = sample_radiance_texture(index_1, uint3(p0_.x, p1_.y, p0_.z));
+    const float4 _e66 = sample_radiance_texture(index_1, uint3(p1_.x, p1_.y, p0_.z));
+    const float4 _e71 = sample_radiance_texture(index_1, uint3(p0_.x, p0_.y, p1_.z));
+    const float4 _e76 = sample_radiance_texture(index_1, uint3(p1_.x, p0_.y, p1_.z));
+    const float4 _e81 = sample_radiance_texture(index_1, uint3(p0_.x, p1_.y, p1_.z));
+    const float4 _e86 = sample_radiance_texture(index_1, uint3(p1_.x, p1_.y, p1_.z));
+    float4 c00_ = lerp(_e51, _e56, t.x);
+    float4 c10_ = lerp(_e61, _e66, t.x);
+    float4 c01_ = lerp(_e71, _e76, t.x);
+    float4 c11_ = lerp(_e81, _e86, t.x);
+    float4 c0_ = lerp(c00_, c10_, t.y);
+    float4 c1_ = lerp(c01_, c11_, t.y);
+    return lerp(c0_, c1_, t.z);
+}
+
+float3 sample_radiance(float3 world_pos_3)
+{
+    float3 accum = (0.0).xxx;
+    float weight = 0.0;
+
+    float _e4 = giParams.x;
+    if ((_e4 < 0.5)) {
+        return (0.0).xxx;
+    }
+    const float4 _e15 = sample_radiance_cascade(0u, world_pos_3);
+    if ((_e15.w > 0.0)) {
+        float3 _e22 = accum;
+        accum = (_e22 + (_e15.xyz * _e15.w));
+        float _e25 = weight;
+        weight = (_e25 + _e15.w);
+    }
+    const float4 _e28 = sample_radiance_cascade(1u, world_pos_3);
+    if ((_e28.w > 0.0)) {
+        float3 _e35 = accum;
+        accum = (_e35 + (_e28.xyz * _e28.w));
+        float _e38 = weight;
+        weight = (_e38 + _e28.w);
+    }
+    const float4 _e41 = sample_radiance_cascade(2u, world_pos_3);
+    if ((_e41.w > 0.0)) {
+        float3 _e48 = accum;
+        accum = (_e48 + (_e41.xyz * _e41.w));
+        float _e51 = weight;
+        weight = (_e51 + _e41.w);
+    }
+    float _e53 = weight;
+    if ((_e53 > 0.0)) {
+        float3 _e56 = accum;
+        float _e57 = weight;
+        return (_e56 / (_e57).xxx);
+    }
+    float3 _e60 = accum;
+    return _e60;
+}
+
 float4 main_(FragmentInput_main fragmentinput_main) : SV_Target0
 {
     FragmentInput input = { fragmentinput_main.surfaceType, fragmentinput_main.uv_1, fragmentinput_main.normal_2, fragmentinput_main.worldPos };
@@ -360,13 +464,17 @@ float4 main_(FragmentInput_main fragmentinput_main) : SV_Target0
     float3 _e125 = baseColor;
     float3 _e128 = color;
     color = (_e128 + (_e125 * _e87.diffuse));
-    float3 _e131 = color;
-    color = (_e131 + _e87.specular);
-    float3 _e139 = color;
-    color = (_e139 + (_e90.specular * float3(1.0, 0.95, 0.85)));
-    float4 _e143 = fogColor;
+    float3 _e130 = baseColor;
+    const float3 _e132 = sample_radiance(input.worldPos);
+    float3 _e134 = color;
+    color = (_e134 + (_e130 * _e132));
+    float3 _e137 = color;
+    color = (_e137 + _e87.specular);
     float3 _e145 = color;
-    color = lerp(_e143.xyz, _e145, fogFactor);
-    float3 _e147 = color;
-    return float4(_e147, 1.0);
+    color = (_e145 + (_e90.specular * float3(1.0, 0.95, 0.85)));
+    float4 _e149 = fogColor;
+    float3 _e151 = color;
+    color = lerp(_e149.xyz, _e151, fogFactor);
+    float3 _e153 = color;
+    return float4(_e153, 1.0);
 }
