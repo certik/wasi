@@ -11,7 +11,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <math.h>
+#include "stdlib/math.h"
+#include "base/mem.h"
 #include "base/base_io.h"
 
 #define RC_CASCADE_COUNT 3
@@ -424,7 +425,7 @@ static void compute_radiance_for_cascade(const SceneHeader *header, const SceneS
                     if (dist2 < 1e-6f) {
                         continue;
                     }
-                    float dist = SDL_sqrtf(dist2);
+                    float dist = fast_sqrtf(dist2);
                     float inv = 1.0f / dist;
                     float dir[3] = {to_light[0] * inv, to_light[1] * inv, to_light[2] * inv};
 
@@ -478,7 +479,7 @@ static bool upload_radiance_texture(Engine *engine, RadianceCascade *cascade) {
 
     SDL_GPUTextureCreateInfo tex_info = {
         .usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
-        .format = SDL_GPU_TEXTUREFORMAT_R32G32B32A32_FLOAT,
+        .format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
         .width = dim,
         .height = dim * dim, // flatten z into rows
         .layer_count_or_depth = 1,
@@ -566,7 +567,7 @@ static bool build_radiance_cascades(Engine *engine, const SceneHeader *header) {
     for (int i = 0; i < RC_CASCADE_COUNT; i++) {
         RadianceCascade *c = &engine->cascades[i];
         c->dim = RC_RADIANCE_RES;
-        c->spacing = base_spacing * powf(2.0f, (float)i);
+        c->spacing = base_spacing * (float)(1u << i);
         float span = c->spacing * (float)(c->dim - 1);
         c->origin[0] = center[0] - span * 0.5f;
         c->origin[1] = center[1] - span * 0.5f;
@@ -574,13 +575,13 @@ static bool build_radiance_cascades(Engine *engine, const SceneHeader *header) {
 
         size_t voxel_count = (size_t)c->dim * (size_t)c->dim * (size_t)c->dim * 4;
         if (!c->cpu_data) {
-            c->cpu_data = (float *)SDL_malloc(voxel_count * sizeof(float));
+            c->cpu_data = (float *)malloc(voxel_count * sizeof(float));
         }
         if (!c->cpu_data) {
             SDL_Log("Failed to allocate CPU radiance buffer for cascade %d", i);
             return false;
         }
-        SDL_memset(c->cpu_data, 0, voxel_count * sizeof(float));
+        base_memset(c->cpu_data, 0, voxel_count * sizeof(float));
 
         const RadianceCascade *coarse = (i > 0) ? &engine->cascades[i - 1] : NULL;
         compute_radiance_for_cascade(header, &engine->sdf_info, engine->sdf_data, c, coarse);
@@ -753,7 +754,7 @@ Engine* engine_create(SDL_GPUDevice *device) {
     engine->vertex_count = 0;
     engine->index_count = 0;
     engine->sdf_data = NULL;
-    SDL_memset(&engine->sdf_info, 0, sizeof(engine->sdf_info));
+    base_memset(&engine->sdf_info, 0, sizeof(engine->sdf_info));
     engine->cascade_extent = 0.0f;
     engine->cascades_ready = false;
     for (int i = 0; i < RC_CASCADE_COUNT; i++) {
@@ -1191,7 +1192,7 @@ void engine_free(Engine *engine) {
             SDL_ReleaseGPUTexture(engine->device, engine->cascades[i].texture);
         }
         if (engine->cascades[i].cpu_data) {
-            SDL_free(engine->cascades[i].cpu_data);
+            free(engine->cascades[i].cpu_data);
         }
     }
 

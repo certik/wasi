@@ -363,9 +363,9 @@ static inline float signed_distance_aabb(const float p[3], const float bmin[3], 
     float hy = (bmax[1] - bmin[1]) * 0.5f;
     float hz = (bmax[2] - bmin[2]) * 0.5f;
 
-    float dx = SDL_fabsf(p[0] - cx) - hx;
-    float dy = SDL_fabsf(p[1] - cy) - hy;
-    float dz = SDL_fabsf(p[2] - cz) - hz;
+    float dx = base_fabsf(p[0] - cx) - hx;
+    float dy = base_fabsf(p[1] - cy) - hy;
+    float dz = base_fabsf(p[2] - cz) - hz;
 
     float ax = dx > 0.0f ? dx : 0.0f;
     float ay = dy > 0.0f ? dy : 0.0f;
