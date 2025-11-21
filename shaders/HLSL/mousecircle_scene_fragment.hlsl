@@ -54,9 +54,9 @@ Texture2D<float4> sphereTexture : register(t4, space2);
 Texture2D<float4> bookTexture : register(t5, space2);
 Texture2D<float4> chairTexture : register(t6, space2);
 SamplerState sharedSampler : register(s0, space2);
-Texture3D<float4> radianceCascade0_ : register(t7, space2);
-Texture3D<float4> radianceCascade1_ : register(t8, space2);
-Texture3D<float4> radianceCascade2_ : register(t9, space2);
+Texture2D<float4> radianceCascade0_ : register(t7, space2);
+Texture2D<float4> radianceCascade1_ : register(t8, space2);
+Texture2D<float4> radianceCascade2_ : register(t9, space2);
 cbuffer SceneUniforms : register(b0, space3) {
     row_major float4x4 mvp;
     float4 cameraPos;
@@ -298,18 +298,18 @@ FlashlightContribution compute_flashlight(float3 normal_1, float3 world_pos_1, f
     return flashlightcontribution_7;
 }
 
-float4 sample_radiance_texture(uint index, uint3 coord)
+float4 sample_radiance_texture(uint index, uint2 coord)
 {
     if ((index == 0u)) {
-        float4 _e6 = radianceCascade0_.Load(int4(coord, int(0)));
+        float4 _e6 = radianceCascade0_.Load(int3(coord, int(0)));
         return _e6;
     } else {
         if ((index == 1u)) {
-            float4 _e11 = radianceCascade1_.Load(int4(coord, int(0)));
+            float4 _e11 = radianceCascade1_.Load(int3(coord, int(0)));
             return _e11;
         }
     }
-    float4 _e14 = radianceCascade2_.Load(int4(coord, int(0)));
+    float4 _e14 = radianceCascade2_.Load(int3(coord, int(0)));
     return _e14;
 }
 
@@ -334,18 +334,20 @@ float4 sample_radiance_cascade(uint index_1, float3 world_pos_2)
     uint3 p0_ = naga_f2u32(clamp(local, (0.0).xxx, (31.0).xxx));
     uint3 p1_ = naga_f2u32(clamp((float3(p0_) + (1.0).xxx), (0.0).xxx, (31.0).xxx));
     float3 t = frac(local);
-    const float4 _e51 = sample_radiance_texture(index_1, uint3(p0_.x, p0_.y, p0_.z));
-    const float4 _e56 = sample_radiance_texture(index_1, uint3(p1_.x, p0_.y, p0_.z));
-    const float4 _e61 = sample_radiance_texture(index_1, uint3(p0_.x, p1_.y, p0_.z));
-    const float4 _e66 = sample_radiance_texture(index_1, uint3(p1_.x, p1_.y, p0_.z));
-    const float4 _e71 = sample_radiance_texture(index_1, uint3(p0_.x, p0_.y, p1_.z));
-    const float4 _e76 = sample_radiance_texture(index_1, uint3(p1_.x, p0_.y, p1_.z));
-    const float4 _e81 = sample_radiance_texture(index_1, uint3(p0_.x, p1_.y, p1_.z));
-    const float4 _e86 = sample_radiance_texture(index_1, uint3(p1_.x, p1_.y, p1_.z));
-    float4 c00_ = lerp(_e51, _e56, t.x);
-    float4 c10_ = lerp(_e61, _e66, t.x);
-    float4 c01_ = lerp(_e71, _e76, t.x);
-    float4 c11_ = lerp(_e81, _e86, t.x);
+    uint to_flat = ((p0_.z * 32u) + p0_.y);
+    uint to_flat1_ = ((p1_.z * 32u) + p1_.y);
+    const float4 _e58 = sample_radiance_texture(index_1, uint2(p0_.x, to_flat));
+    const float4 _e61 = sample_radiance_texture(index_1, uint2(p1_.x, to_flat));
+    const float4 _e64 = sample_radiance_texture(index_1, uint2(p0_.x, to_flat1_));
+    const float4 _e67 = sample_radiance_texture(index_1, uint2(p1_.x, to_flat1_));
+    const float4 _e71 = sample_radiance_texture(index_1, uint2(p0_.x, (to_flat + 32u)));
+    const float4 _e75 = sample_radiance_texture(index_1, uint2(p1_.x, (to_flat + 32u)));
+    const float4 _e79 = sample_radiance_texture(index_1, uint2(p0_.x, (to_flat1_ + 32u)));
+    const float4 _e83 = sample_radiance_texture(index_1, uint2(p1_.x, (to_flat1_ + 32u)));
+    float4 c00_ = lerp(_e58, _e61, t.x);
+    float4 c10_ = lerp(_e64, _e67, t.x);
+    float4 c01_ = lerp(_e71, _e75, t.x);
+    float4 c11_ = lerp(_e79, _e83, t.x);
     float4 c0_ = lerp(c00_, c10_, t.y);
     float4 c1_ = lerp(c01_, c11_, t.y);
     return lerp(c0_, c1_, t.z);

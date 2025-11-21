@@ -239,21 +239,21 @@ FlashlightContribution compute_flashlight(
 
 metal::float4 sample_radiance_texture(
     uint index,
-    metal::uint3 coord,
-    metal::texture3d<float, metal::access::sample> radianceCascade0_,
-    metal::texture3d<float, metal::access::sample> radianceCascade1_,
-    metal::texture3d<float, metal::access::sample> radianceCascade2_
+    metal::uint2 coord,
+    metal::texture2d<float, metal::access::sample> radianceCascade0_,
+    metal::texture2d<float, metal::access::sample> radianceCascade1_,
+    metal::texture2d<float, metal::access::sample> radianceCascade2_
 ) {
     if (index == 0u) {
-        metal::float4 _e6 = radianceCascade0_.read(metal::uint3(coord), 0);
+        metal::float4 _e6 = radianceCascade0_.read(metal::uint2(coord), 0);
         return _e6;
     } else {
         if (index == 1u) {
-            metal::float4 _e11 = radianceCascade1_.read(metal::uint3(coord), 0);
+            metal::float4 _e11 = radianceCascade1_.read(metal::uint2(coord), 0);
             return _e11;
         }
     }
-    metal::float4 _e14 = radianceCascade2_.read(metal::uint3(coord), 0);
+    metal::float4 _e14 = radianceCascade2_.read(metal::uint2(coord), 0);
     return _e14;
 }
 
@@ -264,9 +264,9 @@ metal::uint3 naga_f2u32(metal::float3 value) {
 metal::float4 sample_radiance_cascade(
     uint index_1,
     metal::float3 world_pos_2,
-    metal::texture3d<float, metal::access::sample> radianceCascade0_,
-    metal::texture3d<float, metal::access::sample> radianceCascade1_,
-    metal::texture3d<float, metal::access::sample> radianceCascade2_,
+    metal::texture2d<float, metal::access::sample> radianceCascade0_,
+    metal::texture2d<float, metal::access::sample> radianceCascade1_,
+    metal::texture2d<float, metal::access::sample> radianceCascade2_,
     constant SceneUniforms& uniforms
 ) {
     if (index_1 >= RADIANCE_CASCADE_COUNT) {
@@ -284,18 +284,20 @@ metal::float4 sample_radiance_cascade(
     metal::uint3 p0_ = naga_f2u32(metal::clamp(local, metal::float3(0.0), metal::float3(31.0)));
     metal::uint3 p1_ = naga_f2u32(metal::clamp(static_cast<metal::float3>(p0_) + metal::float3(1.0), metal::float3(0.0), metal::float3(31.0)));
     metal::float3 t = metal::fract(local);
-    metal::float4 _e51 = sample_radiance_texture(index_1, metal::uint3(p0_.x, p0_.y, p0_.z), radianceCascade0_, radianceCascade1_, radianceCascade2_);
-    metal::float4 _e56 = sample_radiance_texture(index_1, metal::uint3(p1_.x, p0_.y, p0_.z), radianceCascade0_, radianceCascade1_, radianceCascade2_);
-    metal::float4 _e61 = sample_radiance_texture(index_1, metal::uint3(p0_.x, p1_.y, p0_.z), radianceCascade0_, radianceCascade1_, radianceCascade2_);
-    metal::float4 _e66 = sample_radiance_texture(index_1, metal::uint3(p1_.x, p1_.y, p0_.z), radianceCascade0_, radianceCascade1_, radianceCascade2_);
-    metal::float4 _e71 = sample_radiance_texture(index_1, metal::uint3(p0_.x, p0_.y, p1_.z), radianceCascade0_, radianceCascade1_, radianceCascade2_);
-    metal::float4 _e76 = sample_radiance_texture(index_1, metal::uint3(p1_.x, p0_.y, p1_.z), radianceCascade0_, radianceCascade1_, radianceCascade2_);
-    metal::float4 _e81 = sample_radiance_texture(index_1, metal::uint3(p0_.x, p1_.y, p1_.z), radianceCascade0_, radianceCascade1_, radianceCascade2_);
-    metal::float4 _e86 = sample_radiance_texture(index_1, metal::uint3(p1_.x, p1_.y, p1_.z), radianceCascade0_, radianceCascade1_, radianceCascade2_);
-    metal::float4 c00_ = metal::mix(_e51, _e56, t.x);
-    metal::float4 c10_ = metal::mix(_e61, _e66, t.x);
-    metal::float4 c01_ = metal::mix(_e71, _e76, t.x);
-    metal::float4 c11_ = metal::mix(_e81, _e86, t.x);
+    uint to_flat = (p0_.z * 32u) + p0_.y;
+    uint to_flat1_ = (p1_.z * 32u) + p1_.y;
+    metal::float4 _e58 = sample_radiance_texture(index_1, metal::uint2(p0_.x, to_flat), radianceCascade0_, radianceCascade1_, radianceCascade2_);
+    metal::float4 _e61 = sample_radiance_texture(index_1, metal::uint2(p1_.x, to_flat), radianceCascade0_, radianceCascade1_, radianceCascade2_);
+    metal::float4 _e64 = sample_radiance_texture(index_1, metal::uint2(p0_.x, to_flat1_), radianceCascade0_, radianceCascade1_, radianceCascade2_);
+    metal::float4 _e67 = sample_radiance_texture(index_1, metal::uint2(p1_.x, to_flat1_), radianceCascade0_, radianceCascade1_, radianceCascade2_);
+    metal::float4 _e71 = sample_radiance_texture(index_1, metal::uint2(p0_.x, to_flat + 32u), radianceCascade0_, radianceCascade1_, radianceCascade2_);
+    metal::float4 _e75 = sample_radiance_texture(index_1, metal::uint2(p1_.x, to_flat + 32u), radianceCascade0_, radianceCascade1_, radianceCascade2_);
+    metal::float4 _e79 = sample_radiance_texture(index_1, metal::uint2(p0_.x, to_flat1_ + 32u), radianceCascade0_, radianceCascade1_, radianceCascade2_);
+    metal::float4 _e83 = sample_radiance_texture(index_1, metal::uint2(p1_.x, to_flat1_ + 32u), radianceCascade0_, radianceCascade1_, radianceCascade2_);
+    metal::float4 c00_ = metal::mix(_e58, _e61, t.x);
+    metal::float4 c10_ = metal::mix(_e64, _e67, t.x);
+    metal::float4 c01_ = metal::mix(_e71, _e75, t.x);
+    metal::float4 c11_ = metal::mix(_e79, _e83, t.x);
     metal::float4 c0_ = metal::mix(c00_, c10_, t.y);
     metal::float4 c1_ = metal::mix(c01_, c11_, t.y);
     return metal::mix(c0_, c1_, t.z);
@@ -303,9 +305,9 @@ metal::float4 sample_radiance_cascade(
 
 metal::float3 sample_radiance(
     metal::float3 world_pos_3,
-    metal::texture3d<float, metal::access::sample> radianceCascade0_,
-    metal::texture3d<float, metal::access::sample> radianceCascade1_,
-    metal::texture3d<float, metal::access::sample> radianceCascade2_,
+    metal::texture2d<float, metal::access::sample> radianceCascade0_,
+    metal::texture2d<float, metal::access::sample> radianceCascade1_,
+    metal::texture2d<float, metal::access::sample> radianceCascade2_,
     constant SceneUniforms& uniforms
 ) {
     metal::float3 accum = metal::float3(0.0);
@@ -365,9 +367,9 @@ fragment main_Output main_(
 , metal::texture2d<float, metal::access::sample> bookTexture [[texture(5)]]
 , metal::texture2d<float, metal::access::sample> chairTexture [[texture(6)]]
 , metal::sampler sharedSampler [[sampler(0)]]
-, metal::texture3d<float, metal::access::sample> radianceCascade0_ [[texture(7)]]
-, metal::texture3d<float, metal::access::sample> radianceCascade1_ [[texture(8)]]
-, metal::texture3d<float, metal::access::sample> radianceCascade2_ [[texture(9)]]
+, metal::texture2d<float, metal::access::sample> radianceCascade0_ [[texture(7)]]
+, metal::texture2d<float, metal::access::sample> radianceCascade1_ [[texture(8)]]
+, metal::texture2d<float, metal::access::sample> radianceCascade2_ [[texture(9)]]
 , constant SceneUniforms& uniforms [[buffer(0)]]
 ) {
     const FragmentInput input = { varyings.surfaceType, {}, varyings.uv, varyings.normal, varyings.worldPos };

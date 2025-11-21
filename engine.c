@@ -480,8 +480,8 @@ static bool upload_radiance_texture(Engine *engine, RadianceCascade *cascade) {
         .usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
         .format = SDL_GPU_TEXTUREFORMAT_R32G32B32A32_FLOAT,
         .width = dim,
-        .height = dim,
-        .layer_count_or_depth = dim,
+        .height = dim * dim, // flatten z into rows
+        .layer_count_or_depth = 1,
         .num_levels = 1,
     };
 
@@ -520,7 +520,7 @@ static bool upload_radiance_texture(Engine *engine, RadianceCascade *cascade) {
         .transfer_buffer = transfer,
         .offset = 0,
         .pixels_per_row = dim,
-        .rows_per_layer = dim,
+        .rows_per_layer = dim * dim,
     };
     SDL_GPUTextureRegion region = {
         .texture = cascade->texture,
@@ -530,8 +530,8 @@ static bool upload_radiance_texture(Engine *engine, RadianceCascade *cascade) {
         .y = 0,
         .z = 0,
         .w = dim,
-        .h = dim,
-        .d = dim,
+        .h = dim * dim,
+        .d = 1,
     };
     SDL_UploadToGPUTexture(copy_pass, &transfer_src, &region, false);
     SDL_EndGPUCopyPass(copy_pass);

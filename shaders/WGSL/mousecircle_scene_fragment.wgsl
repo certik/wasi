@@ -50,9 +50,9 @@ struct MaterialProperties {
 @group(2) @binding(5) var bookTexture: texture_2d<f32>;
 @group(2) @binding(6) var chairTexture: texture_2d<f32>;
 @group(2) @binding(7) var sharedSampler: sampler;
-@group(2) @binding(8) var radianceCascade0: texture_3d<f32>;
-@group(2) @binding(9) var radianceCascade1: texture_3d<f32>;
-@group(2) @binding(10) var radianceCascade2: texture_3d<f32>;
+@group(2) @binding(8) var radianceCascade0: texture_2d<f32>;
+@group(2) @binding(9) var radianceCascade1: texture_2d<f32>;
+@group(2) @binding(10) var radianceCascade2: texture_2d<f32>;
 @group(3) @binding(0) var<uniform> uniforms: SceneUniforms;
 
 fn checker(uv: vec2f) -> f32 {
@@ -175,7 +175,7 @@ fn compute_flashlight(normal: vec3f, world_pos: vec3f, frag_coord: vec4f, view_d
     return FlashlightContribution(beam, specular);
 }
 
-fn sample_radiance_texture(index: u32, coord: vec3u) -> vec4f {
+fn sample_radiance_texture(index: u32, coord: vec2u) -> vec4f {
     if (index == 0u) {
         return textureLoad(radianceCascade0, coord, 0);
     } else if (index == 1u) {
@@ -203,14 +203,19 @@ fn sample_radiance_cascade(index: u32, world_pos: vec3f) -> vec4f {
     let p1 = vec3u(clamp(vec3f(p0) + vec3f(1.0), vec3f(0.0), vec3f(RADIANCE_DIM - 1.0)));
     let t = fract(local);
 
-    let c000 = sample_radiance_texture(index, vec3u(p0.x, p0.y, p0.z));
-    let c100 = sample_radiance_texture(index, vec3u(p1.x, p0.y, p0.z));
-    let c010 = sample_radiance_texture(index, vec3u(p0.x, p1.y, p0.z));
-    let c110 = sample_radiance_texture(index, vec3u(p1.x, p1.y, p0.z));
-    let c001 = sample_radiance_texture(index, vec3u(p0.x, p0.y, p1.z));
-    let c101 = sample_radiance_texture(index, vec3u(p1.x, p0.y, p1.z));
-    let c011 = sample_radiance_texture(index, vec3u(p0.x, p1.y, p1.z));
-    let c111 = sample_radiance_texture(index, vec3u(p1.x, p1.y, p1.z));
+    let row_stride = u32(RADIANCE_DIM);
+    let to_flat = p0.z * row_stride + p0.y;
+    let to_flat1 = p1.z * row_stride + p1.y;
+
+    let c000 = sample_radiance_texture(index, vec2u(p0.x, to_flat));
+    let c100 = sample_radiance_texture(index, vec2u(p1.x, to_flat));
+    let c010 = sample_radiance_texture(index, vec2u(p0.x, to_flat1));
+    let c110 = sample_radiance_texture(index, vec2u(p1.x, to_flat1));
+
+    let c001 = sample_radiance_texture(index, vec2u(p0.x, to_flat + row_stride));
+    let c101 = sample_radiance_texture(index, vec2u(p1.x, to_flat + row_stride));
+    let c011 = sample_radiance_texture(index, vec2u(p0.x, to_flat1 + row_stride));
+    let c111 = sample_radiance_texture(index, vec2u(p1.x, to_flat1 + row_stride));
 
     let c00 = mix(c000, c100, t.x);
     let c10 = mix(c010, c110, t.x);
