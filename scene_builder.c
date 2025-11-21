@@ -1834,6 +1834,7 @@ uint64_t scene_builder_serialize(SceneBuilder *builder, uint8_t **out_blob) {
             string_offset_cursor += len + 1;
         }
     }
+    offset += string_size;
 
     if (sdf_size > 0 && builder->sdf) {
         header->sdf = (float *)(uintptr_t)offset;
