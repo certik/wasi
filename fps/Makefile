@@ -6,12 +6,13 @@ CC ?= clang
 UNAME_S := $(shell uname)
 
 COMMON_CFLAGS := -std=c11 -Wall -Wextra -pedantic -I$(ROOT) -I$(ROOT)/base -I$(ROOT)/platform -I.
-COMMON_SRCS := \
+CORE_SRCS := \
 	core/core.c \
 	core/map.c \
 	physics/map_physics.c \
-	render/text/renderer.c \
-	app/text.c \
+	render/text/renderer.c
+
+BASE_SRCS := \
 	$(BASE)/base_io.c \
 	$(BASE)/buddy.c \
 	$(BASE)/arena.c \
@@ -37,20 +38,44 @@ PLATFORM_LDFLAGS := -lc
 PLATFORM_CFLAGS := -nostdlib -fno-builtin
 endif
 
-SRCS := $(COMMON_SRCS) $(PLATFORM_SRC)
-OBJS := $(SRCS:.c=.o)
+CORE_OBJS := $(CORE_SRCS:.c=.o)
+BASE_OBJS := $(BASE_SRCS:.c=.o)
+PLATFORM_OBJ := $(PLATFORM_SRC:.c=.o)
 
-.PHONY: all clean text
+TEXT_APP_SRC := app/text.c
+TEXT_APP_OBJ := $(TEXT_APP_SRC:.c=.o)
 
-all: text
+TEST_CORE_SRC := test/test_core_move.c
+TEST_CORE_OBJ := $(TEST_CORE_SRC:.c=.o)
+TEST_RENDER_SRC := test/test_renderer_only.c
+TEST_RENDER_OBJ := $(TEST_RENDER_SRC:.c=.o)
+
+TEXT_OBJS := $(CORE_OBJS) $(BASE_OBJS) $(PLATFORM_OBJ) $(TEXT_APP_OBJ)
+TEST_CORE_OBJS := $(CORE_OBJS) $(BASE_OBJS) $(PLATFORM_OBJ) $(TEST_CORE_OBJ)
+TEST_RENDER_OBJS := $(CORE_OBJS) $(BASE_OBJS) $(PLATFORM_OBJ) $(TEST_RENDER_OBJ)
+
+TEST_TARGETS := fps_test_core_move fps_test_renderer_only
+
+.PHONY: all clean text tests
+
+all: text tests
 
 text: $(TARGET)
+tests: $(TEST_TARGETS)
 
-$(TARGET): $(OBJS)
-	$(CC) $(PLATFORM_CFLAGS) $(COMMON_CFLAGS) -o $@ $(OBJS) $(PLATFORM_LDFLAGS)
+$(TARGET): $(TEXT_OBJS)
+	$(CC) $(PLATFORM_CFLAGS) $(COMMON_CFLAGS) -o $@ $(TEXT_OBJS) $(PLATFORM_LDFLAGS)
+
+fps_test_core_move: $(TEST_CORE_OBJS)
+	$(CC) $(PLATFORM_CFLAGS) $(COMMON_CFLAGS) -o $@ $(TEST_CORE_OBJS) $(PLATFORM_LDFLAGS)
+
+fps_test_renderer_only: $(TEST_RENDER_OBJS)
+	$(CC) $(PLATFORM_CFLAGS) $(COMMON_CFLAGS) -o $@ $(TEST_RENDER_OBJS) $(PLATFORM_LDFLAGS)
 
 %.o: %.c
 	$(CC) $(PLATFORM_CFLAGS) $(COMMON_CFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJS) $(TARGET)
+	rm -f $(CORE_OBJS) $(BASE_OBJS) $(PLATFORM_OBJ) \
+		$(TEXT_APP_OBJ) $(TEST_CORE_OBJ) $(TEST_RENDER_OBJ) \
+		$(TARGET) $(TEST_TARGETS)
