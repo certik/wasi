@@ -11,7 +11,25 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include "stdlib/math.h"
+#include "base/mem.h"
 #include "base/base_io.h"
+
+#define RC_CASCADE_COUNT 3
+#define RC_RADIANCE_RES 32
+#define RC_RAY_MAX_STEPS 32
+#define RC_RAY_MIN_STEP 0.05f
+#define RC_RAY_HIT_EPS 0.02f
+#define RC_BOUNCE_FACTOR 0.6f
+#define RC_AMBIENT_BASE 0.03f
+
+typedef struct {
+    SDL_GPUTexture *texture;
+    float *cpu_data;
+    float spacing;
+    float origin[3];
+    uint32_t dim;
+} RadianceCascade;
 
 // Scene struct (opaque to users)
 struct Scene {
@@ -37,6 +55,15 @@ struct Engine {
 
     uint32_t vertex_count;
     uint32_t index_count;
+
+    // Baked SDF
+    SceneSDFInfo sdf_info;
+    const float *sdf_data;
+
+    // Radiance cascade data
+    RadianceCascade cascades[RC_CASCADE_COUNT];
+    float cascade_extent;
+    bool cascades_ready;
 };
 
 // ============================================================================
@@ -119,6 +146,25 @@ static bool validate_header(SceneHeader *header, uint64_t blob_size) {
         }
     }
 
+    // Validate SDF data (optional)
+    uint64_t sdf_offset = (uint64_t)(uintptr_t)header->sdf;
+    if (header->sdf_size > 0) {
+        if (sdf_offset + header->sdf_size > blob_size) {
+            SDL_Log("SDF data out of bounds");
+            return false;
+        }
+        uint64_t expected_sdf = (uint64_t)header->sdf_info.dim[0] *
+                                (uint64_t)header->sdf_info.dim[1] *
+                                (uint64_t)header->sdf_info.dim[2] *
+                                sizeof(float);
+        if (expected_sdf != header->sdf_size) {
+            SDL_Log("SDF size mismatch: expected %llu, got %llu",
+                    (unsigned long long)expected_sdf,
+                    (unsigned long long)header->sdf_size);
+            return false;
+        }
+    }
+
     return true;
 }
 
@@ -166,6 +212,12 @@ static void fixup_scene_pointers(Scene *scene) {
         header->strings = NULL;
     }
 
+    if (header->sdf_size > 0) {
+        header->sdf = (float *)(base + (uintptr_t)header->sdf);
+    } else {
+        header->sdf = NULL;
+    }
+
     // Fix up texture path_offset -> pointer
     for (uint32_t i = 0; i < header->texture_count; i++) {
         SceneTexture *tex = &header->textures[i];
@@ -177,8 +229,371 @@ static void fixup_scene_pointers(Scene *scene) {
         }
         // Convert offset to pointer by storing pointer in path_offset field
         // This is a bit of a hack, but works since we're converting offset->ptr
-        tex->path_offset = (uint64_t)(uintptr_t)(header->strings + tex->path_offset);
+            tex->path_offset = (uint64_t)(uintptr_t)(header->strings + tex->path_offset);
     }
+}
+
+// ========================================================================
+// SDF sampling helpers
+// ========================================================================
+
+static inline size_t sdf_index(const SceneSDFInfo *info, uint32_t x, uint32_t y, uint32_t z) {
+    return ((size_t)z * info->dim[1] + (size_t)y) * info->dim[0] + (size_t)x;
+}
+
+static float sample_sdf_trilinear(const SceneSDFInfo *info, const float *sdf, const float p[3]) {
+    if (!info || !sdf || info->voxel_size <= 0.0f) {
+        return 0.0f;
+    }
+
+    float gx = (p[0] - info->origin[0]) / info->voxel_size - 0.5f;
+    float gy = (p[1] - info->origin[1]) / info->voxel_size - 0.5f;
+    float gz = (p[2] - info->origin[2]) / info->voxel_size - 0.5f;
+
+    if (gx < 0.0f || gy < 0.0f || gz < 0.0f ||
+        gx > (float)(info->dim[0] - 1) || gy > (float)(info->dim[1] - 1) || gz > (float)(info->dim[2] - 1)) {
+        return info->max_distance;
+    }
+
+    uint32_t x0 = (uint32_t)floorf(gx);
+    uint32_t y0 = (uint32_t)floorf(gy);
+    uint32_t z0 = (uint32_t)floorf(gz);
+    uint32_t x1 = (x0 + 1 < info->dim[0]) ? x0 + 1 : x0;
+    uint32_t y1 = (y0 + 1 < info->dim[1]) ? y0 + 1 : y0;
+    uint32_t z1 = (z0 + 1 < info->dim[2]) ? z0 + 1 : z0;
+
+    float tx = gx - (float)x0;
+    float ty = gy - (float)y0;
+    float tz = gz - (float)z0;
+
+    float c000 = sdf[sdf_index(info, x0, y0, z0)];
+    float c100 = sdf[sdf_index(info, x1, y0, z0)];
+    float c010 = sdf[sdf_index(info, x0, y1, z0)];
+    float c110 = sdf[sdf_index(info, x1, y1, z0)];
+    float c001 = sdf[sdf_index(info, x0, y0, z1)];
+    float c101 = sdf[sdf_index(info, x1, y0, z1)];
+    float c011 = sdf[sdf_index(info, x0, y1, z1)];
+    float c111 = sdf[sdf_index(info, x1, y1, z1)];
+
+    float c00 = c000 * (1.0f - tx) + c100 * tx;
+    float c10 = c010 * (1.0f - tx) + c110 * tx;
+    float c01 = c001 * (1.0f - tx) + c101 * tx;
+    float c11 = c011 * (1.0f - tx) + c111 * tx;
+
+    float c0 = c00 * (1.0f - ty) + c10 * ty;
+    float c1 = c01 * (1.0f - ty) + c11 * ty;
+
+    return c0 * (1.0f - tz) + c1 * tz;
+}
+
+static bool sdf_ray_march_hit(const SceneSDFInfo *info, const float *sdf, const float start[3],
+                              const float dir[3], float max_distance) {
+    if (!info || !sdf) {
+        return false;
+    }
+
+    float traveled = 0.0f;
+    for (int i = 0; i < RC_RAY_MAX_STEPS && traveled < max_distance; i++) {
+        float p[3] = {
+            start[0] + dir[0] * traveled,
+            start[1] + dir[1] * traveled,
+            start[2] + dir[2] * traveled,
+        };
+        float d = sample_sdf_trilinear(info, sdf, p);
+        if (d < RC_RAY_HIT_EPS) {
+            return true;
+        }
+        float step = d;
+        if (step < RC_RAY_MIN_STEP) {
+            step = RC_RAY_MIN_STEP;
+        }
+        traveled += step;
+    }
+    return false;
+}
+
+static bool sample_radiance_from_cascade(const RadianceCascade *cascade, const float pos[3], float out_rgb[3]) {
+    if (!cascade || !cascade->cpu_data || cascade->spacing <= 0.0f) {
+        return false;
+    }
+    float gx = (pos[0] - cascade->origin[0]) / cascade->spacing;
+    float gy = (pos[1] - cascade->origin[1]) / cascade->spacing;
+    float gz = (pos[2] - cascade->origin[2]) / cascade->spacing;
+    if (gx < 0.0f || gy < 0.0f || gz < 0.0f ||
+        gx > (float)(cascade->dim - 1) || gy > (float)(cascade->dim - 1) || gz > (float)(cascade->dim - 1)) {
+        return false;
+    }
+
+    uint32_t x0 = (uint32_t)floorf(gx);
+    uint32_t y0 = (uint32_t)floorf(gy);
+    uint32_t z0 = (uint32_t)floorf(gz);
+    uint32_t x1 = (x0 + 1 < cascade->dim) ? x0 + 1 : x0;
+    uint32_t y1 = (y0 + 1 < cascade->dim) ? y0 + 1 : y0;
+    uint32_t z1 = (z0 + 1 < cascade->dim) ? z0 + 1 : z0;
+
+    float tx = gx - (float)x0;
+    float ty = gy - (float)y0;
+    float tz = gz - (float)z0;
+
+    size_t idx000 = ((size_t)z0 * (size_t)cascade->dim + (size_t)y0) * (size_t)cascade->dim * 4 + (size_t)x0 * 4;
+    size_t idx100 = ((size_t)z0 * (size_t)cascade->dim + (size_t)y0) * (size_t)cascade->dim * 4 + (size_t)x1 * 4;
+    size_t idx010 = ((size_t)z0 * (size_t)cascade->dim + (size_t)y1) * (size_t)cascade->dim * 4 + (size_t)x0 * 4;
+    size_t idx110 = ((size_t)z0 * (size_t)cascade->dim + (size_t)y1) * (size_t)cascade->dim * 4 + (size_t)x1 * 4;
+    size_t idx001 = ((size_t)z1 * (size_t)cascade->dim + (size_t)y0) * (size_t)cascade->dim * 4 + (size_t)x0 * 4;
+    size_t idx101 = ((size_t)z1 * (size_t)cascade->dim + (size_t)y0) * (size_t)cascade->dim * 4 + (size_t)x1 * 4;
+    size_t idx011 = ((size_t)z1 * (size_t)cascade->dim + (size_t)y1) * (size_t)cascade->dim * 4 + (size_t)x0 * 4;
+    size_t idx111 = ((size_t)z1 * (size_t)cascade->dim + (size_t)y1) * (size_t)cascade->dim * 4 + (size_t)x1 * 4;
+
+    float c000_r = cascade->cpu_data[idx000 + 0];
+    float c000_g = cascade->cpu_data[idx000 + 1];
+    float c000_b = cascade->cpu_data[idx000 + 2];
+    float c100_r = cascade->cpu_data[idx100 + 0];
+    float c100_g = cascade->cpu_data[idx100 + 1];
+    float c100_b = cascade->cpu_data[idx100 + 2];
+    float c010_r = cascade->cpu_data[idx010 + 0];
+    float c010_g = cascade->cpu_data[idx010 + 1];
+    float c010_b = cascade->cpu_data[idx010 + 2];
+    float c110_r = cascade->cpu_data[idx110 + 0];
+    float c110_g = cascade->cpu_data[idx110 + 1];
+    float c110_b = cascade->cpu_data[idx110 + 2];
+    float c001_r = cascade->cpu_data[idx001 + 0];
+    float c001_g = cascade->cpu_data[idx001 + 1];
+    float c001_b = cascade->cpu_data[idx001 + 2];
+    float c101_r = cascade->cpu_data[idx101 + 0];
+    float c101_g = cascade->cpu_data[idx101 + 1];
+    float c101_b = cascade->cpu_data[idx101 + 2];
+    float c011_r = cascade->cpu_data[idx011 + 0];
+    float c011_g = cascade->cpu_data[idx011 + 1];
+    float c011_b = cascade->cpu_data[idx011 + 2];
+    float c111_r = cascade->cpu_data[idx111 + 0];
+    float c111_g = cascade->cpu_data[idx111 + 1];
+    float c111_b = cascade->cpu_data[idx111 + 2];
+
+    float c00_r = c000_r * (1.0f - tx) + c100_r * tx;
+    float c00_g = c000_g * (1.0f - tx) + c100_g * tx;
+    float c00_b = c000_b * (1.0f - tx) + c100_b * tx;
+    float c10_r = c010_r * (1.0f - tx) + c110_r * tx;
+    float c10_g = c010_g * (1.0f - tx) + c110_g * tx;
+    float c10_b = c010_b * (1.0f - tx) + c110_b * tx;
+    float c01_r = c001_r * (1.0f - tx) + c101_r * tx;
+    float c01_g = c001_g * (1.0f - tx) + c101_g * tx;
+    float c01_b = c001_b * (1.0f - tx) + c101_b * tx;
+    float c11_r = c011_r * (1.0f - tx) + c111_r * tx;
+    float c11_g = c011_g * (1.0f - tx) + c111_g * tx;
+    float c11_b = c011_b * (1.0f - tx) + c111_b * tx;
+
+    float c0_r = c00_r * (1.0f - ty) + c10_r * ty;
+    float c0_g = c00_g * (1.0f - ty) + c10_g * ty;
+    float c0_b = c00_b * (1.0f - ty) + c10_b * ty;
+    float c1_r = c01_r * (1.0f - ty) + c11_r * ty;
+    float c1_g = c01_g * (1.0f - ty) + c11_g * ty;
+    float c1_b = c01_b * (1.0f - ty) + c11_b * ty;
+
+    out_rgb[0] = c0_r * (1.0f - tz) + c1_r * tz;
+    out_rgb[1] = c0_g * (1.0f - tz) + c1_g * tz;
+    out_rgb[2] = c0_b * (1.0f - tz) + c1_b * tz;
+    return true;
+}
+
+static void compute_radiance_for_cascade(const SceneHeader *header, const SceneSDFInfo *sdf_info,
+                                         const float *sdf_data, RadianceCascade *cascade,
+                                         const RadianceCascade *coarse) {
+    if (!header || !cascade || !sdf_info || !sdf_data) {
+        return;
+    }
+    uint32_t dim = cascade->dim;
+    float ambient = RC_AMBIENT_BASE;
+    for (uint32_t z = 0; z < dim; z++) {
+        for (uint32_t y = 0; y < dim; y++) {
+            for (uint32_t x = 0; x < dim; x++) {
+                float world_pos[3] = {
+                    cascade->origin[0] + cascade->spacing * (float)x,
+                    cascade->origin[1] + cascade->spacing * (float)y,
+                    cascade->origin[2] + cascade->spacing * (float)z,
+                };
+                float radiance[3] = {ambient, ambient, ambient};
+                float occluded = 0.0f;
+
+                for (uint32_t i = 0; i < header->light_count; i++) {
+                    const SceneLight *light = &header->lights[i];
+                    float to_light[3] = {
+                        light->position[0] - world_pos[0],
+                        light->position[1] - world_pos[1],
+                        light->position[2] - world_pos[2],
+                    };
+                    float dist2 = to_light[0] * to_light[0] + to_light[1] * to_light[1] + to_light[2] * to_light[2];
+                    if (dist2 < 1e-6f) {
+                        continue;
+                    }
+                    float dist = fast_sqrtf(dist2);
+                    float inv = 1.0f / dist;
+                    float dir[3] = {to_light[0] * inv, to_light[1] * inv, to_light[2] * inv};
+
+                    bool blocked = sdf_ray_march_hit(sdf_info, sdf_data, world_pos, dir, dist);
+                    if (!blocked) {
+                        float attenuation = 1.0f / (1.0f + 0.09f * dist + 0.032f * dist * dist);
+                        radiance[0] += light->color[0] * attenuation;
+                        radiance[1] += light->color[1] * attenuation;
+                        radiance[2] += light->color[2] * attenuation;
+                    } else {
+                        occluded += 1.0f;
+                    }
+                }
+
+                if (coarse) {
+                    float bounce[3];
+                    if (sample_radiance_from_cascade(coarse, world_pos, bounce)) {
+                        radiance[0] += bounce[0] * RC_BOUNCE_FACTOR;
+                        radiance[1] += bounce[1] * RC_BOUNCE_FACTOR;
+                        radiance[2] += bounce[2] * RC_BOUNCE_FACTOR;
+                    }
+                }
+
+                float visibility = 1.0f;
+                if (header->light_count > 0) {
+                    visibility = 1.0f - (occluded / (float)header->light_count);
+                }
+
+                size_t idx = ((size_t)z * (size_t)dim + (size_t)y) * (size_t)dim * 4 + (size_t)x * 4;
+                cascade->cpu_data[idx + 0] = radiance[0];
+                cascade->cpu_data[idx + 1] = radiance[1];
+                cascade->cpu_data[idx + 2] = radiance[2];
+                cascade->cpu_data[idx + 3] = visibility;
+            }
+        }
+    }
+}
+
+static bool upload_radiance_texture(Engine *engine, RadianceCascade *cascade) {
+    if (!engine || !cascade || !cascade->cpu_data) {
+        return false;
+    }
+
+    if (cascade->texture) {
+        SDL_ReleaseGPUTexture(engine->device, cascade->texture);
+        cascade->texture = NULL;
+    }
+
+    uint32_t dim = cascade->dim;
+    size_t byte_size = (size_t)dim * (size_t)dim * (size_t)dim * 4 * sizeof(float);
+
+    SDL_GPUTextureCreateInfo tex_info = {
+        .usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
+        .format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+        .width = dim,
+        .height = dim * dim, // flatten z into rows
+        .layer_count_or_depth = 1,
+        .num_levels = 1,
+    };
+
+    cascade->texture = SDL_CreateGPUTexture(engine->device, &tex_info);
+    if (!cascade->texture) {
+        SDL_Log("Failed to create radiance cascade texture: %s", SDL_GetError());
+        return false;
+    }
+
+    SDL_GPUTransferBufferCreateInfo transfer_info = {
+        .usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
+        .size = byte_size,
+    };
+    SDL_GPUTransferBuffer *transfer = SDL_CreateGPUTransferBuffer(engine->device, &transfer_info);
+    if (!transfer) {
+        SDL_Log("Failed to allocate transfer buffer for radiance cascade: %s", SDL_GetError());
+        SDL_ReleaseGPUTexture(engine->device, cascade->texture);
+        cascade->texture = NULL;
+        return false;
+    }
+
+    void *mapped = SDL_MapGPUTransferBuffer(engine->device, transfer, false);
+    if (!mapped) {
+        SDL_Log("Failed to map transfer buffer for radiance cascade: %s", SDL_GetError());
+        SDL_ReleaseGPUTransferBuffer(engine->device, transfer);
+        SDL_ReleaseGPUTexture(engine->device, cascade->texture);
+        cascade->texture = NULL;
+        return false;
+    }
+    SDL_memcpy(mapped, cascade->cpu_data, byte_size);
+    SDL_UnmapGPUTransferBuffer(engine->device, transfer);
+
+    SDL_GPUCommandBuffer *cmdbuf = SDL_AcquireGPUCommandBuffer(engine->device);
+    SDL_GPUCopyPass *copy_pass = SDL_BeginGPUCopyPass(cmdbuf);
+    SDL_GPUTextureTransferInfo transfer_src = {
+        .transfer_buffer = transfer,
+        .offset = 0,
+        .pixels_per_row = dim,
+        .rows_per_layer = dim * dim,
+    };
+    SDL_GPUTextureRegion region = {
+        .texture = cascade->texture,
+        .mip_level = 0,
+        .layer = 0,
+        .x = 0,
+        .y = 0,
+        .z = 0,
+        .w = dim,
+        .h = dim * dim,
+        .d = 1,
+    };
+    SDL_UploadToGPUTexture(copy_pass, &transfer_src, &region, false);
+    SDL_EndGPUCopyPass(copy_pass);
+    SDL_SubmitGPUCommandBuffer(cmdbuf);
+    SDL_ReleaseGPUTransferBuffer(engine->device, transfer);
+    return true;
+}
+
+static bool build_radiance_cascades(Engine *engine, const SceneHeader *header) {
+    if (!engine || !header || !engine->sdf_data ||
+        engine->sdf_info.dim[0] == 0 || engine->sdf_info.dim[1] == 0 || engine->sdf_info.dim[2] == 0) {
+        SDL_Log("No SDF available, skipping radiance cascades");
+        return false;
+    }
+
+    float center[3] = {
+        (header->bounds.min[0] + header->bounds.max[0]) * 0.5f,
+        (header->bounds.min[1] + header->bounds.max[1]) * 0.5f,
+        (header->bounds.min[2] + header->bounds.max[2]) * 0.5f,
+    };
+
+    float extent_x = header->bounds.max[0] - header->bounds.min[0];
+    float extent_y = header->bounds.max[1] - header->bounds.min[1];
+    float extent_z = header->bounds.max[2] - header->bounds.min[2];
+    float max_extent = extent_x;
+    if (extent_y > max_extent) max_extent = extent_y;
+    if (extent_z > max_extent) max_extent = extent_z;
+    engine->cascade_extent = max_extent;
+
+    float base_spacing = max_extent / (float)(RC_RADIANCE_RES - 1);
+
+    for (int i = 0; i < RC_CASCADE_COUNT; i++) {
+        RadianceCascade *c = &engine->cascades[i];
+        c->dim = RC_RADIANCE_RES;
+        c->spacing = base_spacing * (float)(1u << i);
+        float span = c->spacing * (float)(c->dim - 1);
+        c->origin[0] = center[0] - span * 0.5f;
+        c->origin[1] = center[1] - span * 0.5f;
+        c->origin[2] = center[2] - span * 0.5f;
+
+        size_t voxel_count = (size_t)c->dim * (size_t)c->dim * (size_t)c->dim * 4;
+        if (!c->cpu_data) {
+            c->cpu_data = (float *)malloc(voxel_count * sizeof(float));
+        }
+        if (!c->cpu_data) {
+            SDL_Log("Failed to allocate CPU radiance buffer for cascade %d", i);
+            return false;
+        }
+        base_memset(c->cpu_data, 0, voxel_count * sizeof(float));
+
+        const RadianceCascade *coarse = (i > 0) ? &engine->cascades[i - 1] : NULL;
+        compute_radiance_for_cascade(header, &engine->sdf_info, engine->sdf_data, c, coarse);
+
+        if (!upload_radiance_texture(engine, c)) {
+            return false;
+        }
+    }
+
+    engine->cascades_ready = true;
+    SDL_Log("Radiance cascades built");
+    return true;
 }
 
 // ============================================================================
@@ -338,6 +753,19 @@ Engine* engine_create(SDL_GPUDevice *device) {
 
     engine->vertex_count = 0;
     engine->index_count = 0;
+    engine->sdf_data = NULL;
+    base_memset(&engine->sdf_info, 0, sizeof(engine->sdf_info));
+    engine->cascade_extent = 0.0f;
+    engine->cascades_ready = false;
+    for (int i = 0; i < RC_CASCADE_COUNT; i++) {
+        engine->cascades[i].texture = NULL;
+        engine->cascades[i].cpu_data = NULL;
+        engine->cascades[i].spacing = 0.0f;
+        engine->cascades[i].origin[0] = 0.0f;
+        engine->cascades[i].origin[1] = 0.0f;
+        engine->cascades[i].origin[2] = 0.0f;
+        engine->cascades[i].dim = 0;
+    }
 
     return engine;
 }
@@ -353,6 +781,9 @@ bool engine_upload_scene(Engine *engine, const Scene *scene) {
     uint32_t index_count = header->index_count;
     const SceneVertex *vertices = header->vertices;
     const uint16_t *indices = header->indices;
+    engine->sdf_info = header->sdf_info;
+    engine->sdf_data = header->sdf;
+    engine->cascades_ready = false;
 
     if (!vertices || vertex_count == 0) {
         SDL_Log("engine_upload_scene: no vertices");
@@ -478,6 +909,14 @@ bool engine_upload_scene(Engine *engine, const Scene *scene) {
     engine->index_count = index_count;
 
     SDL_Log("Scene uploaded successfully");
+
+    if (engine->sdf_data && header->sdf_size > 0) {
+        if (!build_radiance_cascades(engine, header)) {
+            SDL_Log("Radiance cascades build failed");
+        }
+    } else {
+        SDL_Log("Scene has no SDF; skipping radiance cascades");
+    }
     return true;
 }
 
@@ -675,8 +1114,8 @@ bool engine_render(Engine *engine, SDL_GPUCommandBuffer *cmdbuf, SDL_GPURenderPa
     };
     SDL_BindGPUIndexBuffer(render_pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
 
-    // Bind textures and samplers (slots 0-7)
-    // Bind textures 0-6 plus shared sampler at slot 7 (matches WGSL layout).
+    // Bind textures and samplers (slots 0-10)
+    // Bind textures 0-6 plus shared sampler at slot 7, followed by radiance cascades.
     // Require primary bindings to exist
     for (int i = 0; i < 7; i++) {
         if (!engine->textures[i] || !engine->samplers[i]) {
@@ -685,7 +1124,12 @@ bool engine_render(Engine *engine, SDL_GPUCommandBuffer *cmdbuf, SDL_GPURenderPa
         }
     }
 
-    SDL_GPUTextureSamplerBinding bindings[8] = {
+    SDL_GPUTexture *cascade_tex[RC_CASCADE_COUNT];
+    for (int i = 0; i < RC_CASCADE_COUNT; i++) {
+        cascade_tex[i] = engine->cascades[i].texture ? engine->cascades[i].texture : engine->textures[0];
+    }
+
+    SDL_GPUTextureSamplerBinding bindings[11] = {
         {engine->textures[0], engine->samplers[0]},
         {engine->textures[1], engine->samplers[1]},
         {engine->textures[2], engine->samplers[2]},
@@ -694,8 +1138,11 @@ bool engine_render(Engine *engine, SDL_GPUCommandBuffer *cmdbuf, SDL_GPURenderPa
         {engine->textures[5], engine->samplers[5]},
         {engine->textures[6], engine->samplers[6]},
         {engine->textures[0], engine->samplers[0]}, // sampler-only binding uses slot 0 sampler
+        {cascade_tex[0], engine->samplers[0]},
+        {cascade_tex[1], engine->samplers[0]},
+        {cascade_tex[2], engine->samplers[0]},
     };
-    SDL_BindGPUFragmentSamplers(render_pass, 0, bindings, 8);
+    SDL_BindGPUFragmentSamplers(render_pass, 0, bindings, 11);
 
     // Push uniforms if provided
     if (uniforms && uniform_size > 0) {
@@ -707,6 +1154,10 @@ bool engine_render(Engine *engine, SDL_GPUCommandBuffer *cmdbuf, SDL_GPURenderPa
     SDL_DrawGPUIndexedPrimitives(render_pass, engine->index_count, 1, 0, 0, 0);
 
     return true;
+}
+
+bool engine_has_gi(const Engine *engine) {
+    return engine && engine->cascades_ready;
 }
 
 void engine_free(Engine *engine) {
@@ -733,6 +1184,15 @@ void engine_free(Engine *engine) {
         }
         if (engine->samplers[i]) {
             SDL_ReleaseGPUSampler(engine->device, engine->samplers[i]);
+        }
+    }
+
+    for (int i = 0; i < RC_CASCADE_COUNT; i++) {
+        if (engine->cascades[i].texture) {
+            SDL_ReleaseGPUTexture(engine->device, engine->cascades[i].texture);
+        }
+        if (engine->cascades[i].cpu_data) {
+            free(engine->cascades[i].cpu_data);
         }
     }
 
