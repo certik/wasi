@@ -29,12 +29,12 @@ ifeq ($(UNAME_S),Darwin)
 TARGET := fps_text_macos
 PLATFORM_SRC := $(PLATFORM)/platform_macos.c
 PLATFORM_LDFLAGS := -lSystem -Wl,-e,__start
-PLATFORM_CFLAGS := -nostdlib -nostdinc -fno-builtin
+PLATFORM_CFLAGS := -nostdlib -fno-builtin
 else
 TARGET := fps_text_linux
 PLATFORM_SRC := $(PLATFORM)/platform_linux.c
-PLATFORM_LDFLAGS :=
-PLATFORM_CFLAGS := -nostdlib -nostdinc -fno-builtin
+PLATFORM_LDFLAGS := -lc
+PLATFORM_CFLAGS := -nostdlib -fno-builtin
 endif
 
 SRCS := $(COMMON_SRCS) $(PLATFORM_SRC)

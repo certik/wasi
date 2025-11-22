@@ -36,12 +36,10 @@ void fps_text_renderer_draw(FPS_TextRenderer *renderer,
 
     int player_x = -1;
     int player_z = -1;
-    float yaw = 0.0f;
     if (count > 0) {
         const FPS_EntityState *player = &entities[0];
         player_x = (int)player->position.x;
         player_z = (int)player->position.z;
-        yaw = player->params[FPS_PARAM_YAW];
     }
 
     char line[128];
@@ -61,12 +59,5 @@ void fps_text_renderer_draw(FPS_TextRenderer *renderer,
         write_cstr(line);
     }
 
-    char info[128];
-    int len = base_snprintf(info, sizeof(info),
-                            "Controls: WASD move, J/L turn, Q quit\nYaw: %.2f\n",
-                            (double)yaw);
-    if (len > 0) {
-        ciovec_t iov = {info, (size_t)len};
-        write_all(WASI_STDOUT_FD, &iov, 1);
-    }
+    write_cstr("Controls: WASD move, Q quit\n");
 }

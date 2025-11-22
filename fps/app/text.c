@@ -3,6 +3,9 @@
 #include "../physics/map_physics.h"
 #include "../render/text/renderer.h"
 
+#include <termios.h>
+#include <unistd.h>
+
 #include <platform/platform.h>
 #include <base/base_io.h>
 #include <base/mem.h>
@@ -11,9 +14,30 @@ enum {
     FPS_ENTITY_PLAYER = 1,
 };
 
+static struct termios g_term_orig;
+static int g_term_saved = 0;
+
 static void write_cstr(const char *text) {
     ciovec_t iov = {text, base_strlen(text)};
     write_all(WASI_STDOUT_FD, &iov, 1);
+}
+
+static int enable_raw_mode(void) {
+    if (tcgetattr(STDIN_FILENO, &g_term_orig) != 0) {
+        return -1;
+    }
+    g_term_saved = 1;
+    struct termios raw = g_term_orig;
+    raw.c_lflag &= (tcflag_t)~(ICANON | ECHO);
+    raw.c_cc[VMIN] = 1;
+    raw.c_cc[VTIME] = 0;
+    return tcsetattr(STDIN_FILENO, TCSANOW, &raw);
+}
+
+static void restore_terminal(void) {
+    if (g_term_saved) {
+        tcsetattr(STDIN_FILENO, TCSANOW, &g_term_orig);
+    }
 }
 
 static int read_command_char(void) {
@@ -43,8 +67,8 @@ int app_main(void) {
     }
 
     FPS_CoreConfig core_cfg = {
-        .move_speed = 2.0f,
-        .turn_speed = 2.5f,
+        .move_speed = 1.0f,
+        .turn_speed = 0.0f,
         .collision_radius = 0.2f,
     };
 
@@ -63,14 +87,19 @@ int app_main(void) {
     fps_text_renderer_init(&renderer, &map);
 
     FPS_EntityID player_id = FPS_Core_SpawnEntity(core, FPS_ENTITY_PLAYER, (FPS_Vec3){spawn.x, 0.0f, spawn.z});
-    FPS_Core_UpdateEntityParam(core, player_id, FPS_PARAM_YAW, spawn.yaw);
+    FPS_Core_UpdateEntityParam(core, player_id, FPS_PARAM_YAW, 0.0f);
+
+    if (enable_raw_mode() != 0) {
+        PRINT_ERR("Failed to switch terminal to raw mode");
+        return 1;
+    }
 
     bool running = true;
     while (running) {
         fps_text_renderer_draw(&renderer,
                                FPS_Core_GetEntities(core),
                                (int)FPS_Core_GetEntityCount(core));
-        write_cstr("Command (WASD move, J/L turn, Q quit): ");
+        write_cstr("Command (WASD move, Q quit): ");
 
         FPS_InputFrame input;
         base_memset(&input, 0, sizeof(input));
@@ -81,11 +110,11 @@ int app_main(void) {
         switch (c) {
             case 'w':
             case 'W':
-                input.move_axis_y = 1.0f;
+                input.move_axis_y = -1.0f;
                 break;
             case 's':
             case 'S':
-                input.move_axis_y = -1.0f;
+                input.move_axis_y = 1.0f;
                 break;
             case 'a':
             case 'A':
@@ -95,14 +124,6 @@ int app_main(void) {
             case 'D':
                 input.move_axis_x = 1.0f;
                 break;
-            case 'j':
-            case 'J':
-                input.look_axis_x = -1.0f;
-                break;
-            case 'l':
-            case 'L':
-                input.look_axis_x = 1.0f;
-                break;
             case 'q':
             case 'Q':
                 running = false;
@@ -111,9 +132,10 @@ int app_main(void) {
                 continue;
         }
 
-        FPS_Core_Update(core, input, 0.1f);
+        FPS_Core_Update(core, input, 1.0f);
     }
 
+    restore_terminal();
     FPS_Core_Destroy(core);
     write_cstr("Bye.\n");
     return 0;
