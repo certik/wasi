@@ -470,6 +470,8 @@ clang \
 """
 
 test_scene_builder_tool = { cmd="./scene_builder_tool test_scene.scn", depends-on=["build_scene_builder_tool"] }
+build_fps_text = "make -C fps text"
+test_fps_text = { cmd="./fps/fps_text_macos", depends-on=["build_fps_text"] }
 
 [target.linux-64.dependencies]
 clang = ">=20.1.4,<21"
@@ -548,6 +550,8 @@ clang \
 """
 
 test_scene_builder_tool = { cmd="./scene_builder_tool test_scene.scn", depends-on=["build_scene_builder_tool"] }
+build_fps_text = "make -C fps text"
+test_fps_text = { cmd="./fps/fps_text_linux", depends-on=["build_fps_text"] }
 
 [feature.macos.target.osx-arm64.dependencies]
 # Use the system Clang on macOS
